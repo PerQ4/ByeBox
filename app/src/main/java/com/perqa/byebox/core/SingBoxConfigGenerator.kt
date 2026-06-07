@@ -44,9 +44,11 @@ object SingBoxConfigGenerator {
     }
 
     private fun dnsSection(options: SingBoxOptions): JSONObject {
+        val usesSystemDns = options.routingProfile != "BLOCK_ADS" &&
+            (options.dnsAddress == "System Default" || options.dnsAddress.isBlank())
         val dnsAddress = when {
             options.routingProfile == "BLOCK_ADS" -> "94.140.14.14"
-            options.dnsAddress == "System Default" || options.dnsAddress.isBlank() -> "1.1.1.1"
+            usesSystemDns -> "1.1.1.1"
             else -> options.dnsAddress
         }
 
@@ -84,7 +86,7 @@ object SingBoxConfigGenerator {
                     )
             )
             .put("rules", dnsRules)
-            .put("final", "remote")
+            .put("final", if (usesSystemDns) "local" else "remote")
             .put("strategy", if (options.ipv6Enabled) "prefer_ipv4" else "ipv4_only")
     }
 
@@ -323,13 +325,18 @@ object SingBoxConfigGenerator {
         if (options.routingProfile == "BLOCK_ADS") {
             rules.put(
                 JSONObject()
-                    .put("domain_suffix", JSONArray(listOf("ads", "doubleclick.net")))
+                    .put("domain_suffix", JSONArray(adBlockDomainSuffixes()))
                     .put("action", "reject")
             )
         }
 
         if (options.routingProfile == "BYPASS_LAN_CN_RU" && options.lanBypassEnabled) {
             rules.put(JSONObject().put("ip_is_private", true).put("outbound", "direct"))
+            rules.put(
+                JSONObject()
+                    .put("domain_suffix", JSONArray(regionalBypassDomainSuffixes()))
+                    .put("outbound", "direct")
+            )
         }
 
         return JSONObject()
@@ -347,4 +354,32 @@ object SingBoxConfigGenerator {
             // Having auto_detect_interface=true here causes sing-box to try procfs
             // interface detection (which fails on Android) instead of using the platform.
     }
+
+    private fun regionalBypassDomainSuffixes(): List<String> = listOf(
+        "ru",
+        "рф",
+        "su",
+        "cn",
+        "gov.ru",
+        "gosuslugi.ru",
+        "yandex.ru",
+        "vk.com",
+        "mail.ru",
+        "ok.ru"
+    )
+
+    private fun adBlockDomainSuffixes(): List<String> = listOf(
+        "ads",
+        "adservice.google.com",
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googleadservices.com",
+        "adnxs.com",
+        "adsrvr.org",
+        "appsflyer.com",
+        "facebook.com",
+        "scorecardresearch.com",
+        "taboola.com",
+        "outbrain.com"
+    )
 }

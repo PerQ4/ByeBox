@@ -39,7 +39,7 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var serverEndpoint: String = ""
     private var protocol: String = "PROXY"
     private var routingProfile: String = "BYPASS_LAN_CN_RU"
-    private var ipv6Enabled: Boolean = true
+    private var ipv6Enabled: Boolean = false
     private var lanBypassEnabled: Boolean = true
     var systemBypassEnabled: Boolean = false
     var meteredNetwork: Boolean = false
@@ -159,7 +159,7 @@ class HiddifyVpnService : VpnService(), Runnable {
                 }
                 val dnsAddr = intent.getStringExtra(EXTRA_DNS_ADDRESS) ?: "8.8.8.8"
                 val routing = intent.getStringExtra(EXTRA_ROUTING_PROFILE) ?: "BYPASS_LAN_CN_RU"
-                val ipv6 = intent.getBooleanExtra(EXTRA_IPV6_ENABLED, true)
+                val ipv6 = intent.getBooleanExtra(EXTRA_IPV6_ENABLED, false)
                 val lanBypass = intent.getBooleanExtra(EXTRA_LAN_BYPASS_ENABLED, true)
                 val systemBypass = intent.getBooleanExtra(EXTRA_SYSTEM_BYPASS_ENABLED, false)
                 val metered = intent.getBooleanExtra(EXTRA_METERED_NETWORK, false)
@@ -209,7 +209,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.lanBypassEnabled = lanBypass
         this.systemBypassEnabled = systemBypass
         this.meteredNetwork = metered
-        saveLastConnection(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered)
+        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered)
 
         createNotificationChannel()
         val notification = buildNotification()

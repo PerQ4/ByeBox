@@ -54,7 +54,7 @@ class BootReceiver : BroadcastReceiver() {
 
         val dnsAddress = vpnPrefs.getString(HiddifyVpnService.PREF_DNS_ADDRESS, "8.8.8.8") ?: "8.8.8.8"
         val routingProfile = vpnPrefs.getString(HiddifyVpnService.PREF_ROUTING_PROFILE, "BYPASS_LAN_CN_RU") ?: "BYPASS_LAN_CN_RU"
-        val ipv6Enabled = vpnPrefs.getBoolean(HiddifyVpnService.PREF_IPV6_ENABLED, true)
+        val ipv6Enabled = vpnPrefs.getBoolean(HiddifyVpnService.PREF_IPV6_ENABLED, false)
         val lanBypass = vpnPrefs.getBoolean(HiddifyVpnService.PREF_LAN_BYPASS_ENABLED, true)
         val systemBypass = vpnPrefs.getBoolean(HiddifyVpnService.PREF_SYSTEM_BYPASS_ENABLED, false)
         val metered = vpnPrefs.getBoolean(HiddifyVpnService.PREF_METERED_NETWORK, false)

@@ -68,6 +68,7 @@ data class MainUiState(
     val lanBypassEnabled: Boolean = true,
     val systemBypassEnabled: Boolean = false,
     val meteredNetwork: Boolean = false,
+    val autostartEnabled: Boolean = false,
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
     val toastMessage: String? = null
@@ -89,6 +90,7 @@ class MainScreenViewModel(
     private val _lanBypassEnabled = MutableStateFlow(readBoolean(KEY_LAN_BYPASS_ENABLED, true))
     private val _systemBypassEnabled = MutableStateFlow(readBoolean(KEY_SYSTEM_BYPASS_ENABLED, false))
     private val _meteredNetwork = MutableStateFlow(readBoolean(KEY_METERED_NETWORK, false))
+    private val _autostartEnabled = MutableStateFlow(readBoolean(KEY_AUTOSTART_ENABLED, false))
     private val _logs = com.perqa.byebox.core.AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -110,6 +112,7 @@ class MainScreenViewModel(
         _lanBypassEnabled,
         _systemBypassEnabled,
         _meteredNetwork,
+        _autostartEnabled,
         _logs,
         _isPinging,
         _toastMessage
@@ -129,9 +132,10 @@ class MainScreenViewModel(
             lanBypassEnabled = flows[10] as Boolean,
             systemBypassEnabled = flows[11] as Boolean,
             meteredNetwork = flows[12] as Boolean,
-            logs = flows[13] as List<String>,
-            isPinging = flows[14] as Boolean,
-            toastMessage = flows[15] as String?
+            autostartEnabled = flows[13] as Boolean,
+            logs = flows[14] as List<String>,
+            isPinging = flows[15] as Boolean,
+            toastMessage = flows[16] as String?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -601,6 +605,13 @@ class MainScreenViewModel(
         showToast("Лимитная сеть: ${if (enabled) "да" else "нет"}")
     }
 
+    fun changeAutostartEnabled(enabled: Boolean) {
+        _autostartEnabled.value = enabled
+        writeBoolean(KEY_AUTOSTART_ENABLED, enabled)
+        addLog("[SYSTEM] Автозапуск VPN после загрузки: ${if (enabled) "включен" else "выключен"}")
+        showToast("Автозапуск: ${if (enabled) "включен" else "выключен"}")
+    }
+
     fun clearLogs() {
         com.perqa.byebox.core.AppLogger.clearLogs()
     }
@@ -692,6 +703,7 @@ class MainScreenViewModel(
         private const val KEY_LAN_BYPASS_ENABLED = "lan_bypass_enabled"
         private const val KEY_SYSTEM_BYPASS_ENABLED = "system_bypass_enabled"
         private const val KEY_METERED_NETWORK = "metered_network"
+        private const val KEY_AUTOSTART_ENABLED = "autostart_enabled"
     }
 }
 

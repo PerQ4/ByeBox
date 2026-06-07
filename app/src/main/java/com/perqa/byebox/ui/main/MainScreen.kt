@@ -1550,9 +1550,10 @@ fun SettingsTab(
             ) {
                 ToggleSettingRow(
                     title = "IPv6 в туннеле",
-                    subtitle = "Добавляет IPv6-адрес и маршрут ::/0 для профилей прокси",
-                    checked = state.ipv6Enabled,
-                    onCheckedChange = viewModel::changeIpv6Enabled
+                    subtitle = "Временно выключено: Android TUN сейчас стабилизирован в IPv4-only",
+                    checked = false,
+                    enabled = false,
+                    onCheckedChange = {}
                 )
                 ToggleSettingRow(
                     title = "Обход локальных сетей",
@@ -1572,6 +1573,12 @@ fun SettingsTab(
                     checked = state.meteredNetwork,
                     onCheckedChange = viewModel::changeMeteredNetwork
                 )
+                ToggleSettingRow(
+                    title = "Автозапуск после загрузки",
+                    subtitle = "Поднимает последний рабочий профиль после перезагрузки устройства",
+                    checked = state.autostartEnabled,
+                    onCheckedChange = viewModel::changeAutostartEnabled
+                )
             }
         }
 
@@ -1584,6 +1591,7 @@ fun ToggleSettingRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -1597,7 +1605,7 @@ fun ToggleSettingRow(
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
                 }
             )
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -1607,20 +1615,21 @@ fun ToggleSettingRow(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
                 )
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.48f else 0.36f)
                 )
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
         )
     }
 }
