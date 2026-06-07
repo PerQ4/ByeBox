@@ -64,7 +64,7 @@ data class MainUiState(
     val appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
     val routingProfile: RoutingProfile = RoutingProfile.BYPASS_LAN_CN_RU,
     val dnsServer: DnsServer = DnsServer.SYSTEM,
-    val ipv6Enabled: Boolean = true,
+    val ipv6Enabled: Boolean = false,
     val lanBypassEnabled: Boolean = true,
     val systemBypassEnabled: Boolean = false,
     val meteredNetwork: Boolean = false,
@@ -85,7 +85,7 @@ class MainScreenViewModel(
     private val _appTheme = MutableStateFlow(readEnum(KEY_APP_THEME, AppTheme.SYSTEM_DYNAMIC))
     private val _routingProfile = MutableStateFlow(readEnum(KEY_ROUTING_PROFILE, RoutingProfile.BYPASS_LAN_CN_RU))
     private val _dnsServer = MutableStateFlow(readEnum(KEY_DNS_SERVER, DnsServer.SYSTEM))
-    private val _ipv6Enabled = MutableStateFlow(readBoolean(KEY_IPV6_ENABLED, true))
+    private val _ipv6Enabled = MutableStateFlow(readBoolean(KEY_IPV6_ENABLED, false))
     private val _lanBypassEnabled = MutableStateFlow(readBoolean(KEY_LAN_BYPASS_ENABLED, true))
     private val _systemBypassEnabled = MutableStateFlow(readBoolean(KEY_SYSTEM_BYPASS_ENABLED, false))
     private val _meteredNetwork = MutableStateFlow(readBoolean(KEY_METERED_NETWORK, false))

@@ -159,14 +159,23 @@ data class ProxyConfig(
             ping?.let { put("ping", it) }
             put("failure_count", failureCount)
             lastFailureAt?.let { put("last_failure_at", it) }
-            sourceName?.let { put("source_name", it) }
+            put("source_name", sourceName)
             sourceUrl?.let { put("source_url", it) }
-            countryFlag?.let { put("country_flag", it) }
+            put("country_flag", countryFlag)
         }
     }
 
     companion object {
         fun fromJson(json: JSONObject): ProxyConfig {
+            fun optNullableString(vararg keys: String): String? {
+                for (key in keys) {
+                    if (!json.has(key) || json.isNull(key)) continue
+                    val value = json.optString(key, "").trim()
+                    if (value.isNotEmpty() && value != "null") return value
+                }
+                return null
+            }
+
             return ProxyConfig(
                 id = json.optString("id", ""),
                 name = json.optString("name", ""),
@@ -174,36 +183,36 @@ data class ProxyConfig(
                 address = json.optString("address", ""),
                 port = json.optInt("port", 0),
                 uuid = json.optString("uuid", ""),
-                flow = json.optString("flow", null),
-                security = json.optString("security", null),
-                sni = json.optString("sni", null),
-                pbk = json.optString("pbk", null),
-                sid = json.optString("sid", null),
-                network = json.optString("network", null),
-                wsPath = json.optString("ws_path", null),
-                wsHost = json.optString("ws_host", null),
-                grpcServiceName = json.optString("grpc_service_name", null),
-                password = json.optString("password", null),
-                congestionControl = json.optString("congestion_control", null),
-                alpn = json.optString("alpn", null),
-                udpRelayMode = json.optString("udp_relay_mode", null),
+                flow = optNullableString("flow"),
+                security = optNullableString("security"),
+                sni = optNullableString("sni"),
+                pbk = optNullableString("pbk"),
+                sid = optNullableString("sid"),
+                network = optNullableString("network"),
+                wsPath = optNullableString("ws_path", "wsPath"),
+                wsHost = optNullableString("ws_host", "wsHost"),
+                grpcServiceName = optNullableString("grpc_service_name", "grpcServiceName"),
+                password = optNullableString("password"),
+                congestionControl = optNullableString("congestion_control", "congestionControl"),
+                alpn = optNullableString("alpn"),
+                udpRelayMode = optNullableString("udp_relay_mode", "udpRelayMode"),
                 zeroRttHandshake = json.optBoolean("zero_rtt_handshake", false),
-                obfsType = json.optString("obfs_type", null),
-                obfsPassword = json.optString("obfs_password", null),
+                obfsType = optNullableString("obfs_type", "obfsType"),
+                obfsPassword = optNullableString("obfs_password", "obfsPassword"),
                 upMbps = if (json.has("up_mbps")) json.getInt("up_mbps") else null,
                 downMbps = if (json.has("down_mbps")) json.getInt("down_mbps") else null,
-                privateKey = json.optString("private_key", null),
-                publicKey = json.optString("public_key", null),
-                wgAddress = json.optString("wg_address", null),
-                wgDns = json.optString("wg_dns", null),
-                wgAllowedIps = json.optString("wg_allowed_ips", null),
-                reserved = json.optString("reserved", null),
+                privateKey = optNullableString("private_key", "privateKey"),
+                publicKey = optNullableString("public_key", "publicKey"),
+                wgAddress = optNullableString("wg_address", "wgAddress"),
+                wgDns = optNullableString("wg_dns", "wgDns"),
+                wgAllowedIps = optNullableString("wg_allowed_ips", "wgAllowedIps"),
+                reserved = optNullableString("reserved"),
                 ping = if (json.has("ping")) json.getInt("ping") else null,
                 failureCount = json.optInt("failure_count", json.optInt("failureCount", 0)),
                 lastFailureAt = if (json.has("last_failure_at")) json.getLong("last_failure_at")
                     else if (json.has("lastFailureAt")) json.getLong("lastFailureAt") else null,
                 sourceName = json.optString("source_name", json.optString("sourceName", "Локальные конфигурации")),
-                sourceUrl = json.optString("source_url", json.optString("sourceUrl", null)),
+                sourceUrl = optNullableString("source_url", "sourceUrl"),
                 countryFlag = json.optString("country_flag", json.optString("countryFlag", "🏳️"))
             )
         }
