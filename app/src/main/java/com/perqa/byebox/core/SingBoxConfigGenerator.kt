@@ -9,7 +9,7 @@ data class SingBoxOptions(
     val routingProfile: String,
     val ipv6Enabled: Boolean,
     val lanBypassEnabled: Boolean,
-    val mtu: Int = 9000,
+    val mtu: Int = 1500,
     val statsEnabled: Boolean = false,
     val statsPort: Int = 9090
 )
@@ -99,10 +99,11 @@ object SingBoxConfigGenerator {
             .put("tag", "tun-in")
             .put("interface_name", "tun0")
             .put("address", addresses)
-            .put("mtu", 9000)
+            .put("mtu", options.mtu)
             .put("auto_route", true)
             .put("strict_route", true)
             .put("stack", "mixed")
+            .put("endpoint_independent_nat", true)
     }
 
     private fun outbounds(config: ProxyConfig): JSONArray {
@@ -317,11 +318,6 @@ object SingBoxConfigGenerator {
                 JSONObject()
                     .put("protocol", "dns")
                     .put("action", "hijack-dns")
-            )
-            .put(
-                JSONObject()
-                    .put("ip_cidr", JSONArray().put("1.1.1.1/32"))
-                    .put("outbound", "direct")
             )
 
         if (options.routingProfile == "BLOCK_ADS") {

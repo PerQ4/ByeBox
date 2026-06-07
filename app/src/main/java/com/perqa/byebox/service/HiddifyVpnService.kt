@@ -205,7 +205,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.protocol = config.protocol
         this.dnsAddress = dnsAddr
         this.routingProfile = routing
-        this.ipv6Enabled = ipv6
+        this.ipv6Enabled = false
         this.lanBypassEnabled = lanBypass
         this.systemBypassEnabled = systemBypass
         this.meteredNetwork = metered
@@ -465,7 +465,7 @@ class HiddifyVpnService : VpnService(), Runnable {
                 options = SingBoxOptions(
                     dnsAddress = dnsAddress,
                     routingProfile = routingProfile,
-                    ipv6Enabled = ipv6Enabled,
+                    ipv6Enabled = false,
                     lanBypassEnabled = lanBypassEnabled,
                     statsEnabled = true
                 )

@@ -73,7 +73,15 @@ class MainActivity : ComponentActivity() {
                 if (activeConfig != null) {
                     if (HiddifyVpnService.isRunning) {
                         val runtimeSignature = state.runtimeSignature()
-                        if (lastRuntimeSignature != null && lastRuntimeSignature != runtimeSignature) {
+                        val serviceConfigJson = getSharedPreferences(HiddifyVpnService.PREFS_NAME, Context.MODE_PRIVATE)
+                            .getString(HiddifyVpnService.PREF_CONFIG_JSON, null)
+                        val activeConfigJson = activeConfig.toJson().toString()
+                        if (lastRuntimeSignature == null) {
+                            lastRuntimeSignature = runtimeSignature
+                            if (serviceConfigJson != null && serviceConfigJson != activeConfigJson) {
+                                startVpnServiceInternal()
+                            }
+                        } else if (lastRuntimeSignature != runtimeSignature) {
                             lastRuntimeSignature = runtimeSignature
                             startVpnServiceInternal()
                         }
