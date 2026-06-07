@@ -19,3 +19,4 @@ local.properties
 *.apk
 *.aab
 sing-box-build/
+reference/hiddify-app/
