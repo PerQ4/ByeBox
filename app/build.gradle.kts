@@ -6,19 +6,17 @@ plugins {
 
 tasks.register("checkSingBox") {
     group = "byebox"
-    description = "Check that sing-box binaries are bundled in assets"
+    description = "Report legacy sing-box binaries bundled in assets"
     notCompatibleWithConfigurationCache("uses project.file() at execution time")
     doLast {
         val assetsDir = file("src/main/assets/sing-box")
         val abis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         val missing = abis.filter { !file("$assetsDir/$it/sing-box").exists() }
         if (missing.isNotEmpty()) {
-            println("WARNING: sing-box binaries missing for ABIs: $missing")
-            println("Run 'scripts/download-singbox.ps1' or download manually from:")
-            println("https://github.com/SagerNet/sing-box/releases")
-            println("Place in app/src/main/assets/sing-box/<abi>/sing-box")
+            println("Legacy asset sing-box binaries are not bundled for ABIs: $missing")
+            println("This is expected when the app uses libbox.aar as the VPN runtime.")
         } else {
-            println("sing-box binaries found for all ABIs.")
+            println("WARNING: legacy asset sing-box binaries are bundled and increase APK size.")
         }
     }
 }
@@ -36,6 +34,18 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("x86_64", "armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
+        }
     }
 
     buildTypes {
