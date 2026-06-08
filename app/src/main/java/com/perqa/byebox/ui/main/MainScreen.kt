@@ -225,61 +225,64 @@ fun AppHeader(
         label = "statusColor"
     )
     val verticalPadding by animateDpAsState(
-        targetValue = if (collapsed) 2.dp else 6.dp,
+        targetValue = if (collapsed) 0.dp else 6.dp,
         label = "headerPadding"
     )
-    val titleSize by animateFloatAsState(
-        targetValue = if (collapsed) 17f else 22f,
-        label = "headerTitleSize"
-    )
-    val titleSpacing by animateFloatAsState(
-        targetValue = if (collapsed) 1.2f else 2f,
-        label = "headerLetterSpacing"
-    )
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = verticalPadding),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 8.dp, vertical = verticalPadding)
     ) {
-        Column {
-            Text(
-                text = "BYEBOX",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = titleSize.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = titleSpacing.sp,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            )
-            AnimatedVisibility(visible = !collapsed) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
+        AnimatedVisibility(visible = !collapsed) {
+            Column {
                 Text(
-                    text = when (status) {
-                        ConnectionStatus.CONNECTED -> "ПОДКЛЮЧЕНО"
-                        ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
-                        ConnectionStatus.DISCONNECTED -> "ОТКЛЮЧЕНО"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                        letterSpacing = 1.sp
+                    text = "BYEBOX",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = status.labelText(),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                            letterSpacing = 1.sp
+                        )
+                    )
                 }
             }
         }
-        Spacer(modifier = Modifier.width(48.dp))
+        AnimatedVisibility(
+            visible = collapsed,
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Text(
+                text = status.labelText(),
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.42f),
+                    letterSpacing = 0.8.sp
+                )
+            )
+        }
     }
+}
+
+private fun ConnectionStatus.labelText(): String = when (this) {
+    ConnectionStatus.CONNECTED -> "ПОДКЛЮЧЕНО"
+    ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
+    ConnectionStatus.DISCONNECTED -> "ОТКЛЮЧЕНО"
 }
 
 @Composable
@@ -474,7 +477,7 @@ fun DashboardTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(132.dp))
+        Spacer(modifier = Modifier.height(180.dp))
     }
 }
 
@@ -957,11 +960,11 @@ fun ProxyTab(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 148.dp),
+            contentPadding = PaddingValues(bottom = 190.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             sourceGroups.forEach { (sourceName, configs) ->
-                item(key = "source-$sourceName") {
+                item(key = "source-$sourceName", contentType = "source") {
                     SourceGroupCard(
                         sourceName = sourceName,
                         source = sourcesByName[sourceName],
@@ -976,7 +979,11 @@ fun ProxyTab(
                         showConfigs = false
                     )
                 }
-                items(configs, key = { it.id }) { config ->
+                items(
+                    items = configs,
+                    key = { it.id },
+                    contentType = { "server" }
+                ) { config ->
                     ServerItemCard(
                         config = config,
                         isActive = config.id == state.activeConfigId,
@@ -1792,7 +1799,7 @@ fun SettingsTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(132.dp))
+        Spacer(modifier = Modifier.height(180.dp))
     }
 }
 
@@ -1847,7 +1854,11 @@ fun AppPickerDialog(
                         .height(420.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(filteredApps, key = { it.packageName }) { app ->
+                    items(
+                        items = filteredApps,
+                        key = { it.packageName },
+                        contentType = { "app" }
+                    ) { app ->
                         val checked = app.packageName in selectedPackages
                         Row(
                             modifier = Modifier
@@ -1915,10 +1926,6 @@ fun ToggleSettingRow(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val rowScale by animateFloatAsState(
-        targetValue = if (checked && enabled) 1.01f else 1f,
-        label = "toggleRowScale"
-    )
     val rowColor by animateColorAsState(
         targetValue = when {
             checked -> MaterialTheme.colorScheme.primaryContainer
@@ -1930,7 +1937,6 @@ fun ToggleSettingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .scale(rowScale)
             .clip(RoundedCornerShape(16.dp))
             .background(rowColor)
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
@@ -1938,6 +1944,31 @@ fun ToggleSettingRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(
+                    if (checked && enabled) {
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = null,
+                tint = if (checked && enabled) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                },
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -2028,10 +2059,6 @@ fun ThemeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val buttonScale by animateFloatAsState(
-        targetValue = if (active) 1.03f else 1f,
-        label = "themeButtonScale"
-    )
     val buttonColor by animateColorAsState(
         targetValue = if (active) {
             MaterialTheme.colorScheme.primaryContainer
@@ -2045,7 +2072,6 @@ fun ThemeButton(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(56.dp)
-            .scale(buttonScale)
             .clip(RoundedCornerShape(18.dp))
             .background(buttonColor)
             .clickable { onClick() }
@@ -2184,10 +2210,13 @@ fun LogsTab(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 132.dp),
+                    contentPadding = PaddingValues(bottom = 180.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(filteredLogs) { log ->
+                    items(
+                        items = filteredLogs,
+                        contentType = { "log" }
+                    ) { log ->
                         val textColor = when {
                             log.contains("[ERROR]", ignoreCase = true) -> Color(0xFFEF4444)
                             log.contains("[WARNING]", ignoreCase = true) -> Color(0xFFFBBF24)
@@ -2296,7 +2325,7 @@ fun MainTabBar(
     ) {
         Surface(
             modifier = Modifier
-                .width(236.dp)
+                .width(198.dp)
                 .shadow(
                     elevation = 14.dp,
                     shape = RoundedCornerShape(30.dp),
@@ -2341,10 +2370,6 @@ fun MainTabBar(
                         targetValue = if (active) 1.38f else 0.82f,
                         label = "tabWeight"
                     )
-                    val tabScale by animateFloatAsState(
-                        targetValue = if (active) 1.04f else 1f,
-                        label = "tabScale"
-                    )
                     val activeBgColor by animateColorAsState(
                         targetValue = if (active) activeContainer.copy(alpha = 0.82f) else Color.Transparent,
                         label = "tabBg"
@@ -2359,7 +2384,6 @@ fun MainTabBar(
                         modifier = Modifier
                             .weight(tabWeight)
                             .height(42.dp)
-                            .scale(tabScale)
                             .clip(RoundedCornerShape(21.dp))
                             .background(activeBgColor)
                             .clickable { onTabSelected(index) }
