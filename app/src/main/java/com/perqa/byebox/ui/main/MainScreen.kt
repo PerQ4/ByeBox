@@ -82,6 +82,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -137,7 +138,7 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .padding(bottom = 92.dp)
+                        .padding(bottom = 118.dp)
                 ) {
                     AppHeader(
                         status = state.connectionStatus,
@@ -164,6 +165,10 @@ fun MainScreen(
                         }
                     }
                 }
+
+                BottomNavFade(
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
 
                 MainTabBar(
                     selectedTab = selectedTab,
@@ -913,7 +918,7 @@ fun ProxyTab(
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = 138.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             sourceGroups.forEach { (sourceName, configs) ->
@@ -2139,6 +2144,23 @@ fun LogsTab(
 }
 
 @Composable
+fun BottomNavFade(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(122.dp)
+            .blur(18.dp)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.42f to MaterialTheme.colorScheme.background.copy(alpha = 0.58f),
+                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f)
+                )
+            )
+    )
+}
+
+@Composable
 fun MainTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -2147,7 +2169,7 @@ fun MainTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 56.dp, vertical = 14.dp),
+            .padding(start = 64.dp, end = 64.dp, top = 22.dp, bottom = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
