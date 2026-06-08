@@ -193,6 +193,19 @@ fun MainScreen(
                     onTabSelected = { selectedTab = it },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
+
+                FloatingContextAction(
+                    selectedTab = selectedTab,
+                    onClick = {
+                        when (selectedTab) {
+                            0 -> viewModel.selectBestConfig()
+                            1 -> viewModel.testPings()
+                            2 -> (context.findActivity() as? MainActivity)?.openSystemVpnSettings()
+                            3 -> viewModel.exportLogs(context)
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
             }
         }
     }
@@ -802,13 +815,13 @@ fun ProxyTab(
             .fillMaxSize()
             .padding(horizontal = 8.dp)
     ) {
-        Card(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 18.dp, bottomEnd = 32.dp, bottomStart = 18.dp)),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
-            )
+                .clip(RoundedCornerShape(24.dp)),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Row(
@@ -819,7 +832,7 @@ fun ProxyTab(
                     Column {
                         Text(
                             text = "Конфигурации",
-                            style = MaterialTheme.typography.titleLarge.copy(
+                            style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -854,10 +867,10 @@ fun ProxyTab(
                         .height(54.dp),
                     shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f)
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ),
                     maxLines = 1
                 )
@@ -874,8 +887,8 @@ fun ProxyTab(
                             viewModel.refreshSubscriptions()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
-                            contentColor = MaterialTheme.colorScheme.secondary
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         ),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
@@ -893,8 +906,8 @@ fun ProxyTab(
                             viewModel.testPings()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-                            contentColor = MaterialTheme.colorScheme.tertiary
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         ),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
@@ -1050,7 +1063,7 @@ fun SourceGroupCard(
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
-    val groupShape = RoundedCornerShape(topStart = 28.dp, topEnd = 16.dp, bottomEnd = 28.dp, bottomStart = 16.dp)
+    val groupShape = RoundedCornerShape(22.dp)
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
 
@@ -1060,9 +1073,9 @@ fun SourceGroupCard(
             .clip(groupShape),
         colors = CardDefaults.cardColors(
             containerColor = if (activeCount > 0) {
-                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f)
+                MaterialTheme.colorScheme.secondaryContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                MaterialTheme.colorScheme.surfaceContainerHigh
             }
         )
     ) {
@@ -1161,7 +1174,7 @@ fun SourceGroupCard(
                         .padding(bottom = 4.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                     ),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -1207,10 +1220,10 @@ fun SourceActionButton(
     destructive: Boolean = false
 ) {
     val containerColor = when {
-        destructive -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f)
-        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
-        else -> MaterialTheme.colorScheme.surface
+        destructive -> MaterialTheme.colorScheme.errorContainer
+        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.secondaryContainer
+        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
     }
     val contentColor = when {
         destructive -> MaterialTheme.colorScheme.onErrorContainer
@@ -1908,14 +1921,10 @@ fun ToggleSettingRow(
     )
     val rowColor by animateColorAsState(
         targetValue = when {
-            checked -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
+            checked -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainer
         },
         label = "toggleRowColor"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color.Transparent,
-        label = "toggleRowBorder"
     )
 
     Row(
@@ -1924,7 +1933,6 @@ fun ToggleSettingRow(
             .scale(rowScale)
             .clip(RoundedCornerShape(16.dp))
             .background(rowColor)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1935,7 +1943,11 @@ fun ToggleSettingRow(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
+                    color = if (checked && enabled) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
+                    }
                 )
             )
             Text(
@@ -1963,22 +1975,45 @@ fun SettingsSectionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp)),
+            .clip(RoundedCornerShape(24.dp)),
         colors = CardDefaults.cardColors(
             containerColor = containerColor
         )
     ) {
         Column(
-            modifier = Modifier.padding(18.dp)
+            modifier = Modifier.padding(14.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             content()
         }
     }
@@ -2188,6 +2223,63 @@ fun BottomEdgeFade(modifier: Modifier = Modifier) {
                 )
             )
     )
+}
+
+@Composable
+fun FloatingContextAction(
+    selectedTab: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val icon = when (selectedTab) {
+        0 -> Icons.Default.Search
+        1 -> Icons.Default.Refresh
+        2 -> Icons.Default.Settings
+        else -> Icons.Default.Add
+    }
+    val containerColor by animateColorAsState(
+        targetValue = when (selectedTab) {
+            0 -> MaterialTheme.colorScheme.primaryContainer
+            1 -> MaterialTheme.colorScheme.tertiaryContainer
+            2 -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.errorContainer
+        },
+        label = "floatingActionColor"
+    )
+    val contentColor = when (selectedTab) {
+        0 -> MaterialTheme.colorScheme.onPrimaryContainer
+        1 -> MaterialTheme.colorScheme.onTertiaryContainer
+        2 -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Surface(
+        modifier = modifier
+            .padding(end = 18.dp, bottom = 4.dp)
+            .size(54.dp)
+            .shadow(
+                elevation = 12.dp,
+                shape = CircleShape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.18f),
+                spotColor = Color.Black.copy(alpha = 0.24f)
+            )
+            .clip(CircleShape)
+            .clickable { onClick() },
+        shape = CircleShape,
+        color = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
 }
 
 @Composable
