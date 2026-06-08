@@ -2,6 +2,11 @@ package com.perqa.byebox.ui.main
 
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.widget.Toast
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -134,6 +139,40 @@ enum class ConfigGroupMode(val label: String) {
     SOURCE("Источник"),
     PROTOCOL("Протокол"),
     COUNTRY("Страна")
+}
+
+@Composable
+private fun rememberTactileFeedback(): () -> Unit {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    return remember(context, haptic) {
+        {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            runCatching {
+                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    manager?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                }
+
+                if (vibrator?.hasVibrator() == true) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(
+                            VibrationEffect.createOneShot(
+                                18L,
+                                VibrationEffect.DEFAULT_AMPLITUDE
+                            )
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(18L)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -537,7 +576,7 @@ fun QuickActionsCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
-            .clip(RoundedCornerShape(24.dp)),
+            .clip(RoundedCornerShape(28.dp)),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -562,7 +601,7 @@ fun QuickActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val containerColor = when (icon) {
         Icons.Default.Search -> MaterialTheme.colorScheme.primaryContainer
         Icons.Default.Add -> MaterialTheme.colorScheme.secondaryContainer
@@ -578,7 +617,7 @@ fun QuickActionButton(
 
     Button(
         onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            tactileFeedback()
             onClick()
         },
         modifier = modifier.height(46.dp),
@@ -600,7 +639,7 @@ fun ConnectionButton(
     status: ConnectionStatus,
     onClick: () -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val progressRotate by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -719,7 +758,7 @@ fun ConnectionButton(
                     shape = CircleShape
                 )
                 .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    tactileFeedback()
                     onClick()
                 }
         ) {
@@ -771,7 +810,7 @@ fun SpeedCard(
 ) {
     Card(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp)),
+            .clip(RoundedCornerShape(28.dp)),
         colors = CardDefaults.cardColors(
             containerColor = containerColor
         )
@@ -889,7 +928,7 @@ fun ProxyTab(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 190.dp)
         ) {
             sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
@@ -922,7 +961,7 @@ fun ProxyTab(
                             }
                         },
                         showConfigs = false,
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(28.dp)
                     )
                 }
 
@@ -962,12 +1001,12 @@ fun ProxyControlPanel(
     onPingAll: () -> Unit,
     onAddConfig: () -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp)),
+            .clip(RoundedCornerShape(28.dp)),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -999,7 +1038,7 @@ fun ProxyControlPanel(
                 } else {
                     TextButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            tactileFeedback()
                             onToggleExpanded()
                         },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
@@ -1049,7 +1088,7 @@ fun ProxyControlPanel(
                         ) {
                             Button(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     onRefreshSubscriptions()
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1069,7 +1108,7 @@ fun ProxyControlPanel(
 
                             Button(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     onPingAll()
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1089,7 +1128,7 @@ fun ProxyControlPanel(
 
                             Button(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     onAddConfig()
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1144,7 +1183,7 @@ fun GroupModeBar(
     selected: ConfigGroupMode,
     onSelected: (ConfigGroupMode) -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
 
     Row(
         modifier = Modifier
@@ -1159,7 +1198,7 @@ fun GroupModeBar(
             Button(
                 onClick = {
                     if (!active) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        tactileFeedback()
                     }
                     onSelected(mode)
                 },
@@ -1184,7 +1223,7 @@ fun SortModeBar(
     selected: NodeSortMode,
     onSelected: (NodeSortMode) -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
 
     Row(
         modifier = Modifier
@@ -1199,7 +1238,7 @@ fun SortModeBar(
             Button(
                 onClick = {
                     if (!active) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        tactileFeedback()
                     }
                     onSelected(mode)
                 },
@@ -1252,7 +1291,7 @@ fun SourceGroupCard(
     showConfigs: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp)
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
@@ -1359,7 +1398,7 @@ fun SourceGroupCard(
                 }
                 IconButton(
                     onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        tactileFeedback()
                         onToggleExpanded()
                     },
                     modifier = Modifier.size(36.dp)
@@ -1373,38 +1412,6 @@ fun SourceGroupCard(
                 }
             }
 
-            source?.let {
-                Button(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onPingSource()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .padding(bottom = 4.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text("Пинг узлов источника", fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    SourceActionButton("Обновить", Icons.Default.Refresh, { onRefreshSource(it.id) }, Modifier.weight(1f))
-                    SourceActionButton("Имя", Icons.Default.Settings, { isRenaming = !isRenaming }, Modifier.weight(1f))
-                    SourceActionButton("Удалить", Icons.Default.Delete, { onDeleteSource(it.id) }, Modifier.weight(1f), destructive = true)
-                }
-            }
 
             if (showConfigs) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1430,7 +1437,7 @@ fun SourceActionButton(
     modifier: Modifier = Modifier,
     destructive: Boolean = false
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val containerColor = when {
         destructive -> MaterialTheme.colorScheme.errorContainer
         icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.secondaryContainer
@@ -1446,7 +1453,7 @@ fun SourceActionButton(
 
     Button(
         onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            tactileFeedback()
             onClick()
         },
         modifier = modifier.height(34.dp),
@@ -1499,7 +1506,7 @@ fun ServerItemCard(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val scope = rememberCoroutineScope()
     val protocolDetails = remember(config) { config.protocolSummary() }
     val endpointDetails = remember(config) { config.endpointSummary() }
@@ -1514,7 +1521,7 @@ fun ServerItemCard(
     }
 
     val swipeActive = swipeFraction > 0.04f
-    val shape = if (swipeActive || isActive) RoundedCornerShape(24.dp) else RoundedCornerShape(18.dp)
+    val shape = if (swipeActive || isActive) RoundedCornerShape(28.dp) else RoundedCornerShape(24.dp)
 
     val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
                          else MaterialTheme.colorScheme.surfaceContainer
@@ -1557,7 +1564,7 @@ fun ServerItemCard(
                         onDragEnd = {
                             scope.launch {
                                 if (-swipeOffsetX.value >= deleteThresholdPx) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     swipeOffsetX.animateTo(
                                         -size.width.toFloat(),
                                         animationSpec = tween(260)
@@ -1585,14 +1592,14 @@ fun ServerItemCard(
                                 .coerceIn(-size.width.toFloat(), 0f)
                             if (-newOffset >= deleteThresholdPx && !deleteThresholdFeedbackSent) {
                                 deleteThresholdFeedbackSent = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                tactileFeedback()
                             }
                             scope.launch { swipeOffsetX.snapTo(newOffset) }
                         }
                     )
                 }
                 .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    tactileFeedback()
                     onSelect()
                 },
             shape = shape,
@@ -1658,7 +1665,7 @@ fun ServerItemCard(
                     PingPill(config.ping)
                     IconButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            tactileFeedback()
                             val link = config.toConfigLink()
                             if (link.isNotBlank()) {
                                 clipboardManager.setText(AnnotatedString(link))
@@ -1759,7 +1766,7 @@ fun SettingsTab(
     }
 
     val scrollState = rememberScrollState()
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
 
     if (showAppPicker) {
         AppPickerDialog(
@@ -1859,7 +1866,7 @@ fun SettingsTab(
                             .clip(shape)
                             .clickable {
                                 if (!isSelected) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                 }
                                 viewModel.changeRoutingProfile(profile)
                             },
@@ -1931,7 +1938,7 @@ fun SettingsTab(
                             .clip(shape)
                             .clickable {
                                 if (!isSelected) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                 }
                                 viewModel.changeDnsServer(dns)
                             },
@@ -2061,7 +2068,7 @@ fun SettingsTab(
                             .clip(shape)
                             .clickable {
                                 if (!isSelected) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                 }
                                 viewModel.changeAppRoutingMode(mode)
                             },
@@ -2243,7 +2250,7 @@ fun AppPickerDialog(
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     var query by remember { mutableStateOf("") }
     val filteredApps = remember(apps, query) {
         val cleanQuery = query.trim()
@@ -2303,7 +2310,7 @@ fun AppPickerDialog(
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
                                 )
                                 .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     onToggle(app.packageName)
                                 }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -2312,7 +2319,7 @@ fun AppPickerDialog(
                             Checkbox(
                                 checked = checked,
                                 onCheckedChange = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    tactileFeedback()
                                     onToggle(app.packageName)
                                 }
                             )
@@ -2368,13 +2375,13 @@ fun ToggleSettingCard(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp)
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .clickable(enabled = enabled) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                tactileFeedback()
                 onCheckedChange(!checked)
             },
         shape = shape,
@@ -2436,7 +2443,7 @@ fun ToggleSettingCard(
             Switch(
                 checked = checked,
                 onCheckedChange = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    tactileFeedback()
                     onCheckedChange(it)
                 },
                 enabled = enabled
@@ -2512,7 +2519,7 @@ fun ThemeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val buttonColor by animateColorAsState(
         targetValue = if (active) {
             MaterialTheme.colorScheme.primaryContainer
@@ -2530,7 +2537,7 @@ fun ThemeButton(
             .background(buttonColor)
             .clickable {
                 if (!active) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    tactileFeedback()
                 }
                 onClick()
             }
@@ -2715,7 +2722,7 @@ fun FloatingContextAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
     val icon = when (selectedTab) {
         0 -> Icons.Default.Search
         1 -> Icons.Default.Refresh
@@ -2751,7 +2758,7 @@ fun FloatingContextAction(
             )
             .clip(buttonShape)
             .clickable {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                tactileFeedback()
                 onClick()
             },
         shape = buttonShape,
@@ -2776,7 +2783,7 @@ fun MainTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
+    val tactileFeedback = rememberTactileFeedback()
 
     Surface(
         modifier = modifier
@@ -2843,7 +2850,7 @@ fun MainTabBar(
                         .background(activeBgColor)
                         .clickable {
                             if (!active) {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                tactileFeedback()
                             }
                             onTabSelected(index)
                         }
