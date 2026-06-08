@@ -12,7 +12,6 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -125,6 +124,12 @@ enum class NodeSortMode(val label: String) {
     SOURCE("Источник"),
     PING("Пинг"),
     NAME("Имя")
+}
+
+enum class ConfigGroupMode(val label: String) {
+    SOURCE("Источник"),
+    PROTOCOL("Протокол"),
+    COUNTRY("Страна")
 }
 
 @Composable
@@ -800,23 +805,30 @@ fun ProxyTab(
 ) {
     var importUrl by remember { mutableStateOf("") }
     var sortMode by remember { mutableStateOf(NodeSortMode.SOURCE) }
+    var groupMode by remember { mutableStateOf(ConfigGroupMode.SOURCE) }
+    var controlPanelExpanded by remember { mutableStateOf(true) }
+    var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    val sourceGroups = remember(state.configs, sortMode) {
+    val sourceGroups = remember(state.configs, sortMode, groupMode) {
         state.configs
-            .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
+            .groupBy { it.groupLabel(groupMode) }
             .mapValues { (_, configs) -> configs.sortedFor(sortMode) }
             .toList()
             .let { groups ->
-                if (sortMode == NodeSortMode.SOURCE) groups.sortedBy { it.first.lowercase() } else groups
+                when (groupMode) {
+                    ConfigGroupMode.SOURCE -> groups.sortedBy { it.first.lowercase() }
+                    ConfigGroupMode.PROTOCOL -> groups.sortedBy { it.first.lowercase() }
+                    ConfigGroupMode.COUNTRY -> groups.sortedBy { it.first.lowercase() }
+                }
             }
     }
     val sourcesByName = remember(state.subscriptionSources) {
         state.subscriptionSources.associateBy { it.name }
     }
-    val controlPanelCollapsed by remember {
+    val autoControlPanelCollapsed by remember {
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 48 }
     }
-    var swipingConfigId by remember { mutableStateOf<String?>(null) }
+    val controlPanelCollapsed = !controlPanelExpanded || (autoControlPanelCollapsed && !controlPanelManuallyExpanded)
 
     Column(
         modifier = Modifier
@@ -830,6 +842,17 @@ fun ProxyTab(
             importUrl = importUrl,
             onImportUrlChange = { importUrl = it },
             collapsed = controlPanelCollapsed,
+            onToggleExpanded = {
+                if (controlPanelCollapsed) {
+                    controlPanelExpanded = true
+                    controlPanelManuallyExpanded = true
+                } else {
+                    controlPanelExpanded = false
+                    controlPanelManuallyExpanded = false
+                }
+            },
+            groupMode = groupMode,
+            onGroupModeSelected = { groupMode = it },
             sortMode = sortMode,
             onSortModeSelected = { sortMode = it },
             onRefreshSubscriptions = { viewModel.refreshSubscriptions() },
@@ -859,14 +882,6 @@ fun ProxyTab(
                     }
                 }
 
-                val firstConfigActive = configs.firstOrNull()?.let { it.id == state.activeConfigId } ?: false
-                val firstConfigSwiping = configs.firstOrNull()?.id == swipingConfigId
-                val headerBottomCorner = if (configs.isEmpty() || firstConfigActive || firstConfigSwiping) 28.dp else 6.dp
-                val headerShape = RoundedCornerShape(
-                    topStart = 28.dp, topEnd = 28.dp,
-                    bottomStart = headerBottomCorner, bottomEnd = headerBottomCorner
-                )
-
                 stickyHeader(key = "source-$sourceName", contentType = "source") {
                     SourceGroupCard(
                         sourceName = sourceName,
@@ -880,44 +895,19 @@ fun ProxyTab(
                         onDeleteSource = { viewModel.deleteSubscriptionSource(it) },
                         onPingSource = { viewModel.testPingsForSource(sourceName) },
                         showConfigs = false,
-                        shape = headerShape
+                        shape = RoundedCornerShape(22.dp)
                     )
                 }
 
-                configs.forEachIndexed { index, config ->
+                configs.forEach { config ->
                     val isActive = config.id == state.activeConfigId
-                    val prevIsActive = index > 0 && configs[index - 1].id == state.activeConfigId
-                    val nextIsActive = index < configs.lastIndex && configs[index + 1].id == state.activeConfigId
-                    val isLast = index == configs.lastIndex
-
-                    val baseTopCorner = when {
-                        isActive -> 28.dp
-                        prevIsActive -> 28.dp
-                        else -> 6.dp
-                    }
-                    val baseBottomCorner = when {
-                        isActive -> 28.dp
-                        nextIsActive -> 28.dp
-                        isLast -> 28.dp
-                        else -> 6.dp
-                    }
-
-                    val prevIsSwipingNeighbor = index > 0 && configs[index - 1].id == swipingConfigId
-                    val nextIsSwipingNeighbor = index < configs.lastIndex && configs[index + 1].id == swipingConfigId
-                    val effectiveTopCorner = if (prevIsSwipingNeighbor) 28.dp else baseTopCorner
-                    val effectiveBottomCorner = if (nextIsSwipingNeighbor) 28.dp else baseBottomCorner
 
                     item(key = "config-${config.id}", contentType = "server") {
                         ServerItemCard(
                             config = config,
                             isActive = isActive,
                             onSelect = { viewModel.selectConfig(config.id) },
-                            onDelete = { viewModel.deleteConfig(config.id) },
-                            topCorner = effectiveTopCorner,
-                            bottomCorner = effectiveBottomCorner,
-                            onSwipingChanged = { isSwiping ->
-                                swipingConfigId = if (isSwiping) config.id else null
-                            }
+                            onDelete = { viewModel.deleteConfig(config.id) }
                         )
                     }
                 }
@@ -934,6 +924,9 @@ fun ProxyControlPanel(
     importUrl: String,
     onImportUrlChange: (String) -> Unit,
     collapsed: Boolean,
+    onToggleExpanded: () -> Unit,
+    groupMode: ConfigGroupMode,
+    onGroupModeSelected: (ConfigGroupMode) -> Unit,
     sortMode: NodeSortMode,
     onSortModeSelected: (NodeSortMode) -> Unit,
     onRefreshSubscriptions: () -> Unit,
@@ -972,6 +965,17 @@ fun ProxyControlPanel(
                 }
                 if (isPinging) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                } else {
+                    TextButton(
+                        onClick = onToggleExpanded,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (collapsed) "Раскрыть" else "Скрыть",
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
@@ -1061,6 +1065,11 @@ fun ProxyControlPanel(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
+                    GroupModeBar(
+                        selected = groupMode,
+                        onSelected = onGroupModeSelected
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     SortModeBar(
                         selected = sortMode,
                         onSelected = onSortModeSelected
@@ -1071,11 +1080,52 @@ fun ProxyControlPanel(
     }
 }
 
+private fun ProxyConfig.groupLabel(mode: ConfigGroupMode): String {
+    return when (mode) {
+        ConfigGroupMode.SOURCE -> sourceName.ifBlank { "Локальные конфигурации" }
+        ConfigGroupMode.PROTOCOL -> protocol.uppercase().ifBlank { "UNKNOWN" }
+        ConfigGroupMode.COUNTRY -> countryFlag.takeIf { it.isNotBlank() } ?: "Без страны"
+    }
+}
+
 private fun List<ProxyConfig>.sortedFor(mode: NodeSortMode): List<ProxyConfig> {
     return when (mode) {
         NodeSortMode.SOURCE -> sortedWith(compareBy<ProxyConfig> { it.sourceName.lowercase() }.thenBy { it.name.lowercase() })
         NodeSortMode.PING -> sortedWith(compareBy<ProxyConfig> { it.ping ?: Int.MAX_VALUE }.thenBy { it.failureCount }.thenBy { it.name.lowercase() })
         NodeSortMode.NAME -> sortedBy { it.name.lowercase() }
+    }
+}
+
+@Composable
+fun GroupModeBar(
+    selected: ConfigGroupMode,
+    onSelected: (ConfigGroupMode) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        ConfigGroupMode.values().forEach { mode ->
+            val active = selected == mode
+            Button(
+                onClick = { onSelected(mode) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+            ) {
+                Text(mode.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
     }
 }
 
@@ -1364,8 +1414,6 @@ fun ServerItemCard(
     isActive: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
-    topCorner: androidx.compose.ui.unit.Dp = 6.dp,
-    bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
     onSwipingChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -1382,37 +1430,8 @@ fun ServerItemCard(
         derivedStateOf { (-swipeOffsetX.value / deleteThresholdPx).coerceIn(0f, 1f) }
     }
 
-    // Base corner animation (responds to neighbor active/swiping changes)
-    val animTopCorner by animateDpAsState(
-        targetValue = if (isActive) 28.dp else topCorner,
-        animationSpec = tween(260),
-        label = "topCorner"
-    )
-    val animBottomCorner by animateDpAsState(
-        targetValue = if (isActive) 28.dp else bottomCorner,
-        animationSpec = tween(260),
-        label = "bottomCorner"
-    )
-
-    // During swipe, morph to full 28dp corners (card detaches from list)
     val swipeActive = swipeFraction > 0.04f
-    val cardTopCorner by animateDpAsState(
-        targetValue = if (swipeActive) 28.dp else animTopCorner,
-        animationSpec = tween(240),
-        label = "swipeTopCorner"
-    )
-    val cardBottomCorner by animateDpAsState(
-        targetValue = if (swipeActive) 28.dp else animBottomCorner,
-        animationSpec = tween(240),
-        label = "swipeBottomCorner"
-    )
-
-    val shape = RoundedCornerShape(
-        topStart = cardTopCorner,
-        topEnd = cardTopCorner,
-        bottomStart = cardBottomCorner,
-        bottomEnd = cardBottomCorner
-    )
+    val shape = if (swipeActive || isActive) RoundedCornerShape(24.dp) else RoundedCornerShape(18.dp)
 
     val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
                          else MaterialTheme.colorScheme.surfaceContainer

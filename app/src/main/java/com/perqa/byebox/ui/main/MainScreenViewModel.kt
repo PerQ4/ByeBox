@@ -201,12 +201,11 @@ class MainScreenViewModel(
                         showToast("Подключено к ${activeConfig?.name ?: "Server"}")
                         startTrafficUpdates()
 
-                        // Automatically trigger active config ping and general pings upon successful connection
+                        // Keep connection startup light: only refresh the active node latency.
                         launch {
-                            delay(1500) // Wait for connection to stabilize
-                            com.perqa.byebox.core.AppLogger.info("SYSTEM", "Автоматический запуск пинга после подключения...")
+                            delay(1500)
+                            com.perqa.byebox.core.AppLogger.info("SYSTEM", "Обновление задержки активного узла после подключения...")
                             testActiveConfigPing()
-                            testPings()
                         }
                     }
                 } else {
