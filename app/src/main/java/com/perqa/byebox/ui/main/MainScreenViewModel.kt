@@ -400,7 +400,9 @@ class MainScreenViewModel(
 
     private data class SubscriptionFetchResult(
         val body: String,
-        val userInfo: String?
+        val userInfo: String?,
+        val profileTitle: String?,
+        val profileWebPageUrl: String?
     )
 
     private suspend fun fetchSubscription(urlString: String): SubscriptionFetchResult? = withContext(Dispatchers.IO) {
@@ -423,7 +425,12 @@ class MainScreenViewModel(
                 reader.close()
                 SubscriptionFetchResult(
                     body = response.toString(),
-                    userInfo = connection.getHeaderField("subscription-userinfo")
+                    userInfo = connection.getHeaderField("subscription-userinfo"),
+                    profileTitle = connection.getHeaderField("profile-title")
+                        ?: connection.getHeaderField("profileTitle")
+                        ?: connection.getHeaderField("content-disposition")?.substringAfter("filename=", "")?.trim('"'),
+                    profileWebPageUrl = connection.getHeaderField("profile-web-page-url")
+                        ?: connection.getHeaderField("profile-web-page")
                 )
             } else {
                 addLog("[ERROR] Сервер вернул код ответа: $responseCode")
@@ -451,8 +458,16 @@ class MainScreenViewModel(
             uploadBytes = stats["upload"],
             downloadBytes = stats["download"],
             totalBytes = stats["total"],
-            expireAt = stats["expire"]
+            expireAt = stats["expire"],
+            description = subscriptionDescription()
         )
+    }
+
+    private fun SubscriptionFetchResult.subscriptionDescription(): String? {
+        return listOfNotNull(
+            profileTitle?.takeIf { it.isNotBlank() },
+            profileWebPageUrl?.takeIf { it.isNotBlank() }
+        ).joinToString(" · ").takeIf { it.isNotBlank() }
     }
 
     private fun parseSubscriptionUserInfo(header: String?): Map<String, Long> {

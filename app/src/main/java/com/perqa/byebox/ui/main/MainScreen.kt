@@ -780,7 +780,7 @@ fun ProxyTab(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
             )
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -807,7 +807,7 @@ fun ProxyTab(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = importUrl,
                     onValueChange = { importUrl = it },
@@ -819,8 +819,10 @@ fun ProxyTab(
                             overflow = TextOverflow.Ellipsis
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
@@ -829,7 +831,7 @@ fun ProxyTab(
                     ),
                     maxLines = 1
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 CompositionLocalProvider(
                     LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
                 ) {
@@ -848,12 +850,12 @@ fun ProxyTab(
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .height(48.dp)
+                            .height(40.dp)
                             .weight(1f)
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Обновить", fontWeight = FontWeight.Bold)
+                        Text("Обн.", fontWeight = FontWeight.Bold)
                     }
 
                     Button(
@@ -867,7 +869,7 @@ fun ProxyTab(
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .height(48.dp)
+                            .height(40.dp)
                             .weight(0.72f)
                     ) {
                         Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -890,7 +892,7 @@ fun ProxyTab(
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .height(48.dp)
+                            .height(40.dp)
                             .weight(1.05f)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -899,7 +901,7 @@ fun ProxyTab(
                     }
                 }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 SortModeBar(
                     selected = sortMode,
                     onSelected = { sortMode = it }
@@ -1033,11 +1035,11 @@ fun SourceGroupCard(
             }
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp, end = 2.dp, bottom = 10.dp),
+                    .padding(start = 4.dp, end = 2.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1079,6 +1081,16 @@ fun SourceGroupCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    source?.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
+                            ),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
@@ -1114,8 +1126,8 @@ fun SourceGroupCard(
                     onClick = onPingSource,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(36.dp)
-                        .padding(bottom = 6.dp),
+                        .height(32.dp)
+                        .padding(bottom = 4.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
@@ -1125,13 +1137,13 @@ fun SourceGroupCard(
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("Пинг всех узлов источника", fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+                    Text("Пинг узлов источника", fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
                 }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     SourceActionButton("Обновить", Icons.Default.Refresh, { onRefreshSource(it.id) }, Modifier.weight(1f))
                     SourceActionButton("Имя", Icons.Default.Settings, { isRenaming = !isRenaming }, Modifier.weight(1f))
@@ -1178,17 +1190,17 @@ fun SourceActionButton(
 
     Button(
         onClick = onClick,
-        modifier = modifier.height(38.dp),
+        modifier = modifier.height(34.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
-        Spacer(modifier = Modifier.width(5.dp))
-        Text(label, fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 12.sp)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 11.sp)
     }
 }
 
@@ -1232,7 +1244,9 @@ fun ServerItemCard(
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val asymmetricShape = RoundedCornerShape(topStart = 22.dp, bottomEnd = 22.dp, topEnd = 10.dp, bottomStart = 10.dp)
+    val asymmetricShape = RoundedCornerShape(topStart = 20.dp, bottomEnd = 20.dp, topEnd = 10.dp, bottomStart = 10.dp)
+    val protocolDetails = remember(config) { config.protocolSummary() }
+    val endpointDetails = remember(config) { config.endpointSummary() }
 
     Card(
         modifier = Modifier
@@ -1255,30 +1269,30 @@ fun ServerItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = config.countryFlag,
-                fontSize = 28.sp,
-                modifier = Modifier.padding(end = 12.dp)
+                fontSize = 24.sp,
+                modifier = Modifier.padding(end = 10.dp)
             )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = config.name,
-                    style = MaterialTheme.typography.bodyLarge.copy(
+                    style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProtocolPill(config.protocol)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    ProtocolPill(protocolDetails)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "${config.address}:${config.port}",
+                        text = endpointDetails,
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                         ),
@@ -1293,8 +1307,7 @@ fun ServerItemCard(
                 horizontalArrangement = Arrangement.End
             ) {
                 PingPill(config.ping)
-
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(4.dp))
 
                 // Quick Copy Link Button
                 IconButton(
@@ -1305,22 +1318,20 @@ fun ServerItemCard(
                             Toast.makeText(context, "Ссылка скопирована!", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    CopyIcon(tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                    CopyIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
 
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Удалить",
                         tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1344,6 +1355,25 @@ fun ProtocolPill(protocol: String) {
             )
         )
     }
+}
+
+private fun ProxyConfig.protocolSummary(): String {
+    return listOfNotNull(
+        protocol.uppercase(),
+        security?.takeIf { it.isNotBlank() && it != "none" }?.uppercase(),
+        network?.takeIf { it.isNotBlank() && it != "tcp" }?.uppercase(),
+        flow?.takeIf { it.isNotBlank() }?.replace("xtls-rprx-", "", ignoreCase = true)?.uppercase()
+    ).joinToString(" / ").ifBlank { protocol.uppercase() }
+}
+
+private fun ProxyConfig.endpointSummary(): String {
+    val host = sni?.takeIf { it.isNotBlank() && it != address } ?: address
+    val transport = when {
+        wsPath?.isNotBlank() == true -> wsPath
+        grpcServiceName?.isNotBlank() == true -> grpcServiceName
+        else -> null
+    }
+    return listOfNotNull("$host:$port", transport).joinToString(" · ")
 }
 
 @Composable
@@ -2117,7 +2147,7 @@ fun MainTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 26.dp, vertical = 14.dp),
+            .padding(horizontal = 56.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
@@ -2169,7 +2199,7 @@ fun MainTabBar(
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                     val tabWeight by animateFloatAsState(
-                        targetValue = if (active) 1.42f else 0.86f,
+                        targetValue = if (active) 1.52f else 0.78f,
                         label = "tabWeight"
                     )
                     val tabScale by animateFloatAsState(
@@ -2198,7 +2228,7 @@ fun MainTabBar(
                         Row(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp)
                         ) {
                             Icon(
                                 imageVector = tab.second,
@@ -2211,7 +2241,7 @@ fun MainTabBar(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = tab.first,
-                                        fontSize = 10.sp,
+                                        fontSize = 9.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         fontWeight = FontWeight.Black,

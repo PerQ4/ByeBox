@@ -9,5 +9,6 @@ data class SubscriptionSource(
     val uploadBytes: Long? = null,
     val downloadBytes: Long? = null,
     val totalBytes: Long? = null,
-    val expireAt: Long? = null
+    val expireAt: Long? = null,
+    val description: String? = null
 )
