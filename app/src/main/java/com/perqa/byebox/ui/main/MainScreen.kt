@@ -311,14 +311,9 @@ fun DashboardTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        RoundedCornerShape(28.dp)
-                    ),
+                    .clip(RoundedCornerShape(28.dp)),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
             ) {
                 Row(
@@ -421,7 +416,7 @@ fun DashboardTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(132.dp))
     }
 }
 
@@ -434,9 +429,9 @@ fun StatusOverviewCard(
 ) {
     val containerColor by animateColorAsState(
         targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f)
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f)
+            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer
+            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiaryContainer
+            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
         label = "statusOverviewColor"
     )
@@ -516,7 +511,7 @@ fun QuickActionsCard(
             .padding(horizontal = 8.dp)
             .clip(RoundedCornerShape(24.dp)),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -540,10 +535,10 @@ fun QuickActionButton(
     modifier: Modifier = Modifier
 ) {
     val containerColor = when (icon) {
-        Icons.Default.Search -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-        Icons.Default.Add -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
-        Icons.Default.Settings -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f)
-        else -> MaterialTheme.colorScheme.surface
+        Icons.Default.Search -> MaterialTheme.colorScheme.primaryContainer
+        Icons.Default.Add -> MaterialTheme.colorScheme.secondaryContainer
+        Icons.Default.Settings -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val contentColor = when (icon) {
         Icons.Default.Search -> MaterialTheme.colorScheme.onPrimaryContainer
@@ -691,12 +686,7 @@ fun SpeedCard(
 ) {
     Card(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                RoundedCornerShape(24.dp)
-        ),
+            .clip(RoundedCornerShape(24.dp)),
         colors = CardDefaults.cardColors(
             containerColor = containerColor
         )
@@ -900,7 +890,7 @@ fun ProxyTab(
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = 148.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             sourceGroups.forEach { (sourceName, configs) ->
@@ -1224,11 +1214,6 @@ fun ServerItemCard(
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val activeBorderColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.primary else Color.Transparent,
-        label = "activeBorder"
-    )
-
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val asymmetricShape = RoundedCornerShape(topStart = 20.dp, bottomEnd = 20.dp, topEnd = 10.dp, bottomStart = 10.dp)
@@ -1239,17 +1224,12 @@ fun ServerItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(asymmetricShape)
-            .border(
-                1.5.dp,
-                activeBorderColor,
-                asymmetricShape
-            )
             .clickable { onSelect() },
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
             } else {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.74f)
+                MaterialTheme.colorScheme.surfaceContainer
             }
         )
     ) {
@@ -1489,15 +1469,10 @@ fun SettingsTab(
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 if (isSelected) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                    MaterialTheme.colorScheme.primaryContainer
                                 } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
+                                    MaterialTheme.colorScheme.surfaceContainer
                                 }
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                RoundedCornerShape(16.dp)
                             )
                             .clickable { viewModel.changeRoutingProfile(profile) }
                             .padding(14.dp),
@@ -1543,15 +1518,10 @@ fun SettingsTab(
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 if (isSelected) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                    MaterialTheme.colorScheme.primaryContainer
                                 } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
+                                    MaterialTheme.colorScheme.surfaceContainer
                                 }
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                RoundedCornerShape(16.dp)
                             )
                             .clickable { viewModel.changeDnsServer(dns) }
                             .padding(14.dp),
@@ -1639,13 +1609,8 @@ fun SettingsTab(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(
-                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                RoundedCornerShape(16.dp)
+                                if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainer
                             )
                             .clickable { viewModel.changeAppRoutingMode(mode) }
                             .padding(14.dp)
@@ -1746,7 +1711,7 @@ fun SettingsTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(132.dp))
     }
 }
 
@@ -1966,9 +1931,9 @@ fun ThemeButton(
     )
     val buttonColor by animateColorAsState(
         targetValue = if (active) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f)
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+            MaterialTheme.colorScheme.surfaceContainer
         },
         label = "themeButtonColor"
     )
@@ -1980,11 +1945,6 @@ fun ThemeButton(
             .scale(buttonScale)
             .clip(RoundedCornerShape(18.dp))
             .background(buttonColor)
-            .border(
-                1.5.dp,
-                if (active) MaterialTheme.colorScheme.primary else Color.Transparent,
-                RoundedCornerShape(18.dp)
-            )
             .clickable { onClick() }
     ) {
         Row(
@@ -2002,7 +1962,7 @@ fun ThemeButton(
                 text = label,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -2087,7 +2047,6 @@ fun LogsTab(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black.copy(alpha = 0.85f))
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
                 .padding(14.dp)
         ) {
             if (filteredLogs.isEmpty()) {
@@ -2101,6 +2060,7 @@ fun LogsTab(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 132.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(filteredLogs) { log ->
@@ -2130,11 +2090,12 @@ fun BottomEdgeFade(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(22.dp)
+            .height(42.dp)
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f)
+                    0.52f to MaterialTheme.colorScheme.background.copy(alpha = 0.16f),
+                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.58f)
                 )
             )
     )
