@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.graphics.Color
 import android.net.VpnService
 import android.os.Bundle
 import android.provider.Settings
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import com.perqa.byebox.data.DefaultDataRepository
 import com.perqa.byebox.service.HiddifyVpnService
 import com.perqa.byebox.theme.HiddifyExpressiveTheme
@@ -93,6 +95,12 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             HiddifyExpressiveTheme {
                 Surface(
