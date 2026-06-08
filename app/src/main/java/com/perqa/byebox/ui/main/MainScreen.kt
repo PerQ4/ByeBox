@@ -53,6 +53,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +65,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -1370,6 +1373,24 @@ fun SettingsTab(
     state: MainUiState,
     viewModel: MainScreenViewModel
 ) {
+    var showAppPicker by remember { mutableStateOf(false) }
+    val selectedAppPackages = remember(state.appRoutingPackages) {
+        state.appRoutingPackages
+            .split(',', '\n', '\r', ';', ' ', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    if (showAppPicker) {
+        AppPickerDialog(
+            apps = state.installedApps,
+            selectedPackages = selectedAppPackages,
+            onToggle = viewModel::toggleAppRoutingPackage,
+            onDismiss = { showAppPicker = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1620,10 +1641,40 @@ fun SettingsTab(
                         )
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Выбрано: ${selectedAppPackages.size}",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Button(
+                        onClick = { showAppPicker = true },
+                        enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                        shape = RoundedCornerShape(18.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Выбрать")
+                    }
+                    TextButton(
+                        onClick = viewModel::clearAppRoutingPackages,
+                        enabled = selectedAppPackages.isNotEmpty()
+                    ) {
+                        Text("Очистить")
+                    }
+                }
                 OutlinedTextField(
                     value = state.appRoutingPackages,
                     onValueChange = viewModel::changeAppRoutingPackages,
-                    label = { Text("Package names") },
+                    label = { Text("Package names вручную") },
                     placeholder = { Text("org.telegram.messenger\ncom.discord") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = state.appRoutingMode != AppRoutingMode.OFF,
@@ -1639,15 +1690,29 @@ fun SettingsTab(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.18f)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = state.healthCheckUrl,
-                    onValueChange = viewModel::changeHealthCheckUrl,
-                    label = { Text("URL ресурса") },
-                    placeholder = { Text("https://www.gstatic.com/generate_204") },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp)
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = state.healthCheckUrl,
+                        onValueChange = viewModel::changeHealthCheckUrl,
+                        label = { Text("URL ресурса") },
+                        placeholder = { Text("https://www.gstatic.com/generate_204") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    Button(
+                        onClick = viewModel::testHealthCheckUrl,
+                        shape = RoundedCornerShape(18.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(56.dp)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                }
                 ToggleSettingRow(
                     title = "Строгий фильтр",
                     subtitle = "При проверке узлов помечает timeout, если ресурс недоступен",
@@ -1659,6 +1724,117 @@ fun SettingsTab(
 
         Spacer(modifier = Modifier.height(20.dp))
     }
+}
+
+@Composable
+fun AppPickerDialog(
+    apps: List<InstalledAppInfo>,
+    selectedPackages: Set<String>,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val filteredApps = remember(apps, query) {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) {
+            apps
+        } else {
+            apps.filter {
+                it.label.contains(cleanQuery, ignoreCase = true) ||
+                    it.packageName.contains(cleanQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Выбор приложений",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Поиск приложения или package") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp)
+                )
+                Text(
+                    text = "${selectedPackages.size} выбрано · ${filteredApps.size} найдено",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(420.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredApps, key = { it.packageName }) { app ->
+                        val checked = app.packageName in selectedPackages
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
+                                )
+                                .clickable { onToggle(app.packageName) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { onToggle(app.packageName) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = app.label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                                Text(
+                                    text = app.packageName,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                )
+                            }
+                            if (app.isSystem) {
+                                Text(
+                                    text = "SYS",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Готово")
+            }
+        }
+    )
 }
 
 @Composable
