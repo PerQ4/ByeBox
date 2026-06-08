@@ -138,7 +138,7 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .padding(bottom = 118.dp)
+                        .padding(bottom = 78.dp)
                 ) {
                     AppHeader(
                         status = state.connectionStatus,
@@ -918,7 +918,7 @@ fun ProxyTab(
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 138.dp),
+            contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             sourceGroups.forEach { (sourceName, configs) ->
@@ -2148,13 +2148,12 @@ fun BottomNavFade(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(122.dp)
-            .blur(18.dp)
+            .height(34.dp)
+            .blur(8.dp)
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    0.42f to MaterialTheme.colorScheme.background.copy(alpha = 0.58f),
-                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f)
+                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.46f)
                 )
             )
     )
