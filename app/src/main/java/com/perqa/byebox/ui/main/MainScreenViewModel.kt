@@ -473,13 +473,14 @@ class MainScreenViewModel(
         viewModelScope.launch {
             if (_isPinging.value) return@launch
             _isPinging.value = true
-            addLog("[SYSTEM] Запуск тестирования задержки серверов...")
-            
-            probeConfigs(dataRepository.configs.value)
-            
-            _isPinging.value = false
-            addLog("[SYSTEM] Тестирование пинга завершено.")
-            showToast("Задержка серверов обновлена")
+            try {
+                addLog("[SYSTEM] Запуск тестирования задержки серверов...")
+                val summary = probeConfigs(dataRepository.configs.value)
+                addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
+                showToast("Пинг обновлён: ${summary.ok}/${summary.total}")
+            } finally {
+                _isPinging.value = false
+            }
         }
     }
 
@@ -489,12 +490,15 @@ class MainScreenViewModel(
         viewModelScope.launch {
             if (_isPinging.value) return@launch
             _isPinging.value = true
-            addLog("[SYSTEM] Тестирование задержки активного сервера ${activeConfig.name}...")
-            val ping = probeTcpLatency(activeConfig) ?: 999
-            dataRepository.updatePing(activeId, ping)
-            _isPinging.value = false
-            addLog("[PING] ${activeConfig.name} -> $ping ms")
-            showToast("Пинг: $ping ms")
+            try {
+                addLog("[SYSTEM] Тестирование задержки активного сервера ${activeConfig.name}...")
+                val ping = probeTcpLatency(activeConfig) ?: 999
+                dataRepository.updatePing(activeId, ping)
+                addLog("[PING] ${activeConfig.name} -> $ping ms")
+                showToast("Пинг: $ping ms")
+            } finally {
+                _isPinging.value = false
+            }
         }
     }
 
@@ -504,35 +508,47 @@ class MainScreenViewModel(
             val configs = dataRepository.configs.value.filter { it.sourceName == sourceName }
             if (configs.isEmpty()) return@launch
             _isPinging.value = true
-            addLog("[SYSTEM] Пинг источника: $sourceName (${configs.size})")
-            probeConfigs(configs)
-            _isPinging.value = false
-            addLog("[SYSTEM] Пинг источника завершён: $sourceName")
-            showToast("Пинг источника обновлён")
+            try {
+                addLog("[SYSTEM] Пинг источника: $sourceName (${configs.size})")
+                val summary = probeConfigs(configs)
+                addLog("[SYSTEM] Пинг источника завершён: $sourceName, ${summary.ok} ok, ${summary.failed} timeout")
+                showToast("Пинг источника: ${summary.ok}/${summary.total}")
+            } finally {
+                _isPinging.value = false
+            }
         }
     }
 
-    private suspend fun probeConfigs(configs: List<ProxyConfig>) = coroutineScope {
+    private data class ProbeSummary(val total: Int, val ok: Int, val failed: Int)
+
+    private suspend fun probeConfigs(configs: List<ProxyConfig>): ProbeSummary = coroutineScope {
+        var ok = 0
+        var failed = 0
         configs.chunked(8).forEach { batch ->
             batch.map { config ->
                 async { config to probeTcpLatency(config) }
             }.awaitAll().forEach { (config, ping) ->
                 if (ping != null) {
+                    ok += 1
                     dataRepository.updatePing(config.id, ping)
                     addLog("[PING] ${config.name} -> $ping ms")
                 } else {
+                    failed += 1
                     dataRepository.updatePing(config.id, 999)
                     addLog("[PING] ${config.name} -> timeout")
                 }
             }
         }
+        ProbeSummary(configs.size, ok, failed)
     }
 
     private suspend fun probeTcpLatency(config: ProxyConfig): Int? = withContext(Dispatchers.IO) {
+        if (config.address.isBlank() || config.port <= 0) return@withContext null
         var socket: Socket? = null
         try {
             val elapsed = measureTimeMillis {
                 socket = Socket()
+                socket.soTimeout = 2500
                 socket.connect(InetSocketAddress(config.address, config.port), 2500)
             }
             elapsed.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()

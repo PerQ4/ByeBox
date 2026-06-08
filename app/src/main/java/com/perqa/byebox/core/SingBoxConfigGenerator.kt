@@ -330,8 +330,11 @@ object SingBoxConfigGenerator {
             )
         }
 
-        if (options.routingProfile == "BYPASS_LAN_CN_RU" && options.lanBypassEnabled) {
+        if (options.lanBypassEnabled) {
             rules.put(JSONObject().put("ip_is_private", true).put("outbound", "direct"))
+        }
+
+        if (options.routingProfile == "BYPASS_LAN_CN_RU") {
             rules.put(
                 JSONObject()
                     .put("domain_suffix", JSONArray(regionalBypassDomainSuffixes()))
@@ -357,7 +360,7 @@ object SingBoxConfigGenerator {
 
     private fun regionalBypassDomainSuffixes(): List<String> = listOf(
         "ru",
-        "рф",
+        "xn--p1ai",
         "su",
         "cn",
         "gov.ru",
