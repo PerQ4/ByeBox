@@ -135,12 +135,6 @@ enum class NodeSortMode(val label: String) {
     NAME("Имя")
 }
 
-enum class ConfigGroupMode(val label: String) {
-    SOURCE("Источник"),
-    PROTOCOL("Протокол"),
-    COUNTRY("Страна")
-}
-
 @Composable
 private fun rememberTactileFeedback(): () -> Unit {
     val context = LocalContext.current
@@ -856,23 +850,16 @@ fun ProxyTab(
 ) {
     var importUrl by remember { mutableStateOf("") }
     var sortMode by remember { mutableStateOf(NodeSortMode.SOURCE) }
-    var groupMode by remember { mutableStateOf(ConfigGroupMode.SOURCE) }
     var controlPanelExpanded by remember { mutableStateOf(true) }
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     val listState = rememberLazyListState()
-    val sourceGroups = remember(state.configs, sortMode, groupMode) {
+    val sourceGroups = remember(state.configs, sortMode) {
         state.configs
-            .groupBy { it.groupLabel(groupMode) }
+            .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
             .mapValues { (_, configs) -> configs.sortedFor(sortMode) }
             .toList()
-            .let { groups ->
-                when (groupMode) {
-                    ConfigGroupMode.SOURCE -> groups.sortedBy { it.first.lowercase() }
-                    ConfigGroupMode.PROTOCOL -> groups.sortedBy { it.first.lowercase() }
-                    ConfigGroupMode.COUNTRY -> groups.sortedBy { it.first.lowercase() }
-                }
-            }
+            .sortedBy { it.first.lowercase() }
     }
     LaunchedEffect(sourceGroups) {
         val visibleGroupKeys = sourceGroups.map { it.first }.toSet()
@@ -907,8 +894,6 @@ fun ProxyTab(
                     controlPanelManuallyExpanded = false
                 }
             },
-            groupMode = groupMode,
-            onGroupModeSelected = { groupMode = it },
             sortMode = sortMode,
             onSortModeSelected = { sortMode = it },
             onRefreshSubscriptions = { viewModel.refreshSubscriptions() },
@@ -993,8 +978,6 @@ fun ProxyControlPanel(
     onImportUrlChange: (String) -> Unit,
     collapsed: Boolean,
     onToggleExpanded: () -> Unit,
-    groupMode: ConfigGroupMode,
-    onGroupModeSelected: (ConfigGroupMode) -> Unit,
     sortMode: NodeSortMode,
     onSortModeSelected: (NodeSortMode) -> Unit,
     onRefreshSubscriptions: () -> Unit,
@@ -1147,11 +1130,6 @@ fun ProxyControlPanel(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    GroupModeBar(
-                        selected = groupMode,
-                        onSelected = onGroupModeSelected
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
                     SortModeBar(
                         selected = sortMode,
                         onSelected = onSortModeSelected
@@ -1162,59 +1140,11 @@ fun ProxyControlPanel(
     }
 }
 
-private fun ProxyConfig.groupLabel(mode: ConfigGroupMode): String {
-    return when (mode) {
-        ConfigGroupMode.SOURCE -> sourceName.ifBlank { "Локальные конфигурации" }
-        ConfigGroupMode.PROTOCOL -> protocol.uppercase().ifBlank { "UNKNOWN" }
-        ConfigGroupMode.COUNTRY -> countryFlag.takeIf { it.isNotBlank() } ?: "Без страны"
-    }
-}
-
 private fun List<ProxyConfig>.sortedFor(mode: NodeSortMode): List<ProxyConfig> {
     return when (mode) {
         NodeSortMode.SOURCE -> sortedWith(compareBy<ProxyConfig> { it.sourceName.lowercase() }.thenBy { it.name.lowercase() })
         NodeSortMode.PING -> sortedWith(compareBy<ProxyConfig> { it.ping ?: Int.MAX_VALUE }.thenBy { it.failureCount }.thenBy { it.name.lowercase() })
         NodeSortMode.NAME -> sortedBy { it.name.lowercase() }
-    }
-}
-
-@Composable
-fun GroupModeBar(
-    selected: ConfigGroupMode,
-    onSelected: (ConfigGroupMode) -> Unit
-) {
-    val tactileFeedback = rememberTactileFeedback()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        ConfigGroupMode.values().forEach { mode ->
-            val active = selected == mode
-            Button(
-                onClick = {
-                    if (!active) {
-                        tactileFeedback()
-                    }
-                    onSelected(mode)
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(34.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                    contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-            ) {
-                Text(mode.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-        }
     }
 }
 
