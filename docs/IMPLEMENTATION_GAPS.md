@@ -12,7 +12,8 @@ Local Hiddify reference sources are stored at `reference/hiddify-app/` and are i
 - Autostart on boot: receiver existed, but there was no visible setting. A visible toggle has been added.
 - Quick Settings tile: used stale IPv6 defaults and broken Russian subtitles. Defaults and labels are fixed.
 - Android VPN bypass: currently only calls the system bypass API. Missing Hiddify-level per-app include/exclude and package rules.
-- Best server / ping all: current checks are TCP latency to host:port, not full proxy health checks through the outbound. Needs Hiddify-style URL test and sortable subscription node list.
+- Best server / ping all: current checks are TCP latency to host:port with an optional strict resource filter. Needs Hiddify-style URL test through each outbound/core API.
+- Per-app VPN routing: Android include/exclude profiles are wired through TUN package filters. Missing a full installed-app picker, import/export presets, and Hiddify-style auto-selection.
 - Traffic accounting: notification/UI now use Clash API and device fallbacks, but not Hiddify's complete core stats model.
 - Share config: exported links do not preserve every protocol transport parameter yet, especially advanced Reality, WebSocket, HTTP/2, gRPC, TUIC, Hysteria2 and WireGuard fields.
 

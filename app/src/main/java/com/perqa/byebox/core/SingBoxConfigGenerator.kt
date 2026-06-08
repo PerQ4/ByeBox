@@ -9,6 +9,8 @@ data class SingBoxOptions(
     val routingProfile: String,
     val ipv6Enabled: Boolean,
     val lanBypassEnabled: Boolean,
+    val appRoutingMode: String = "OFF",
+    val appRoutingPackages: List<String> = emptyList(),
     val mtu: Int = 1500,
     val statsEnabled: Boolean = false,
     val statsPort: Int = 9090
@@ -106,6 +108,20 @@ object SingBoxConfigGenerator {
             .put("strict_route", true)
             .put("stack", "mixed")
             .put("endpoint_independent_nat", true)
+            .apply {
+                val packages = options.appRoutingPackages
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                when (options.appRoutingMode) {
+                    "ONLY_SELECTED" -> if (packages.isNotEmpty()) {
+                        put("include_package", JSONArray(packages))
+                    }
+                    "BYPASS_SELECTED" -> if (packages.isNotEmpty()) {
+                        put("exclude_package", JSONArray(packages))
+                    }
+                }
+            }
     }
 
     private fun outbounds(config: ProxyConfig): JSONArray {
