@@ -77,11 +77,18 @@ data class MainUiState(
     val autostartEnabled: Boolean = false,
     val appRoutingMode: AppRoutingMode = AppRoutingMode.OFF,
     val appRoutingPackages: String = "",
+    val installedApps: List<InstalledAppInfo> = emptyList(),
     val healthCheckUrl: String = "https://www.gstatic.com/generate_204",
     val strictHealthCheck: Boolean = false,
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
     val toastMessage: String? = null
+)
+
+data class InstalledAppInfo(
+    val label: String,
+    val packageName: String,
+    val isSystem: Boolean
 )
 
 class MainScreenViewModel(
@@ -103,6 +110,7 @@ class MainScreenViewModel(
     private val _autostartEnabled = MutableStateFlow(readBoolean(KEY_AUTOSTART_ENABLED, false))
     private val _appRoutingMode = MutableStateFlow(readEnum(KEY_APP_ROUTING_MODE, AppRoutingMode.OFF))
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
+    private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     private val _healthCheckUrl = MutableStateFlow(readString(KEY_HEALTH_CHECK_URL, "https://www.gstatic.com/generate_204"))
     private val _strictHealthCheck = MutableStateFlow(readBoolean(KEY_STRICT_HEALTH_CHECK, false))
     private val _logs = com.perqa.byebox.core.AppLogger.logs
@@ -129,6 +137,7 @@ class MainScreenViewModel(
         _autostartEnabled,
         _appRoutingMode,
         _appRoutingPackages,
+        _installedApps,
         _healthCheckUrl,
         _strictHealthCheck,
         _logs,
@@ -153,11 +162,12 @@ class MainScreenViewModel(
             autostartEnabled = flows[13] as Boolean,
             appRoutingMode = flows[14] as AppRoutingMode,
             appRoutingPackages = flows[15] as String,
-            healthCheckUrl = flows[16] as String,
-            strictHealthCheck = flows[17] as Boolean,
-            logs = flows[18] as List<String>,
-            isPinging = flows[19] as Boolean,
-            toastMessage = flows[20] as String?
+            installedApps = flows[16] as List<InstalledAppInfo>,
+            healthCheckUrl = flows[17] as String,
+            strictHealthCheck = flows[18] as Boolean,
+            logs = flows[19] as List<String>,
+            isPinging = flows[20] as Boolean,
+            toastMessage = flows[21] as String?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -166,6 +176,8 @@ class MainScreenViewModel(
     )
 
     init {
+        loadInstalledApps()
+
         _connectionStatus.value = if (com.perqa.byebox.service.HiddifyVpnService.isRunning) {
             startTrafficUpdates()
             ConnectionStatus.CONNECTED
@@ -689,8 +701,25 @@ class MainScreenViewModel(
     }
 
     fun changeAppRoutingPackages(value: String) {
-        _appRoutingPackages.value = value
-        writeString(KEY_APP_ROUTING_PACKAGES, value)
+        val normalized = normalizePackageText(value)
+        _appRoutingPackages.value = normalized
+        writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+    }
+
+    fun toggleAppRoutingPackage(packageName: String) {
+        val packages = parsePackageText(_appRoutingPackages.value).toMutableSet()
+        if (!packages.add(packageName)) {
+            packages.remove(packageName)
+        }
+        val normalized = packages.sorted().joinToString("\n")
+        _appRoutingPackages.value = normalized
+        writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+    }
+
+    fun clearAppRoutingPackages() {
+        _appRoutingPackages.value = ""
+        writeString(KEY_APP_ROUTING_PACKAGES, "")
+        showToast("Список приложений очищен")
     }
 
     fun changeHealthCheckUrl(value: String) {
@@ -703,6 +732,15 @@ class MainScreenViewModel(
         writeBoolean(KEY_STRICT_HEALTH_CHECK, enabled)
         addLog("[SYSTEM] Фильтр проверки ресурса: ${if (enabled) "строгий" else "нестрогий"}")
         showToast("Фильтр ресурса: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun testHealthCheckUrl() {
+        val url = _healthCheckUrl.value
+        viewModelScope.launch {
+            val ok = probeResource(url)
+            addLog("[SYSTEM] Проверка ресурса $url: ${if (ok) "ok" else "failed"}")
+            showToast(if (ok) "Ресурс доступен" else "Ресурс недоступен")
+        }
     }
 
     fun clearLogs() {
@@ -782,6 +820,45 @@ class MainScreenViewModel(
 
     private fun readString(key: String, fallback: String): String {
         return prefs?.getString(key, fallback) ?: fallback
+    }
+
+    private fun loadInstalledApps() {
+        val context = appContext ?: return
+        viewModelScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                val pm = context.packageManager
+                val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                    addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+                }
+                pm.queryIntentActivities(launcherIntent, 0)
+                    .mapNotNull { resolveInfo ->
+                        val packageName = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
+                        if (packageName == context.packageName) return@mapNotNull null
+                        val appInfo = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
+                        InstalledAppInfo(
+                            label = resolveInfo.loadLabel(pm).toString().ifBlank { packageName },
+                            packageName = packageName,
+                            isSystem = appInfo?.flags?.and(android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                        )
+                    }
+                    .distinctBy { it.packageName }
+                    .sortedWith(compareBy<InstalledAppInfo> { it.label.lowercase(Locale.getDefault()) }.thenBy { it.packageName })
+            }
+            _installedApps.value = apps
+        }
+    }
+
+    private fun normalizePackageText(value: String): String {
+        return parsePackageText(value).joinToString("\n")
+    }
+
+    private fun parsePackageText(value: String): List<String> {
+        return value
+            .split(',', '\n', '\r', ';', ' ', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
     }
 
     private fun writeString(key: String, value: String) {
