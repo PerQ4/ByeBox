@@ -146,6 +146,35 @@ QoL:
 - Copy link, QR, details/edit page.
 - После 40+ конфигов список должен оставаться кликабельным и виртуализированным.
 
+## Списки в стиле Android Material 3
+
+Базовый паттерн для большинства списков в ByeBox - не карточка на каждый элемент, а tonal list row:
+
+- leading content: флаг, иконка приложения, статусная точка или протокол;
+- headline: имя узла, приложения, DNS или правила;
+- supporting text: endpoint, protocol stack, описание, package name;
+- trailing content: ping, switch, selected check, overflow или одно основное действие;
+- высота: 56dp для one-line, 64-72dp для two-line, 88dp только если реально нужны три строки;
+- контейнер: `surfaceContainer` для обычного item, `primaryContainer` для selected/active item;
+- shape: 16-20dp, одинаковая внутри одной группы;
+- spacing: 8dp между rows, 12-16dp padding внутри row;
+- divider не нужен, если rows разделены container tone и spacing;
+- destructive actions не держать постоянно в строке большого списка, если они создают шум; лучше overflow/details, кроме маленьких внутренних списков.
+
+Grouped lists:
+
+- группы подписок показываются как section card/source header;
+- узлы внутри группы - list rows;
+- actions группы остаются в header/source card: refresh, ping all, sort, rename/delete через overflow;
+- длинные списки используют `LazyColumn` и обязательный bottom content padding под floating navigation.
+
+Scroll behavior:
+
+- верхняя шапка схлопывается после небольшого scroll offset;
+- при возврате к началу списка шапка раскрывается;
+- pull/overscroll сверху может дополнительно раскрывать header, если будет добавлен nested scroll;
+- list rows могут иметь press scale/ripple, selected color morph и animateItemPlacement для сортировки/пинга.
+
 ## Страница настройки конфига
 
 Сделать отдельный экран вместо перегруза карточки:
