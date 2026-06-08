@@ -43,6 +43,8 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var lanBypassEnabled: Boolean = true
     var systemBypassEnabled: Boolean = false
     var meteredNetwork: Boolean = false
+    private var appRoutingMode: String = "OFF"
+    private var appRoutingPackages: List<String> = emptyList()
     private var activeConfig: ProxyConfig? = null
     private var boxService: BoxService? = null
     private var statsThread: Thread? = null
@@ -118,6 +120,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val EXTRA_LAN_BYPASS_ENABLED = "lan_bypass_enabled"
         const val EXTRA_SYSTEM_BYPASS_ENABLED = "system_bypass_enabled"
         const val EXTRA_METERED_NETWORK = "metered_network"
+        const val EXTRA_APP_ROUTING_MODE = "app_routing_mode"
+        const val EXTRA_APP_ROUTING_PACKAGES = "app_routing_packages"
 
         const val PREFS_NAME = "byebox_vpn"
         const val PREF_SERVER_NAME = "server_name"
@@ -128,6 +132,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val PREF_LAN_BYPASS_ENABLED = "lan_bypass_enabled"
         const val PREF_SYSTEM_BYPASS_ENABLED = "system_bypass_enabled"
         const val PREF_METERED_NETWORK = "metered_network"
+        const val PREF_APP_ROUTING_MODE = "app_routing_mode"
+        const val PREF_APP_ROUTING_PACKAGES = "app_routing_packages"
 
         val PUBLIC_IPV4_ROUTES = listOf(
             "1.0.0.0" to 8, "2.0.0.0" to 7, "4.0.0.0" to 6, "8.0.0.0" to 7,
@@ -163,7 +169,9 @@ class HiddifyVpnService : VpnService(), Runnable {
                 val lanBypass = intent.getBooleanExtra(EXTRA_LAN_BYPASS_ENABLED, true)
                 val systemBypass = intent.getBooleanExtra(EXTRA_SYSTEM_BYPASS_ENABLED, false)
                 val metered = intent.getBooleanExtra(EXTRA_METERED_NETWORK, false)
-                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered)
+                val appMode = intent.getStringExtra(EXTRA_APP_ROUTING_MODE) ?: "OFF"
+                val appPackages = intent.getStringExtra(EXTRA_APP_ROUTING_PACKAGES).orEmpty()
+                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages)
             } else if (ACTION_DISCONNECT == action) {
                 stopVpn()
             }
@@ -188,7 +196,9 @@ class HiddifyVpnService : VpnService(), Runnable {
         ipv6: Boolean,
         lanBypass: Boolean,
         systemBypass: Boolean,
-        metered: Boolean
+        metered: Boolean,
+        appMode: String,
+        appPackages: String
     ) {
         if (config == null || config.address.isBlank() || config.port <= 0) {
             setCoreState(CoreRuntimeState.FAILED)
@@ -209,7 +219,9 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.lanBypassEnabled = lanBypass
         this.systemBypassEnabled = systemBypass
         this.meteredNetwork = metered
-        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered)
+        this.appRoutingMode = appMode
+        this.appRoutingPackages = parsePackageList(appPackages)
+        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages)
 
         createNotificationChannel()
         val notification = buildNotification()
@@ -239,7 +251,9 @@ class HiddifyVpnService : VpnService(), Runnable {
         ipv6: Boolean,
         lanBypass: Boolean,
         systemBypass: Boolean,
-        metered: Boolean
+        metered: Boolean,
+        appMode: String,
+        appPackages: String
     ) {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -250,6 +264,8 @@ class HiddifyVpnService : VpnService(), Runnable {
             .putBoolean(PREF_LAN_BYPASS_ENABLED, lanBypass)
             .putBoolean(PREF_SYSTEM_BYPASS_ENABLED, systemBypass)
             .putBoolean(PREF_METERED_NETWORK, metered)
+            .putString(PREF_APP_ROUTING_MODE, appMode)
+            .putString(PREF_APP_ROUTING_PACKAGES, appPackages)
             .apply()
     }
 
@@ -467,6 +483,8 @@ class HiddifyVpnService : VpnService(), Runnable {
                     routingProfile = routingProfile,
                     ipv6Enabled = false,
                     lanBypassEnabled = lanBypassEnabled,
+                    appRoutingMode = appRoutingMode,
+                    appRoutingPackages = appRoutingPackages,
                     statsEnabled = true
                 )
             )
@@ -519,5 +537,13 @@ class HiddifyVpnService : VpnService(), Runnable {
             "BLOCK_ADS" -> "AdGuard DNS"
             else -> routing
         }
+    }
+
+    private fun parsePackageList(value: String): List<String> {
+        return value
+            .split(',', '\n', '\r', ';', ' ', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() && it != packageName }
+            .distinct()
     }
 }

@@ -58,6 +58,8 @@ class BootReceiver : BroadcastReceiver() {
         val lanBypass = vpnPrefs.getBoolean(HiddifyVpnService.PREF_LAN_BYPASS_ENABLED, true)
         val systemBypass = vpnPrefs.getBoolean(HiddifyVpnService.PREF_SYSTEM_BYPASS_ENABLED, false)
         val metered = vpnPrefs.getBoolean(HiddifyVpnService.PREF_METERED_NETWORK, false)
+        val appRoutingMode = vpnPrefs.getString(HiddifyVpnService.PREF_APP_ROUTING_MODE, "OFF") ?: "OFF"
+        val appRoutingPackages = vpnPrefs.getString(HiddifyVpnService.PREF_APP_ROUTING_PACKAGES, "") ?: ""
 
         Log.d(TAG, "Autostarting VPN: ${config.name}")
 
@@ -70,6 +72,8 @@ class BootReceiver : BroadcastReceiver() {
             putExtra(HiddifyVpnService.EXTRA_LAN_BYPASS_ENABLED, lanBypass)
             putExtra(HiddifyVpnService.EXTRA_SYSTEM_BYPASS_ENABLED, systemBypass)
             putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, metered)
+            putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, appRoutingMode)
+            putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, appRoutingPackages)
         }
 
         try {

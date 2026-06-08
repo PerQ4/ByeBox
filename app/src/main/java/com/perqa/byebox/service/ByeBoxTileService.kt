@@ -45,6 +45,8 @@ class ByeBoxTileService : TileService() {
             val lanBypass = prefs.getBoolean(HiddifyVpnService.PREF_LAN_BYPASS_ENABLED, true)
             val systemBypass = prefs.getBoolean(HiddifyVpnService.PREF_SYSTEM_BYPASS_ENABLED, false)
             val metered = prefs.getBoolean(HiddifyVpnService.PREF_METERED_NETWORK, false)
+            val appRoutingMode = prefs.getString(HiddifyVpnService.PREF_APP_ROUTING_MODE, "OFF") ?: "OFF"
+            val appRoutingPackages = prefs.getString(HiddifyVpnService.PREF_APP_ROUTING_PACKAGES, "") ?: ""
 
             val intent = Intent(context, HiddifyVpnService::class.java).apply {
                 action = HiddifyVpnService.ACTION_CONNECT
@@ -55,6 +57,8 @@ class ByeBoxTileService : TileService() {
                 putExtra(HiddifyVpnService.EXTRA_LAN_BYPASS_ENABLED, lanBypass)
                 putExtra(HiddifyVpnService.EXTRA_SYSTEM_BYPASS_ENABLED, systemBypass)
                 putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, metered)
+                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, appRoutingMode)
+                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, appRoutingPackages)
             }
             startServiceCompat(context, intent)
             updateTileState(active = true)

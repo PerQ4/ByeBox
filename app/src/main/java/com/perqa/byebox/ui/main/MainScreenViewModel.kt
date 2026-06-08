@@ -54,6 +54,12 @@ enum class DnsServer(val label: String, val address: String) {
     ADGUARD("AdGuard DNS (фильтр)", "94.140.14.14")
 }
 
+enum class AppRoutingMode(val label: String, val description: String) {
+    OFF("Все приложения", "VPN работает для всего трафика устройства"),
+    ONLY_SELECTED("Только выбранные", "Через VPN идут только пакеты из списка"),
+    BYPASS_SELECTED("Обход выбранных", "Приложения из списка идут напрямую, остальные через VPN")
+}
+
 data class MainUiState(
     val configs: List<ProxyConfig> = emptyList(),
     val subscriptionSources: List<SubscriptionSource> = emptyList(),
@@ -69,6 +75,10 @@ data class MainUiState(
     val systemBypassEnabled: Boolean = false,
     val meteredNetwork: Boolean = false,
     val autostartEnabled: Boolean = false,
+    val appRoutingMode: AppRoutingMode = AppRoutingMode.OFF,
+    val appRoutingPackages: String = "",
+    val healthCheckUrl: String = "https://www.gstatic.com/generate_204",
+    val strictHealthCheck: Boolean = false,
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
     val toastMessage: String? = null
@@ -91,6 +101,10 @@ class MainScreenViewModel(
     private val _systemBypassEnabled = MutableStateFlow(readBoolean(KEY_SYSTEM_BYPASS_ENABLED, false))
     private val _meteredNetwork = MutableStateFlow(readBoolean(KEY_METERED_NETWORK, false))
     private val _autostartEnabled = MutableStateFlow(readBoolean(KEY_AUTOSTART_ENABLED, false))
+    private val _appRoutingMode = MutableStateFlow(readEnum(KEY_APP_ROUTING_MODE, AppRoutingMode.OFF))
+    private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
+    private val _healthCheckUrl = MutableStateFlow(readString(KEY_HEALTH_CHECK_URL, "https://www.gstatic.com/generate_204"))
+    private val _strictHealthCheck = MutableStateFlow(readBoolean(KEY_STRICT_HEALTH_CHECK, false))
     private val _logs = com.perqa.byebox.core.AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -113,6 +127,10 @@ class MainScreenViewModel(
         _systemBypassEnabled,
         _meteredNetwork,
         _autostartEnabled,
+        _appRoutingMode,
+        _appRoutingPackages,
+        _healthCheckUrl,
+        _strictHealthCheck,
         _logs,
         _isPinging,
         _toastMessage
@@ -133,9 +151,13 @@ class MainScreenViewModel(
             systemBypassEnabled = flows[11] as Boolean,
             meteredNetwork = flows[12] as Boolean,
             autostartEnabled = flows[13] as Boolean,
-            logs = flows[14] as List<String>,
-            isPinging = flows[15] as Boolean,
-            toastMessage = flows[16] as String?
+            appRoutingMode = flows[14] as AppRoutingMode,
+            appRoutingPackages = flows[15] as String,
+            healthCheckUrl = flows[16] as String,
+            strictHealthCheck = flows[17] as Boolean,
+            logs = flows[18] as List<String>,
+            isPinging = flows[19] as Boolean,
+            toastMessage = flows[20] as String?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -524,9 +546,11 @@ class MainScreenViewModel(
     private suspend fun probeConfigs(configs: List<ProxyConfig>): ProbeSummary = coroutineScope {
         var ok = 0
         var failed = 0
+        val healthUrl = _healthCheckUrl.value.trim()
+        val strictHealthCheck = _strictHealthCheck.value && healthUrl.isNotBlank()
         configs.chunked(8).forEach { batch ->
             batch.map { config ->
-                async { config to probeTcpLatency(config) }
+                async { config to probeConfigLatency(config, healthUrl, strictHealthCheck) }
             }.awaitAll().forEach { (config, ping) ->
                 if (ping != null) {
                     ok += 1
@@ -540,6 +564,35 @@ class MainScreenViewModel(
             }
         }
         ProbeSummary(configs.size, ok, failed)
+    }
+
+    private suspend fun probeConfigLatency(config: ProxyConfig, healthUrl: String, strictHealthCheck: Boolean): Int? {
+        val ping = probeTcpLatency(config) ?: return null
+        if (!strictHealthCheck) return ping
+        return if (probeResource(healthUrl)) ping else null
+    }
+
+    private suspend fun probeResource(rawUrl: String): Boolean = withContext(Dispatchers.IO) {
+        if (rawUrl.isBlank()) return@withContext true
+        val normalizedUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
+        val connection = try {
+            (URL(normalizedUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "HEAD"
+                connectTimeout = 3500
+                readTimeout = 3500
+                instanceFollowRedirects = false
+            }
+        } catch (_: Exception) {
+            return@withContext false
+        }
+        try {
+            val code = connection.responseCode
+            code in 200..399 || code == 204 || code == 405
+        } catch (_: Exception) {
+            false
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private suspend fun probeTcpLatency(config: ProxyConfig): Int? = withContext(Dispatchers.IO) {
@@ -628,6 +681,30 @@ class MainScreenViewModel(
         showToast("Автозапуск: ${if (enabled) "включен" else "выключен"}")
     }
 
+    fun changeAppRoutingMode(mode: AppRoutingMode) {
+        _appRoutingMode.value = mode
+        writeString(KEY_APP_ROUTING_MODE, mode.name)
+        addLog("[SYSTEM] Профиль приложений VPN: ${mode.label}")
+        showToast("Приложения: ${mode.label}")
+    }
+
+    fun changeAppRoutingPackages(value: String) {
+        _appRoutingPackages.value = value
+        writeString(KEY_APP_ROUTING_PACKAGES, value)
+    }
+
+    fun changeHealthCheckUrl(value: String) {
+        _healthCheckUrl.value = value
+        writeString(KEY_HEALTH_CHECK_URL, value)
+    }
+
+    fun changeStrictHealthCheck(enabled: Boolean) {
+        _strictHealthCheck.value = enabled
+        writeBoolean(KEY_STRICT_HEALTH_CHECK, enabled)
+        addLog("[SYSTEM] Фильтр проверки ресурса: ${if (enabled) "строгий" else "нестрогий"}")
+        showToast("Фильтр ресурса: ${if (enabled) "включен" else "выключен"}")
+    }
+
     fun clearLogs() {
         com.perqa.byebox.core.AppLogger.clearLogs()
     }
@@ -703,6 +780,10 @@ class MainScreenViewModel(
         return prefs?.getBoolean(key, fallback) ?: fallback
     }
 
+    private fun readString(key: String, fallback: String): String {
+        return prefs?.getString(key, fallback) ?: fallback
+    }
+
     private fun writeString(key: String, value: String) {
         prefs?.edit()?.putString(key, value)?.apply()
     }
@@ -720,6 +801,10 @@ class MainScreenViewModel(
         private const val KEY_SYSTEM_BYPASS_ENABLED = "system_bypass_enabled"
         private const val KEY_METERED_NETWORK = "metered_network"
         private const val KEY_AUTOSTART_ENABLED = "autostart_enabled"
+        private const val KEY_APP_ROUTING_MODE = "app_routing_mode"
+        private const val KEY_APP_ROUTING_PACKAGES = "app_routing_packages"
+        private const val KEY_HEALTH_CHECK_URL = "health_check_url"
+        private const val KEY_STRICT_HEALTH_CHECK = "strict_health_check"
     }
 }
 

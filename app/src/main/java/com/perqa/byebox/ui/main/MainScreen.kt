@@ -1582,6 +1582,81 @@ fun SettingsTab(
             }
         }
 
+        SettingsSectionCard(
+            title = "Профиль приложений",
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppRoutingMode.values().forEach { mode ->
+                    val isSelected = state.appRoutingMode == mode
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable { viewModel.changeAppRoutingMode(mode) }
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                        Text(
+                            text = mode.description,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
+                            )
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = state.appRoutingPackages,
+                    onValueChange = viewModel::changeAppRoutingPackages,
+                    label = { Text("Package names") },
+                    placeholder = { Text("org.telegram.messenger\ncom.discord") },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                    minLines = 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(18.dp)
+                )
+            }
+        }
+
+        SettingsSectionCard(
+            title = "Фильтр проверки узлов",
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.18f)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = state.healthCheckUrl,
+                    onValueChange = viewModel::changeHealthCheckUrl,
+                    label = { Text("URL ресурса") },
+                    placeholder = { Text("https://www.gstatic.com/generate_204") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp)
+                )
+                ToggleSettingRow(
+                    title = "Строгий фильтр",
+                    subtitle = "При проверке узлов помечает timeout, если ресурс недоступен",
+                    checked = state.strictHealthCheck,
+                    onCheckedChange = viewModel::changeStrictHealthCheck
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
     }
 }
