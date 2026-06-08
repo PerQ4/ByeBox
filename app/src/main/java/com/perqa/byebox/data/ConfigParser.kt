@@ -6,6 +6,8 @@ import java.util.UUID
 import org.json.JSONObject
 
 object ConfigParser {
+    private val descriptionKeys = setOf("remarks", "remark", "desc", "description")
+
     fun parse(url: String): ProxyConfig? {
         val trimmed = url.trim()
         return try {
@@ -60,12 +62,13 @@ object ConfigParser {
         var network: String? = null
         var wsPath: String? = null
         var wsHost: String? = null
+        var description: String? = null
 
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
             val params = query.split('&')
             for (param in params) {
-                val keyValue = param.split('=')
+                val keyValue = param.split('=', limit = 2)
                 if (keyValue.size == 2) {
                     val key = keyValue[0].lowercase()
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
@@ -78,6 +81,7 @@ object ConfigParser {
                         "type" -> network = value
                         "path" -> wsPath = value
                         "host" -> wsHost = value
+                        in descriptionKeys -> description = value
                     }
                 }
             }
@@ -88,6 +92,7 @@ object ConfigParser {
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "VLESS",
             address = address,
             port = port,
@@ -117,14 +122,19 @@ object ConfigParser {
         val security = json.optString("scy", "auto")
         val sni = json.optString("sni", "")
         val network = json.optString("net", "tcp")
-        val wsPath = json.optString("path", null)
-        val wsHost = json.optString("host", null)
+        val wsPath = json.optString("path", "").trim().takeIf { it.isNotEmpty() }
+        val wsHost = json.optString("host", "").trim().takeIf { it.isNotEmpty() }
+        val description = listOf("remarks", "remark", "desc", "description")
+            .firstNotNullOfOrNull { key ->
+                json.optString(key, "").trim().takeIf { it.isNotEmpty() }
+            }
 
         val flag = getFlagForName(name)
 
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "VMESS",
             address = address,
             port = port,
@@ -164,16 +174,18 @@ object ConfigParser {
         val port = portStr.toIntOrNull() ?: 443
 
         var sni: String? = null
+        var description: String? = null
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
             val params = query.split('&')
             for (param in params) {
-                val keyValue = param.split('=')
+                val keyValue = param.split('=', limit = 2)
                 if (keyValue.size == 2) {
                     val key = keyValue[0].lowercase()
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
-                    if (key == "sni") {
-                        sni = value
+                    when (key) {
+                        "sni" -> sni = value
+                        in descriptionKeys -> description = value
                     }
                 }
             }
@@ -184,6 +196,7 @@ object ConfigParser {
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "Trojan",
             address = address,
             port = port,
@@ -219,15 +232,41 @@ object ConfigParser {
         }
 
         val colonIndex = rest.indexOf(':')
-        val address = if (colonIndex != -1) rest.substring(0, colonIndex) else rest
-        val portStr = if (colonIndex != -1) rest.substring(colonIndex + 1) else "1080"
+        val queryStartIndex = rest.indexOf('?')
+        val addressEnd = when {
+            colonIndex != -1 -> colonIndex
+            queryStartIndex != -1 -> queryStartIndex
+            else -> rest.length
+        }
+        val address = rest.substring(0, addressEnd)
+        val portPart = if (colonIndex != -1) {
+            if (queryStartIndex != -1) rest.substring(colonIndex + 1, queryStartIndex) else rest.substring(colonIndex + 1)
+        } else {
+            "1080"
+        }
+        val portStr = portPart
         val port = portStr.toIntOrNull() ?: 1080
+        val description = if (queryStartIndex != -1) {
+            rest.substring(queryStartIndex + 1)
+                .split('&')
+                .firstNotNullOfOrNull { param ->
+                    val keyValue = param.split('=', limit = 2)
+                    if (keyValue.size == 2 && keyValue[0].lowercase() in descriptionKeys) {
+                        URLDecoder.decode(keyValue[1], "UTF-8")
+                    } else {
+                        null
+                    }
+                }
+        } else {
+            null
+        }
 
         val flag = getFlagForName(name)
 
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "Shadowsocks",
             address = address,
             port = port,
@@ -271,12 +310,13 @@ object ConfigParser {
         var udpRelayMode: String? = null
         var zeroRttHandshake = false
         var sni: String? = null
+        var description: String? = null
 
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
             val params = query.split('&')
             for (param in params) {
-                val keyValue = param.split('=')
+                val keyValue = param.split('=', limit = 2)
                 if (keyValue.size == 2) {
                     val key = keyValue[0].lowercase()
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
@@ -286,6 +326,7 @@ object ConfigParser {
                         "udp_relay_mode" -> udpRelayMode = value
                         "zero_rtt_handshake" -> zeroRttHandshake = value.toBoolean()
                         "sni" -> sni = value
+                        in descriptionKeys -> description = value
                     }
                 }
             }
@@ -294,6 +335,7 @@ object ConfigParser {
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "TUIC",
             address = address,
             port = port,
@@ -340,12 +382,13 @@ object ConfigParser {
         var sni: String? = null
         var upMbps: Int? = null
         var downMbps: Int? = null
+        var description: String? = null
 
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
             val params = query.split('&')
             for (param in params) {
-                val keyValue = param.split('=')
+                val keyValue = param.split('=', limit = 2)
                 if (keyValue.size == 2) {
                     val key = keyValue[0].lowercase()
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
@@ -355,6 +398,7 @@ object ConfigParser {
                         "sni" -> sni = value
                         "up" -> upMbps = value.toIntOrNull()
                         "down" -> downMbps = value.toIntOrNull()
+                        in descriptionKeys -> description = value
                     }
                 }
             }
@@ -363,6 +407,7 @@ object ConfigParser {
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "Hysteria2",
             address = address,
             port = port,
@@ -409,12 +454,13 @@ object ConfigParser {
         var wgAllowedIps: String? = null
         var reserved: String? = null
         var mtu: String? = null
+        var description: String? = null
 
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
             val params = query.split('&')
             for (param in params) {
-                val keyValue = param.split('=')
+                val keyValue = param.split('=', limit = 2)
                 if (keyValue.size == 2) {
                     val key = keyValue[0].lowercase()
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
@@ -425,6 +471,7 @@ object ConfigParser {
                         "allowed_ips" -> wgAllowedIps = value
                         "reserved" -> reserved = value
                         "mtu" -> mtu = value
+                        in descriptionKeys -> description = value
                     }
                 }
             }
@@ -433,6 +480,7 @@ object ConfigParser {
         return ProxyConfig(
             id = UUID.randomUUID().toString(),
             name = name,
+            description = description,
             protocol = "WireGuard",
             address = address,
             port = port,
