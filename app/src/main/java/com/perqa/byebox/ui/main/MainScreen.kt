@@ -97,6 +97,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,6 +106,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -118,6 +120,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -164,6 +167,11 @@ private fun rememberTactileFeedback(): () -> Unit {
             }
         }
     }
+}
+
+private fun smoothStep(value: Float): Float {
+    val x = value.coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
 }
 
 @Composable
@@ -851,6 +859,7 @@ fun ProxyTab(
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var swipingConfigId by remember { mutableStateOf<String?>(null) }
+    var swipingDragPx by remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
     val sourceGroups = remember(state.configs, sortMode) {
         state.configs
@@ -981,6 +990,12 @@ fun ProxyTab(
                         val nextIsSwipingNeighbor = index < configs.lastIndex && configs[index + 1].id == swipingConfigId
                         val effectiveTopCorner = if (prevIsSwipingNeighbor) 28.dp else baseTopCorner
                         val effectiveBottomCorner = if (nextIsSwipingNeighbor) 28.dp else baseBottomCorner
+                        val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 72f).coerceIn(0f, 1f))
+                        val neighborOffsetPx = if (prevIsSwipingNeighbor || nextIsSwipingNeighbor) {
+                            kotlin.math.sign(swipingDragPx) * 5.dp.value * neighborFollowProgress
+                        } else {
+                            0f
+                        }
 
                         item(key = "config-${config.id}", contentType = "server") {
                             ServerItemCard(
@@ -990,8 +1005,19 @@ fun ProxyTab(
                                 onDelete = { viewModel.deleteConfig(config.id) },
                                 topCorner = effectiveTopCorner,
                                 bottomCorner = effectiveBottomCorner,
+                                neighborOffsetDp = neighborOffsetPx.dp,
+                                onSwipeOffsetChanged = { offset ->
+                                    if (swipingConfigId == config.id) {
+                                        swipingDragPx = offset
+                                    }
+                                },
                                 onSwipingChanged = { isSwiping ->
-                                    swipingConfigId = if (isSwiping) config.id else null
+                                    if (isSwiping) {
+                                        swipingConfigId = config.id
+                                    } else if (swipingConfigId == config.id) {
+                                        swipingConfigId = null
+                                        swipingDragPx = 0f
+                                    }
                                 }
                             )
                         }
@@ -1467,6 +1493,8 @@ fun ServerItemCard(
     onDelete: () -> Unit,
     topCorner: androidx.compose.ui.unit.Dp = 6.dp,
     bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
+    neighborOffsetDp: androidx.compose.ui.unit.Dp = 0.dp,
+    onSwipeOffsetChanged: (Float) -> Unit = {},
     onSwipingChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -1477,12 +1505,24 @@ fun ServerItemCard(
     val endpointDetails = remember(config) { config.endpointSummary() }
     val density = androidx.compose.ui.platform.LocalDensity.current
 
-    // Sticky swipe animation state
-    val swipeOffsetX = remember { Animatable(0f) }
+    var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
     var deleteThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
     val deleteThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
+    val detachStartPx = remember(density) { with(density) { 14.dp.toPx() } }
+    val detachEndPx = remember(density) { with(density) { 58.dp.toPx() } }
     val swipeFraction by remember {
-        derivedStateOf { (-swipeOffsetX.value / deleteThresholdPx).coerceIn(0f, 1f) }
+        derivedStateOf { (-swipeOffsetX / deleteThresholdPx).coerceIn(0f, 1f) }
+    }
+    val detachProgress by remember {
+        derivedStateOf {
+            smoothStep(((kotlin.math.abs(swipeOffsetX) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
+        }
+    }
+    val displayOffsetX by remember {
+        derivedStateOf {
+            val resisted = swipeOffsetX * 0.48f
+            resisted + (swipeOffsetX - resisted) * detachProgress
+        }
     }
 
     val animTopCorner by animateDpAsState(
@@ -1497,16 +1537,8 @@ fun ServerItemCard(
     )
 
     val swipeActive = swipeFraction > 0.04f
-    val cardTopCorner by animateDpAsState(
-        targetValue = if (swipeActive) 28.dp else animTopCorner,
-        animationSpec = tween(240),
-        label = "swipeTopCorner"
-    )
-    val cardBottomCorner by animateDpAsState(
-        targetValue = if (swipeActive) 28.dp else animBottomCorner,
-        animationSpec = tween(240),
-        label = "swipeBottomCorner"
-    )
+    val cardTopCorner = if (swipeActive) lerp(animTopCorner, 28.dp, detachProgress) else animTopCorner
+    val cardBottomCorner = if (swipeActive) lerp(animBottomCorner, 28.dp, detachProgress) else animBottomCorner
     val shape = RoundedCornerShape(
         topStart = cardTopCorner,
         topEnd = cardTopCorner,
@@ -1544,7 +1576,10 @@ fun ServerItemCard(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(swipeOffsetX.value.toInt(), 0) }
+                .graphicsLayer {
+                    translationX = with(density) { neighborOffsetDp.toPx() }
+                }
+                .offset { IntOffset(displayOffsetX.toInt(), 0) }
                 .clip(shape)
                 .pointerInput(config.id) {
                     detectHorizontalDragGestures(
@@ -1552,41 +1587,57 @@ fun ServerItemCard(
                             deleteThresholdFeedbackSent = false
                             tactileFeedback()
                             onSwipingChanged(true)
+                            onSwipeOffsetChanged(swipeOffsetX)
                         },
                         onDragEnd = {
                             scope.launch {
-                                if (-swipeOffsetX.value >= deleteThresholdPx) {
+                                if (-swipeOffsetX >= deleteThresholdPx) {
                                     tactileFeedback()
-                                    swipeOffsetX.animateTo(
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
                                         -size.width.toFloat(),
                                         animationSpec = tween(260)
-                                    )
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
                                     onDelete()
-                                    swipeOffsetX.snapTo(0f)
+                                    swipeOffsetX = 0f
+                                    onSwipeOffsetChanged(0f)
+                                    onSwipingChanged(false)
                                 } else {
-                                    swipeOffsetX.animateTo(
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
                                         0f,
                                         animationSpec = tween(260)
-                                    )
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
                                     onSwipingChanged(false)
                                 }
                             }
                         },
                         onDragCancel = {
                             scope.launch {
-                                swipeOffsetX.animateTo(0f, animationSpec = tween(220))
+                                val anim = Animatable(swipeOffsetX)
+                                anim.animateTo(0f, animationSpec = tween(220)) {
+                                    swipeOffsetX = value
+                                    onSwipeOffsetChanged(value)
+                                }
                             }
                             onSwipingChanged(false)
                         },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            val newOffset = (swipeOffsetX.value + dragAmount)
+                            val newOffset = (swipeOffsetX + dragAmount)
                                 .coerceIn(-size.width.toFloat(), 0f)
                             if (-newOffset >= deleteThresholdPx && !deleteThresholdFeedbackSent) {
                                 deleteThresholdFeedbackSent = true
                                 tactileFeedback()
                             }
-                            scope.launch { swipeOffsetX.snapTo(newOffset) }
+                            swipeOffsetX = newOffset
+                            onSwipeOffsetChanged(newOffset)
                         }
                     )
                 }
