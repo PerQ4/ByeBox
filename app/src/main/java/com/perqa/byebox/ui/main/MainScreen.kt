@@ -1008,7 +1008,12 @@ fun ProxyTab(
                                 neighborOffsetDp = neighborOffsetPx.dp,
                                 onSwipeOffsetChanged = { offset ->
                                     if (swipingConfigId == config.id) {
-                                        swipingDragPx = offset
+                                        val crossesDeleteThreshold = kotlin.math.abs(offset) >= 140f && kotlin.math.abs(swipingDragPx) < 140f
+                                        val returnsHome = offset == 0f
+                                        val movedEnough = kotlin.math.abs(offset - swipingDragPx) >= 14f
+                                        if (returnsHome || crossesDeleteThreshold || movedEnough) {
+                                            swipingDragPx = offset
+                                        }
                                     }
                                 },
                                 onSwipingChanged = { isSwiping ->
@@ -1524,6 +1529,11 @@ fun ServerItemCard(
             resisted + (swipeOffsetX - resisted) * detachProgress
         }
     }
+    val roundnessProgress by remember {
+        derivedStateOf {
+            smoothStep((kotlin.math.abs(displayOffsetX) / deleteThresholdPx).coerceIn(0f, 1f))
+        }
+    }
 
     val animTopCorner by animateDpAsState(
         targetValue = if (isActive) 28.dp else topCorner,
@@ -1536,9 +1546,8 @@ fun ServerItemCard(
         label = "bottomCorner"
     )
 
-    val swipeActive = swipeFraction > 0.04f
-    val cardTopCorner = if (swipeActive) lerp(animTopCorner, 28.dp, detachProgress) else animTopCorner
-    val cardBottomCorner = if (swipeActive) lerp(animBottomCorner, 28.dp, detachProgress) else animBottomCorner
+    val cardTopCorner = lerp(animTopCorner, 28.dp, roundnessProgress)
+    val cardBottomCorner = lerp(animBottomCorner, 28.dp, roundnessProgress)
     val shape = RoundedCornerShape(
         topStart = cardTopCorner,
         topEnd = cardTopCorner,
