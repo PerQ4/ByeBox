@@ -82,7 +82,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -165,10 +164,6 @@ fun MainScreen(
                         }
                     }
                 }
-
-                BottomNavFade(
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
 
                 MainTabBar(
                     selectedTab = selectedTab,
@@ -2144,22 +2139,6 @@ fun LogsTab(
 }
 
 @Composable
-fun BottomNavFade(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(34.dp)
-            .blur(8.dp)
-            .background(
-                Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.46f)
-                )
-            )
-    )
-}
-
-@Composable
 fun MainTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -2168,28 +2147,23 @@ fun MainTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 64.dp, end = 64.dp, top = 22.dp, bottom = 2.dp),
+            .padding(bottom = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Card(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
+                .width(236.dp)
                 .shadow(
-                    elevation = 26.dp,
+                    elevation = 14.dp,
                     shape = RoundedCornerShape(30.dp),
                     clip = false,
-                    ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                    spotColor = Color.Black.copy(alpha = 0.38f)
-                )
-                .clip(RoundedCornerShape(30.dp))
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
-                    RoundedCornerShape(30.dp)
+                    ambientColor = Color.Black.copy(alpha = 0.18f),
+                    spotColor = Color.Black.copy(alpha = 0.28f)
                 ),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-            )
+            shape = RoundedCornerShape(30.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Row(
                 modifier = Modifier
@@ -2220,7 +2194,7 @@ fun MainTabBar(
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                     val tabWeight by animateFloatAsState(
-                        targetValue = if (active) 1.52f else 0.78f,
+                        targetValue = if (active) 1.38f else 0.82f,
                         label = "tabWeight"
                     )
                     val tabScale by animateFloatAsState(
@@ -2228,7 +2202,7 @@ fun MainTabBar(
                         label = "tabScale"
                     )
                     val activeBgColor by animateColorAsState(
-                        targetValue = if (active) activeContainer else Color.Transparent,
+                        targetValue = if (active) activeContainer.copy(alpha = 0.82f) else Color.Transparent,
                         label = "tabBg"
                     )
                     val activeContentColor by animateColorAsState(
@@ -2240,26 +2214,26 @@ fun MainTabBar(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .weight(tabWeight)
-                            .height(48.dp)
+                            .height(42.dp)
                             .scale(tabScale)
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(21.dp))
                             .background(activeBgColor)
                             .clickable { onTabSelected(index) }
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 6.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp)
                         ) {
                             Icon(
                                 imageVector = tab.second,
                                 contentDescription = tab.first,
                                 tint = activeContentColor,
-                                modifier = Modifier.size(if (active) 21.dp else 20.dp)
+                                modifier = Modifier.size(if (active) 19.dp else 18.dp)
                             )
                             AnimatedVisibility(visible = active) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = tab.first,
                                         fontSize = 9.sp,
