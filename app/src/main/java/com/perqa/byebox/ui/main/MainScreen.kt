@@ -8,6 +8,7 @@ import androidx.compose.ui.text.AnnotatedString
 
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -79,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -135,7 +137,7 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .padding(bottom = 78.dp)
+                        .padding(bottom = 92.dp)
                 ) {
                     AppHeader(
                         status = state.connectionStatus,
@@ -149,11 +151,16 @@ fun MainScreen(
                             .weight(1f)
                             .fillMaxWidth()
                     ) {
-                        when (selectedTab) {
-                            0 -> DashboardTab(state = state, viewModel = viewModel)
-                            1 -> ProxyTab(state = state, viewModel = viewModel)
-                            2 -> SettingsTab(state = state, viewModel = viewModel)
-                            3 -> LogsTab(state = state, viewModel = viewModel)
+                        Crossfade(
+                            targetState = selectedTab,
+                            label = "mainTabCrossfade"
+                        ) { tab ->
+                            when (tab) {
+                                0 -> DashboardTab(state = state, viewModel = viewModel)
+                                1 -> ProxyTab(state = state, viewModel = viewModel)
+                                2 -> SettingsTab(state = state, viewModel = viewModel)
+                                3 -> LogsTab(state = state, viewModel = viewModel)
+                            }
                         }
                     }
                 }
@@ -1845,17 +1852,29 @@ fun ToggleSettingRow(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val rowScale by animateFloatAsState(
+        targetValue = if (checked && enabled) 1.01f else 1f,
+        label = "toggleRowScale"
+    )
+    val rowColor by animateColorAsState(
+        targetValue = when {
+            checked -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
+        },
+        label = "toggleRowColor"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color.Transparent,
+        label = "toggleRowBorder"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .scale(rowScale)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (checked) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f)
-                }
-            )
+            .background(rowColor)
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1924,16 +1943,26 @@ fun ThemeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val buttonScale by animateFloatAsState(
+        targetValue = if (active) 1.03f else 1f,
+        label = "themeButtonScale"
+    )
+    val buttonColor by animateColorAsState(
+        targetValue = if (active) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+        },
+        label = "themeButtonColor"
+    )
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(56.dp)
+            .scale(buttonScale)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(
-                    alpha = 0.03f
-                )
-            )
+            .background(buttonColor)
             .border(
                 1.5.dp,
                 if (active) MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -2088,92 +2117,112 @@ fun MainTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
+            .padding(horizontal = 26.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.80f)
-                .shadow(22.dp, RoundedCornerShape(30.dp), clip = false)
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 26.dp,
+                    shape = RoundedCornerShape(30.dp),
+                    clip = false,
+                    ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                    spotColor = Color.Black.copy(alpha = 0.38f)
+                )
                 .clip(RoundedCornerShape(30.dp))
                 .border(
                     1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
                     RoundedCornerShape(30.dp)
                 ),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
             )
         ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val tabs = listOf(
-                Pair("Главная", Icons.Default.Refresh),
-                Pair("Прокси", Icons.Default.List),
-                Pair("Настройки", Icons.Default.Settings),
-                Pair("Логи", Icons.Default.Info)
-            )
-
-            tabs.forEachIndexed { index, tab ->
-                val active = selectedTab == index
-                val activeContainer = when (index) {
-                    0 -> MaterialTheme.colorScheme.primaryContainer
-                    1 -> MaterialTheme.colorScheme.secondaryContainer
-                    2 -> MaterialTheme.colorScheme.tertiaryContainer
-                    else -> MaterialTheme.colorScheme.surface
-                }
-                val activeOnContainer = when (index) {
-                    0 -> MaterialTheme.colorScheme.onPrimaryContainer
-                    1 -> MaterialTheme.colorScheme.onSecondaryContainer
-                    2 -> MaterialTheme.colorScheme.onTertiaryContainer
-                    else -> MaterialTheme.colorScheme.onSurface
-                }
-                val activeBgColor by animateColorAsState(
-                    targetValue = if (active) activeContainer else Color.Transparent,
-                    label = "tabBg"
-                )
-                val activeContentColor by animateColorAsState(
-                    targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = 0.6f
-                    ),
-                    label = "tabContent"
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val tabs = listOf(
+                    Pair("Главная", Icons.Default.Refresh),
+                    Pair("Прокси", Icons.Default.List),
+                    Pair("Настройки", Icons.Default.Settings),
+                    Pair("Логи", Icons.Default.Info)
                 )
 
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(activeBgColor)
-                        .clickable { onTabSelected(index) }
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                tabs.forEachIndexed { index, tab ->
+                    val active = selectedTab == index
+                    val activeContainer = when (index) {
+                        0 -> MaterialTheme.colorScheme.primaryContainer
+                        1 -> MaterialTheme.colorScheme.secondaryContainer
+                        2 -> MaterialTheme.colorScheme.tertiaryContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                    val activeOnContainer = when (index) {
+                        0 -> MaterialTheme.colorScheme.onPrimaryContainer
+                        1 -> MaterialTheme.colorScheme.onSecondaryContainer
+                        2 -> MaterialTheme.colorScheme.onTertiaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    val tabWeight by animateFloatAsState(
+                        targetValue = if (active) 1.42f else 0.86f,
+                        label = "tabWeight"
+                    )
+                    val tabScale by animateFloatAsState(
+                        targetValue = if (active) 1.04f else 1f,
+                        label = "tabScale"
+                    )
+                    val activeBgColor by animateColorAsState(
+                        targetValue = if (active) activeContainer else Color.Transparent,
+                        label = "tabBg"
+                    )
+                    val activeContentColor by animateColorAsState(
+                        targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+                        label = "tabContent"
+                    )
+
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .weight(tabWeight)
+                            .height(48.dp)
+                            .scale(tabScale)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(activeBgColor)
+                            .clickable { onTabSelected(index) }
                     ) {
-                        Icon(
-                            imageVector = tab.second,
-                            contentDescription = tab.first,
-                            tint = activeContentColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = tab.first,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = activeContentColor
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = tab.second,
+                                contentDescription = tab.first,
+                                tint = activeContentColor,
+                                modifier = Modifier.size(if (active) 21.dp else 20.dp)
+                            )
+                            AnimatedVisibility(visible = active) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = tab.first,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontWeight = FontWeight.Black,
+                                        color = activeContentColor
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
         }
     }
 }
