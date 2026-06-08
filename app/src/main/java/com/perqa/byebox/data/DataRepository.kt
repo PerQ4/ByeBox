@@ -259,6 +259,7 @@ class DefaultDataRepository(private val context: Context? = null) : DataReposito
             .put("downloadBytes", downloadBytes)
             .put("totalBytes", totalBytes)
             .put("expireAt", expireAt)
+            .put("description", description)
     }
 
     private fun JSONObject.toSubscriptionSource(): SubscriptionSource {
@@ -271,12 +272,17 @@ class DefaultDataRepository(private val context: Context? = null) : DataReposito
             uploadBytes = optNullableLong("uploadBytes"),
             downloadBytes = optNullableLong("downloadBytes"),
             totalBytes = optNullableLong("totalBytes"),
-            expireAt = optNullableLong("expireAt")
+            expireAt = optNullableLong("expireAt"),
+            description = optNullableString("description")
         )
     }
 
     private fun JSONObject.optNullableLong(name: String): Long? {
         return if (isNull(name)) null else optLong(name)
+    }
+
+    private fun JSONObject.optNullableString(name: String): String? {
+        return if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
     }
 
     companion object {
