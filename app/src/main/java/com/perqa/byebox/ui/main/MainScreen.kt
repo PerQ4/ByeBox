@@ -139,8 +139,7 @@ fun MainScreen(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     AppHeader(
-                        status = state.connectionStatus,
-                        onLogsClick = { selectedTab = 3 }
+                        status = state.connectionStatus
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -164,6 +163,10 @@ fun MainScreen(
                     }
                 }
 
+                BottomEdgeFade(
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+
                 MainTabBar(
                     selectedTab = selectedTab,
                     onTabSelected = { selectedTab = it },
@@ -176,8 +179,7 @@ fun MainScreen(
 
 @Composable
 fun AppHeader(
-    status: ConnectionStatus,
-    onLogsClick: () -> Unit
+    status: ConnectionStatus
 ) {
     val statusColor by animateColorAsState(
         targetValue = when (status) {
@@ -226,21 +228,7 @@ fun AppHeader(
                 )
             }
         }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = onLogsClick,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = "Логи",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
+        Spacer(modifier = Modifier.width(48.dp))
     }
 }
 
@@ -2138,6 +2126,21 @@ fun LogsTab(
 }
 
 @Composable
+fun BottomEdgeFade(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(22.dp)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    1f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f)
+                )
+            )
+    )
+}
+
+@Composable
 fun MainTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -2146,7 +2149,7 @@ fun MainTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
+            .padding(bottom = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -2158,9 +2161,9 @@ fun MainTabBar(
                     clip = false,
                     ambientColor = Color.Black.copy(alpha = 0.18f),
                     spotColor = Color.Black.copy(alpha = 0.28f)
-                ),
+            ),
             shape = RoundedCornerShape(30.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
