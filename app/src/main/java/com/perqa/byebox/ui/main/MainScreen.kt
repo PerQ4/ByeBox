@@ -3,7 +3,9 @@ package com.perqa.byebox.ui.main
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
 import android.widget.Toast
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 
 
@@ -52,6 +54,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -558,6 +562,7 @@ fun QuickActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val containerColor = when (icon) {
         Icons.Default.Search -> MaterialTheme.colorScheme.primaryContainer
         Icons.Default.Add -> MaterialTheme.colorScheme.secondaryContainer
@@ -572,7 +577,10 @@ fun QuickActionButton(
     }
 
     Button(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         modifier = modifier.height(46.dp),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
@@ -592,6 +600,7 @@ fun ConnectionButton(
     status: ConnectionStatus,
     onClick: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val progressRotate by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -709,7 +718,10 @@ fun ConnectionButton(
                     },
                     shape = CircleShape
                 )
-                .clickable { onClick() }
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onClick()
+                }
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -808,6 +820,7 @@ fun ProxyTab(
     var groupMode by remember { mutableStateOf(ConfigGroupMode.SOURCE) }
     var controlPanelExpanded by remember { mutableStateOf(true) }
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
+    var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     val listState = rememberLazyListState()
     val sourceGroups = remember(state.configs, sortMode, groupMode) {
         state.configs
@@ -821,6 +834,10 @@ fun ProxyTab(
                     ConfigGroupMode.COUNTRY -> groups.sortedBy { it.first.lowercase() }
                 }
             }
+    }
+    LaunchedEffect(sourceGroups) {
+        val visibleGroupKeys = sourceGroups.map { it.first }.toSet()
+        collapsedGroupKeys = collapsedGroupKeys.intersect(visibleGroupKeys)
     }
     val sourcesByName = remember(state.subscriptionSources) {
         state.subscriptionSources.associateBy { it.name }
@@ -876,6 +893,8 @@ fun ProxyTab(
             contentPadding = PaddingValues(bottom = 190.dp)
         ) {
             sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
+                val groupCollapsed = sourceName in collapsedGroupKeys
+
                 if (groupIndex > 0) {
                     item(key = "spacer-group-$sourceName") {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -894,21 +913,31 @@ fun ProxyTab(
                         onRenameSource = { sourceId, name -> viewModel.renameSubscriptionSource(sourceId, name) },
                         onDeleteSource = { viewModel.deleteSubscriptionSource(it) },
                         onPingSource = { viewModel.testPingsForSource(sourceName) },
+                        expanded = !groupCollapsed,
+                        onToggleExpanded = {
+                            collapsedGroupKeys = if (groupCollapsed) {
+                                collapsedGroupKeys - sourceName
+                            } else {
+                                collapsedGroupKeys + sourceName
+                            }
+                        },
                         showConfigs = false,
-                        shape = RoundedCornerShape(22.dp)
+                        shape = RoundedCornerShape(24.dp)
                     )
                 }
 
-                configs.forEach { config ->
-                    val isActive = config.id == state.activeConfigId
+                if (!groupCollapsed) {
+                    configs.forEach { config ->
+                        val isActive = config.id == state.activeConfigId
 
-                    item(key = "config-${config.id}", contentType = "server") {
-                        ServerItemCard(
-                            config = config,
-                            isActive = isActive,
-                            onSelect = { viewModel.selectConfig(config.id) },
-                            onDelete = { viewModel.deleteConfig(config.id) }
-                        )
+                        item(key = "config-${config.id}", contentType = "server") {
+                            ServerItemCard(
+                                config = config,
+                                isActive = isActive,
+                                onSelect = { viewModel.selectConfig(config.id) },
+                                onDelete = { viewModel.deleteConfig(config.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -933,6 +962,8 @@ fun ProxyControlPanel(
     onPingAll: () -> Unit,
     onAddConfig: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -967,7 +998,10 @@ fun ProxyControlPanel(
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
                 } else {
                     TextButton(
-                        onClick = onToggleExpanded,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleExpanded()
+                        },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
@@ -1014,7 +1048,10 @@ fun ProxyControlPanel(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = onRefreshSubscriptions,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRefreshSubscriptions()
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -1031,7 +1068,10 @@ fun ProxyControlPanel(
                             }
 
                             Button(
-                                onClick = onPingAll,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onPingAll()
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer
@@ -1048,7 +1088,10 @@ fun ProxyControlPanel(
                             }
 
                             Button(
-                                onClick = onAddConfig,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onAddConfig()
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 ),
@@ -1101,6 +1144,8 @@ fun GroupModeBar(
     selected: ConfigGroupMode,
     onSelected: (ConfigGroupMode) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1112,7 +1157,12 @@ fun GroupModeBar(
         ConfigGroupMode.values().forEach { mode ->
             val active = selected == mode
             Button(
-                onClick = { onSelected(mode) },
+                onClick = {
+                    if (!active) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    onSelected(mode)
+                },
                 modifier = Modifier
                     .weight(1f)
                     .height(34.dp),
@@ -1134,6 +1184,8 @@ fun SortModeBar(
     selected: NodeSortMode,
     onSelected: (NodeSortMode) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1145,7 +1197,12 @@ fun SortModeBar(
         NodeSortMode.values().forEach { mode ->
             val active = selected == mode
             Button(
-                onClick = { onSelected(mode) },
+                onClick = {
+                    if (!active) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    onSelected(mode)
+                },
                 modifier = Modifier
                     .weight(1f)
                     .height(34.dp),
@@ -1190,9 +1247,12 @@ fun SourceGroupCard(
     onRenameSource: (String, String) -> Unit,
     onDeleteSource: (String) -> Unit,
     onPingSource: () -> Unit,
+    expanded: Boolean = true,
+    onToggleExpanded: () -> Unit = {},
     showConfigs: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp)
 ) {
+    val haptic = LocalHapticFeedback.current
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
@@ -1297,11 +1357,28 @@ fun SourceGroupCard(
                         )
                     }
                 }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleExpanded()
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Toggle group",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
             source?.let {
                 Button(
-                    onClick = onPingSource,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onPingSource()
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(32.dp)
@@ -1353,6 +1430,7 @@ fun SourceActionButton(
     modifier: Modifier = Modifier,
     destructive: Boolean = false
 ) {
+    val haptic = LocalHapticFeedback.current
     val containerColor = when {
         destructive -> MaterialTheme.colorScheme.errorContainer
         icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.secondaryContainer
@@ -1367,7 +1445,10 @@ fun SourceActionButton(
     }
 
     Button(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         modifier = modifier.height(34.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
@@ -1418,6 +1499,7 @@ fun ServerItemCard(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val protocolDetails = remember(config) { config.protocolSummary() }
     val endpointDetails = remember(config) { config.endpointSummary() }
@@ -1425,6 +1507,7 @@ fun ServerItemCard(
 
     // Sticky swipe animation state
     val swipeOffsetX = remember { Animatable(0f) }
+    var deleteThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
     val deleteThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
     val swipeFraction by remember {
         derivedStateOf { (-swipeOffsetX.value / deleteThresholdPx).coerceIn(0f, 1f) }
@@ -1467,10 +1550,14 @@ fun ServerItemCard(
                 .clip(shape)
                 .pointerInput(config.id) {
                     detectHorizontalDragGestures(
-                        onDragStart = { onSwipingChanged(true) },
+                        onDragStart = {
+                            deleteThresholdFeedbackSent = false
+                            onSwipingChanged(true)
+                        },
                         onDragEnd = {
                             scope.launch {
                                 if (-swipeOffsetX.value >= deleteThresholdPx) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     swipeOffsetX.animateTo(
                                         -size.width.toFloat(),
                                         animationSpec = tween(260)
@@ -1496,11 +1583,18 @@ fun ServerItemCard(
                             change.consume()
                             val newOffset = (swipeOffsetX.value + dragAmount)
                                 .coerceIn(-size.width.toFloat(), 0f)
+                            if (-newOffset >= deleteThresholdPx && !deleteThresholdFeedbackSent) {
+                                deleteThresholdFeedbackSent = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
                             scope.launch { swipeOffsetX.snapTo(newOffset) }
                         }
                     )
                 }
-                .clickable { onSelect() },
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSelect()
+                },
             shape = shape,
             colors = CardDefaults.cardColors(containerColor = containerColor),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -1564,6 +1658,7 @@ fun ServerItemCard(
                     PingPill(config.ping)
                     IconButton(
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             val link = config.toConfigLink()
                             if (link.isNotBlank()) {
                                 clipboardManager.setText(AnnotatedString(link))
@@ -1664,6 +1759,7 @@ fun SettingsTab(
     }
 
     val scrollState = rememberScrollState()
+    val haptic = LocalHapticFeedback.current
 
     if (showAppPicker) {
         AppPickerDialog(
@@ -1761,7 +1857,12 @@ fun SettingsTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(shape)
-                            .clickable { viewModel.changeRoutingProfile(profile) },
+                            .clickable {
+                                if (!isSelected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                viewModel.changeRoutingProfile(profile)
+                            },
                         shape = shape,
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -1828,7 +1929,12 @@ fun SettingsTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(shape)
-                            .clickable { viewModel.changeDnsServer(dns) },
+                            .clickable {
+                                if (!isSelected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                viewModel.changeDnsServer(dns)
+                            },
                         shape = shape,
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -1953,7 +2059,12 @@ fun SettingsTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(shape)
-                            .clickable { viewModel.changeAppRoutingMode(mode) },
+                            .clickable {
+                                if (!isSelected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                viewModel.changeAppRoutingMode(mode)
+                            },
                         shape = shape,
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -2132,6 +2243,7 @@ fun AppPickerDialog(
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     var query by remember { mutableStateOf("") }
     val filteredApps = remember(apps, query) {
         val cleanQuery = query.trim()
@@ -2190,13 +2302,19 @@ fun AppPickerDialog(
                                     if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
                                 )
-                                .clickable { onToggle(app.packageName) }
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggle(app.packageName)
+                                }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
                                 checked = checked,
-                                onCheckedChange = { onToggle(app.packageName) }
+                                onCheckedChange = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggle(app.packageName)
+                                }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -2250,11 +2368,15 @@ fun ToggleSettingCard(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp)
 ) {
+    val haptic = LocalHapticFeedback.current
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .clickable(enabled = enabled) { onCheckedChange(!checked) },
+            .clickable(enabled = enabled) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onCheckedChange(!checked)
+            },
         shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -2313,7 +2435,10 @@ fun ToggleSettingCard(
             Spacer(modifier = Modifier.width(12.dp))
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onCheckedChange(it)
+                },
                 enabled = enabled
             )
         }
@@ -2387,6 +2512,7 @@ fun ThemeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val buttonColor by animateColorAsState(
         targetValue = if (active) {
             MaterialTheme.colorScheme.primaryContainer
@@ -2402,7 +2528,12 @@ fun ThemeButton(
             .height(56.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(buttonColor)
-            .clickable { onClick() }
+            .clickable {
+                if (!active) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+                onClick()
+            }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -2584,6 +2715,7 @@ fun FloatingContextAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val icon = when (selectedTab) {
         0 -> Icons.Default.Search
         1 -> Icons.Default.Refresh
@@ -2618,7 +2750,10 @@ fun FloatingContextAction(
                 spotColor = Color.Black.copy(alpha = 0.24f)
             )
             .clip(buttonShape)
-            .clickable { onClick() },
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            },
         shape = buttonShape,
         color = containerColor,
         tonalElevation = 0.dp,
@@ -2641,6 +2776,8 @@ fun MainTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Surface(
         modifier = modifier
             .width(240.dp)
@@ -2704,7 +2841,12 @@ fun MainTabBar(
                         .height(42.dp)
                         .clip(RoundedCornerShape(21.dp))
                         .background(activeBgColor)
-                        .clickable { onTabSelected(index) }
+                        .clickable {
+                            if (!active) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            onTabSelected(index)
+                        }
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
