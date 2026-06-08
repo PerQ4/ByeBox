@@ -137,7 +137,6 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .padding(bottom = 78.dp)
                 ) {
                     AppHeader(
                         status = state.connectionStatus,
