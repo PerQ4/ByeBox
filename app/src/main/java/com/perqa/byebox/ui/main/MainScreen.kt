@@ -823,158 +823,35 @@ fun ProxyTab(
             .fillMaxSize()
             .padding(horizontal = 8.dp)
     ) {
+        ProxyControlPanel(
+            sourceCount = sourceGroups.size,
+            configCount = state.configs.size,
+            isPinging = state.isPinging,
+            importUrl = importUrl,
+            onImportUrlChange = { importUrl = it },
+            collapsed = controlPanelCollapsed,
+            sortMode = sortMode,
+            onSortModeSelected = { sortMode = it },
+            onRefreshSubscriptions = { viewModel.refreshSubscriptions() },
+            onPingAll = { viewModel.testPings() },
+            onAddConfig = {
+                if (importUrl.isNotBlank()) {
+                    viewModel.addConfigFromUrl(importUrl)
+                    importUrl = ""
+                } else {
+                    viewModel.showToast("Вставьте ссылку в поле!")
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(bottom = 190.dp)
         ) {
-            stickyHeader(key = "configs-control-panel", contentType = "control") {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp)),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Конфигурации",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                )
-                                Text(
-                                    text = "${sourceGroups.size} источника · ${state.configs.size} узлов",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                )
-                            }
-                            if (state.isPinging) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        AnimatedVisibility(visible = !controlPanelCollapsed) {
-                            Column {
-                                OutlinedTextField(
-                                    value = importUrl,
-                                    onValueChange = { importUrl = it },
-                                    placeholder = {
-                                        Text(
-                                            "Вставьте vless://, vmess://, ss://, trojan://",
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(54.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = Color.Transparent,
-                                        unfocusedBorderColor = Color.Transparent,
-                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                    ),
-                                    maxLines = 1
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                CompositionLocalProvider(
-                                    LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                viewModel.refreshSubscriptions()
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                            ),
-                                            shape = RoundedCornerShape(20.dp),
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                            modifier = Modifier
-                                                .height(40.dp)
-                                                .weight(1f)
-                                        ) {
-                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Обн.", fontWeight = FontWeight.Bold)
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                viewModel.testPings()
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                            ),
-                                            shape = RoundedCornerShape(20.dp),
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                            modifier = Modifier
-                                                .height(40.dp)
-                                                .weight(0.72f)
-                                        ) {
-                                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Пинг", fontWeight = FontWeight.Bold)
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                if (importUrl.isNotBlank()) {
-                                                    viewModel.addConfigFromUrl(importUrl)
-                                                    importUrl = ""
-                                                } else {
-                                                    viewModel.showToast("Вставьте ссылку в поле!")
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary
-                                            ),
-                                            shape = RoundedCornerShape(20.dp),
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                            modifier = Modifier
-                                                .height(40.dp)
-                                                .weight(1.05f)
-                                        ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Добавить", fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                SortModeBar(
-                                    selected = sortMode,
-                                    onSelected = { sortMode = it }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            item(key = "configs-control-panel-spacer") {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
             sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
                 if (groupIndex > 0) {
                     item(key = "spacer-group-$sourceName") {
@@ -1043,6 +920,151 @@ fun ProxyTab(
                             }
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProxyControlPanel(
+    sourceCount: Int,
+    configCount: Int,
+    isPinging: Boolean,
+    importUrl: String,
+    onImportUrlChange: (String) -> Unit,
+    collapsed: Boolean,
+    sortMode: NodeSortMode,
+    onSortModeSelected: (NodeSortMode) -> Unit,
+    onRefreshSubscriptions: () -> Unit,
+    onPingAll: () -> Unit,
+    onAddConfig: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Конфигурации",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    )
+                    Text(
+                        text = "$sourceCount источника · $configCount узлов",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+                if (isPinging) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                }
+            }
+
+            AnimatedVisibility(visible = !collapsed) {
+                Column {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = importUrl,
+                        onValueChange = onImportUrlChange,
+                        placeholder = {
+                            Text(
+                                "Вставьте vless://, vmess://, ss://, trojan://",
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CompositionLocalProvider(
+                        LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = onRefreshSubscriptions,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .weight(1f)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Обн.", fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = onPingAll,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                ),
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .weight(0.72f)
+                            ) {
+                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Пинг", fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = onAddConfig,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .weight(1.05f)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Добавить", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SortModeBar(
+                        selected = sortMode,
+                        onSelected = onSortModeSelected
+                    )
                 }
             }
         }
