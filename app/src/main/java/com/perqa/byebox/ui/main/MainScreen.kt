@@ -8,9 +8,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.widget.Toast
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 
 
@@ -139,10 +137,8 @@ enum class NodeSortMode(val label: String) {
 @Composable
 private fun rememberTactileFeedback(): () -> Unit {
     val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    return remember(context, haptic) {
+    return remember(context) {
         {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             runCatching {
                 val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -156,13 +152,13 @@ private fun rememberTactileFeedback(): () -> Unit {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         vibrator.vibrate(
                             VibrationEffect.createOneShot(
-                                18L,
-                                VibrationEffect.DEFAULT_AMPLITUDE
+                                8L,
+                                32
                             )
                         )
                     } else {
                         @Suppress("DEPRECATION")
-                        vibrator.vibrate(18L)
+                        vibrator.vibrate(8L)
                     }
                 }
             }
@@ -1554,6 +1550,7 @@ fun ServerItemCard(
                     detectHorizontalDragGestures(
                         onDragStart = {
                             deleteThresholdFeedbackSent = false
+                            tactileFeedback()
                             onSwipingChanged(true)
                         },
                         onDragEnd = {
@@ -1646,6 +1643,16 @@ fun ServerItemCard(
                             text = endpointDetails,
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    config.description?.takeIf { it.isNotBlank() && it != config.name }?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

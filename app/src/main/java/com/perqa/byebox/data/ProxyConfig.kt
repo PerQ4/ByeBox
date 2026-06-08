@@ -7,6 +7,7 @@ import org.json.JSONObject
 data class ProxyConfig(
     val id: String,
     val name: String,
+    val description: String? = null,
     val protocol: String, // VLESS, VMESS, Trojan, Shadowsocks, TUIC, Hysteria2, WireGuard
     val address: String,
     val port: Int,
@@ -128,6 +129,7 @@ data class ProxyConfig(
         return JSONObject().apply {
             put("id", id)
             put("name", name)
+            description?.let { put("description", it) }
             put("protocol", protocol)
             put("address", address)
             put("port", port)
@@ -179,6 +181,7 @@ data class ProxyConfig(
             return ProxyConfig(
                 id = json.optString("id", ""),
                 name = json.optString("name", ""),
+                description = optNullableString("description", "desc", "remarks", "remark"),
                 protocol = json.optString("protocol", ""),
                 address = json.optString("address", ""),
                 port = json.optInt("port", 0),
