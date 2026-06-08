@@ -8,6 +8,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
 enum class AppTheme {
   SYSTEM_DYNAMIC,
@@ -37,7 +38,12 @@ private val MidnightAuroraDarkColorScheme = darkColorScheme(
   onSurfaceVariant = AuroraOnSurfaceVariantDark,
   onBackground = AuroraOnBackgroundDark,
   onSurface = AuroraOnSurfaceDark,
-  outlineVariant = AuroraOutlineVariantDark
+  outlineVariant = AuroraOutlineVariantDark,
+  surfaceContainer = Color(0xFF161D2B),
+  surfaceContainerLow = Color(0xFF141A27),
+  surfaceContainerHigh = Color(0xFF222B3E),
+  surfaceContainerHighest = Color(0xFF2C374F),
+  surfaceContainerLowest = Color(0xFF0E131E)
 )
 
 private val SolarFlareDarkColorScheme = darkColorScheme(
@@ -55,7 +61,12 @@ private val SolarFlareDarkColorScheme = darkColorScheme(
   onSurfaceVariant = SolarOnSurfaceVariantDark,
   onBackground = SolarOnBackgroundDark,
   onSurface = SolarOnSurfaceDark,
-  outlineVariant = SolarOutlineVariantDark
+  outlineVariant = SolarOutlineVariantDark,
+  surfaceContainer = Color(0xFF211C19),
+  surfaceContainerLow = Color(0xFF1E1A17),
+  surfaceContainerHigh = Color(0xFF2E2723),
+  surfaceContainerHighest = Color(0xFF38302B),
+  surfaceContainerLowest = Color(0xFF14110E)
 )
 
 private val ForestCyberDarkColorScheme = darkColorScheme(
@@ -73,7 +84,12 @@ private val ForestCyberDarkColorScheme = darkColorScheme(
   onSurfaceVariant = ForestOnSurfaceVariantDark,
   onBackground = ForestOnBackgroundDark,
   onSurface = ForestOnSurfaceDark,
-  outlineVariant = ForestOutlineVariantDark
+  outlineVariant = ForestOutlineVariantDark,
+  surfaceContainer = Color(0xFF192018),
+  surfaceContainerLow = Color(0xFF161D15),
+  surfaceContainerHigh = Color(0xFF263025),
+  surfaceContainerHighest = Color(0xFF2F3C2E),
+  surfaceContainerLowest = Color(0xFF0F140F)
 )
 
 @Composable

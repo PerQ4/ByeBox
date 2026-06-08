@@ -28,6 +28,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,8 +38,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -69,6 +74,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Divider
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -134,20 +150,34 @@ fun MainScreen(
             color = MaterialTheme.colorScheme.background
         ) {
             var selectedTab by remember { mutableIntStateOf(0) }
-            var headerCollapsed by remember { mutableStateOf(false) }
 
             Box(modifier = modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    AppHeader(
-                        status = state.connectionStatus,
-                        collapsed = headerCollapsed
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = when (state.connectionStatus) {
+                            ConnectionStatus.CONNECTED -> "ПОДКЛЮЧЕНО"
+                            ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
+                            ConnectionStatus.DISCONNECTED -> "ОТКЛЮЧЕНО"
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.42f),
+                            letterSpacing = 0.8.sp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Box(
                         modifier = Modifier
@@ -161,23 +191,19 @@ fun MainScreen(
                             when (tab) {
                                 0 -> DashboardTab(
                                     state = state,
-                                    viewModel = viewModel,
-                                    onScrollCollapsed = { headerCollapsed = it }
+                                    viewModel = viewModel
                                 )
                                 1 -> ProxyTab(
                                     state = state,
-                                    viewModel = viewModel,
-                                    onScrollCollapsed = { headerCollapsed = it }
+                                    viewModel = viewModel
                                 )
                                 2 -> SettingsTab(
                                     state = state,
-                                    viewModel = viewModel,
-                                    onScrollCollapsed = { headerCollapsed = it }
+                                    viewModel = viewModel
                                 )
                                 3 -> LogsTab(
                                     state = state,
-                                    viewModel = viewModel,
-                                    onScrollCollapsed = { headerCollapsed = it }
+                                    viewModel = viewModel
                                 )
                             }
                         }
@@ -188,127 +214,59 @@ fun MainScreen(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
 
-                MainTabBar(
-                    selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp, start = 8.dp, end = 8.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MainTabBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it }
+                    )
 
-                FloatingContextAction(
-                    selectedTab = selectedTab,
-                    onClick = {
-                        when (selectedTab) {
-                            0 -> viewModel.selectBestConfig()
-                            1 -> viewModel.testPings()
-                            2 -> (context.findActivity() as? MainActivity)?.openSystemVpnSettings()
-                            3 -> viewModel.exportLogs(context)
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    FloatingContextAction(
+                        selectedTab = selectedTab,
+                        onClick = {
+                            when (selectedTab) {
+                                0 -> viewModel.selectBestConfig()
+                                1 -> viewModel.testPings()
+                                2 -> (context.findActivity() as? MainActivity)?.openSystemVpnSettings()
+                                3 -> viewModel.exportLogs(context)
+                            }
                         }
-                    },
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AppHeader(
-    status: ConnectionStatus,
-    collapsed: Boolean
-) {
-    val statusColor by animateColorAsState(
-        targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-        },
-        label = "statusColor"
-    )
-    val verticalPadding by animateDpAsState(
-        targetValue = if (collapsed) 0.dp else 6.dp,
-        label = "headerPadding"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = verticalPadding)
-    ) {
-        AnimatedVisibility(visible = !collapsed) {
-            Column {
-                Text(
-                    text = "BYEBOX",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = status.labelText(),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            letterSpacing = 1.sp
-                        )
                     )
                 }
             }
         }
-        AnimatedVisibility(
-            visible = collapsed,
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            Text(
-                text = status.labelText(),
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.42f),
-                    letterSpacing = 0.8.sp
-                )
-            )
-        }
     }
 }
 
-private fun ConnectionStatus.labelText(): String = when (this) {
-    ConnectionStatus.CONNECTED -> "ПОДКЛЮЧЕНО"
-    ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
-    ConnectionStatus.DISCONNECTED -> "ОТКЛЮЧЕНО"
-}
+
 
 @Composable
 fun DashboardTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel,
-    onScrollCollapsed: (Boolean) -> Unit
+    viewModel: MainScreenViewModel
 ) {
     val activeConfig = state.configs.find { it.id == state.activeConfigId }
     val context = LocalContext.current
     val activity = context.findActivity() as? MainActivity
     val scrollState = rememberScrollState()
-    val collapsed by remember {
-        derivedStateOf { scrollState.value > 24 }
-    }
-    LaunchedEffect(collapsed) {
-        onScrollCollapsed(collapsed)
-    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(12.dp))
+
         StatusOverviewCard(
             status = state.connectionStatus,
             activeConfig = activeConfig,
@@ -639,6 +597,15 @@ fun ConnectionButton(
         ),
         label = "rotate"
     )
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "wavePhase"
+    )
 
     val buttonBgColor by animateColorAsState(
         targetValue = when (status) {
@@ -649,33 +616,73 @@ fun ConnectionButton(
         label = "buttonColor"
     )
 
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(200.dp)
             .padding(10.dp)
     ) {
-        // Simple outer circular border, flat and clean
+        // Animated polar waveform on Canvas
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeWidth = 2.dp.toPx()
-            drawCircle(
-                color = when (status) {
-                    ConnectionStatus.CONNECTED -> buttonBgColor.copy(alpha = 0.2f)
-                    else -> Color.White.copy(alpha = 0.05f)
-                },
-                style = Stroke(width = strokeWidth)
-            )
-        }
+            val center = center
+            val baseRadius = 80.dp.toPx()
+            
+            if (status == ConnectionStatus.CONNECTING) {
+                // Wave 1: 5 crests, rotating forward
+                val path1 = androidx.compose.ui.graphics.Path()
+                val steps = 100
+                for (i in 0..steps) {
+                    val angle = (i.toFloat() / steps) * 2f * Math.PI.toFloat()
+                    val r = baseRadius + 6.dp.toPx() * kotlin.math.sin(5 * angle - wavePhase)
+                    val x = center.x + r * kotlin.math.cos(angle)
+                    val y = center.y + r * kotlin.math.sin(angle)
+                    if (i == 0) path1.moveTo(x, y) else path1.lineTo(x, y)
+                }
+                path1.close()
+                drawPath(
+                    path = path1,
+                    color = buttonBgColor.copy(alpha = 0.25f),
+                    style = Stroke(width = 3.dp.toPx())
+                )
 
-        // Connecting loader arc
-        if (status == ConnectionStatus.CONNECTING) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .rotate(progressRotate),
-                color = MaterialTheme.colorScheme.tertiary,
-                strokeWidth = 3.dp
-            )
+                // Wave 2: 7 crests, rotating backward, slightly smaller amplitude
+                val path2 = androidx.compose.ui.graphics.Path()
+                for (i in 0..steps) {
+                    val angle = (i.toFloat() / steps) * 2f * Math.PI.toFloat()
+                    val r = baseRadius + 4.dp.toPx() * kotlin.math.sin(7 * angle + wavePhase + 1.2f)
+                    val x = center.x + r * kotlin.math.cos(angle)
+                    val y = center.y + r * kotlin.math.sin(angle)
+                    if (i == 0) path2.moveTo(x, y) else path2.lineTo(x, y)
+                }
+                path2.close()
+                drawPath(
+                    path = path2,
+                    color = buttonBgColor.copy(alpha = 0.4f),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+            } else if (status == ConnectionStatus.CONNECTED) {
+                // Breathing pulse when connected
+                val pulseScale = 1f + 0.04f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
+                drawCircle(
+                    color = buttonBgColor.copy(alpha = 0.16f),
+                    radius = baseRadius * pulseScale,
+                    style = Stroke(width = 3.dp.toPx())
+                )
+                drawCircle(
+                    color = buttonBgColor.copy(alpha = 0.08f),
+                    radius = baseRadius * (pulseScale + 0.06f),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+            } else {
+                // Static neat ring when disconnected
+                drawCircle(
+                    color = onSurfaceColor.copy(alpha = 0.08f),
+                    radius = baseRadius,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+            }
         }
 
         // Central trigger button (flat design with soft elevation and no neon shadows)
@@ -786,20 +793,14 @@ fun SpeedCard(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun ProxyTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel,
-    onScrollCollapsed: (Boolean) -> Unit
+    viewModel: MainScreenViewModel
 ) {
     var importUrl by remember { mutableStateOf("") }
     var sortMode by remember { mutableStateOf(NodeSortMode.SOURCE) }
     val listState = rememberLazyListState()
-    val collapsed by remember {
-        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
-    }
-    LaunchedEffect(collapsed) {
-        onScrollCollapsed(collapsed)
-    }
     val sourceGroups = remember(state.configs, sortMode) {
         state.configs
             .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
@@ -812,159 +813,184 @@ fun ProxyTab(
     val sourcesByName = remember(state.subscriptionSources) {
         state.subscriptionSources.associateBy { it.name }
     }
+    val controlPanelCollapsed by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 48 }
+    }
+    var swipingConfigId by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp)
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp)),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Конфигурации",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-                        Text(
-                            text = "${sourceGroups.size} источника · ${state.configs.size} узлов",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                fontWeight = FontWeight.Medium
-                            )
-                        )
-                    }
-                    if (state.isPinging) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = importUrl,
-                    onValueChange = { importUrl = it },
-                    placeholder = {
-                        Text(
-                            "Вставьте vless://, vmess://, ss://, trojan://",
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                CompositionLocalProvider(
-                    LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
-                ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.refreshSubscriptions()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .weight(1f)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Обн.", fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.testPings()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .weight(0.72f)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Пинг", fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            if (importUrl.isNotBlank()) {
-                                viewModel.addConfigFromUrl(importUrl)
-                                importUrl = ""
-                            } else {
-                                viewModel.showToast("Вставьте ссылку в поле!")
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .weight(1.05f)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Добавить", fontWeight = FontWeight.Bold)
-                    }
-                }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                SortModeBar(
-                    selected = sortMode,
-                    onSelected = { sortMode = it }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 190.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(bottom = 190.dp)
         ) {
-            sourceGroups.forEach { (sourceName, configs) ->
-                item(key = "source-$sourceName", contentType = "source") {
+            stickyHeader(key = "configs-control-panel", contentType = "control") {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp)),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Конфигурации",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                                Text(
+                                    text = "${sourceGroups.size} источника · ${state.configs.size} узлов",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                )
+                            }
+                            if (state.isPinging) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        AnimatedVisibility(visible = !controlPanelCollapsed) {
+                            Column {
+                                OutlinedTextField(
+                                    value = importUrl,
+                                    onValueChange = { importUrl = it },
+                                    placeholder = {
+                                        Text(
+                                            "Вставьте vless://, vmess://, ss://, trojan://",
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(54.dp),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                    ),
+                                    maxLines = 1
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                CompositionLocalProvider(
+                                    LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.refreshSubscriptions()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                            ),
+                                            shape = RoundedCornerShape(20.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .height(40.dp)
+                                                .weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Обн.", fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                viewModel.testPings()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                            ),
+                                            shape = RoundedCornerShape(20.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .height(40.dp)
+                                                .weight(0.72f)
+                                        ) {
+                                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Пинг", fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                if (importUrl.isNotBlank()) {
+                                                    viewModel.addConfigFromUrl(importUrl)
+                                                    importUrl = ""
+                                                } else {
+                                                    viewModel.showToast("Вставьте ссылку в поле!")
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            ),
+                                            shape = RoundedCornerShape(20.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .height(40.dp)
+                                                .weight(1.05f)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Добавить", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                SortModeBar(
+                                    selected = sortMode,
+                                    onSelected = { sortMode = it }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "configs-control-panel-spacer") {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
+                if (groupIndex > 0) {
+                    item(key = "spacer-group-$sourceName") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+
+                val firstConfigActive = configs.firstOrNull()?.let { it.id == state.activeConfigId } ?: false
+                val firstConfigSwiping = configs.firstOrNull()?.id == swipingConfigId
+                val headerBottomCorner = if (configs.isEmpty() || firstConfigActive || firstConfigSwiping) 28.dp else 6.dp
+                val headerShape = RoundedCornerShape(
+                    topStart = 28.dp, topEnd = 28.dp,
+                    bottomStart = headerBottomCorner, bottomEnd = headerBottomCorner
+                )
+
+                stickyHeader(key = "source-$sourceName", contentType = "source") {
                     SourceGroupCard(
                         sourceName = sourceName,
                         source = sourcesByName[sourceName],
@@ -976,20 +1002,47 @@ fun ProxyTab(
                         onRenameSource = { sourceId, name -> viewModel.renameSubscriptionSource(sourceId, name) },
                         onDeleteSource = { viewModel.deleteSubscriptionSource(it) },
                         onPingSource = { viewModel.testPingsForSource(sourceName) },
-                        showConfigs = false
+                        showConfigs = false,
+                        shape = headerShape
                     )
                 }
-                items(
-                    items = configs,
-                    key = { it.id },
-                    contentType = { "server" }
-                ) { config ->
-                    ServerItemCard(
-                        config = config,
-                        isActive = config.id == state.activeConfigId,
-                        onSelect = { viewModel.selectConfig(config.id) },
-                        onDelete = { viewModel.deleteConfig(config.id) }
-                    )
+
+                configs.forEachIndexed { index, config ->
+                    val isActive = config.id == state.activeConfigId
+                    val prevIsActive = index > 0 && configs[index - 1].id == state.activeConfigId
+                    val nextIsActive = index < configs.lastIndex && configs[index + 1].id == state.activeConfigId
+                    val isLast = index == configs.lastIndex
+
+                    val baseTopCorner = when {
+                        isActive -> 28.dp
+                        prevIsActive -> 28.dp
+                        else -> 6.dp
+                    }
+                    val baseBottomCorner = when {
+                        isActive -> 28.dp
+                        nextIsActive -> 28.dp
+                        isLast -> 28.dp
+                        else -> 6.dp
+                    }
+
+                    val prevIsSwipingNeighbor = index > 0 && configs[index - 1].id == swipingConfigId
+                    val nextIsSwipingNeighbor = index < configs.lastIndex && configs[index + 1].id == swipingConfigId
+                    val effectiveTopCorner = if (prevIsSwipingNeighbor) 28.dp else baseTopCorner
+                    val effectiveBottomCorner = if (nextIsSwipingNeighbor) 28.dp else baseBottomCorner
+
+                    item(key = "config-${config.id}", contentType = "server") {
+                        ServerItemCard(
+                            config = config,
+                            isActive = isActive,
+                            onSelect = { viewModel.selectConfig(config.id) },
+                            onDelete = { viewModel.deleteConfig(config.id) },
+                            topCorner = effectiveTopCorner,
+                            bottomCorner = effectiveBottomCorner,
+                            onSwipingChanged = { isSwiping ->
+                                swipingConfigId = if (isSwiping) config.id else null
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -1065,26 +1118,28 @@ fun SourceGroupCard(
     onRenameSource: (String, String) -> Unit,
     onDeleteSource: (String) -> Unit,
     onPingSource: () -> Unit,
-    showConfigs: Boolean = true
+    showConfigs: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp)
 ) {
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
-    val groupShape = RoundedCornerShape(22.dp)
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(groupShape),
+            .clip(shape),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = if (activeCount > 0) {
                 MaterialTheme.colorScheme.secondaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceContainerHigh
             }
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
@@ -1286,99 +1341,201 @@ fun ServerItemCard(
     config: ProxyConfig,
     isActive: Boolean,
     onSelect: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    topCorner: androidx.compose.ui.unit.Dp = 6.dp,
+    bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
+    onSwipingChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val rowShape = RoundedCornerShape(20.dp)
+    val scope = rememberCoroutineScope()
     val protocolDetails = remember(config) { config.protocolSummary() }
     val endpointDetails = remember(config) { config.endpointSummary() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(rowShape)
-            .clickable { onSelect() },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainer
+    // Sticky swipe animation state
+    val swipeOffsetX = remember { Animatable(0f) }
+    val deleteThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
+    val swipeFraction by remember {
+        derivedStateOf { (-swipeOffsetX.value / deleteThresholdPx).coerceIn(0f, 1f) }
+    }
+
+    // Base corner animation (responds to neighbor active/swiping changes)
+    val animTopCorner by animateDpAsState(
+        targetValue = if (isActive) 28.dp else topCorner,
+        animationSpec = tween(260),
+        label = "topCorner"
+    )
+    val animBottomCorner by animateDpAsState(
+        targetValue = if (isActive) 28.dp else bottomCorner,
+        animationSpec = tween(260),
+        label = "bottomCorner"
+    )
+
+    // During swipe, morph to full 28dp corners (card detaches from list)
+    val swipeActive = swipeFraction > 0.04f
+    val cardTopCorner by animateDpAsState(
+        targetValue = if (swipeActive) 28.dp else animTopCorner,
+        animationSpec = tween(240),
+        label = "swipeTopCorner"
+    )
+    val cardBottomCorner by animateDpAsState(
+        targetValue = if (swipeActive) 28.dp else animBottomCorner,
+        animationSpec = tween(240),
+        label = "swipeBottomCorner"
+    )
+
+    val shape = RoundedCornerShape(
+        topStart = cardTopCorner,
+        topEnd = cardTopCorner,
+        bottomStart = cardBottomCorner,
+        bottomEnd = cardBottomCorner
+    )
+
+    val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
+                         else MaterialTheme.colorScheme.surfaceContainer
+    val errorContainer = MaterialTheme.colorScheme.errorContainer
+    val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // Swipe-to-delete reveal background
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(shape)
+                .background(errorContainer.copy(alpha = swipeFraction)),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            if (swipeFraction > 0.08f) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Удалить",
+                    tint = onErrorContainer.copy(alpha = (swipeFraction * 2.5f).coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .padding(end = 20.dp)
+                        .size(22.dp)
+                )
             }
-        )
-    ) {
-        Row(
+        }
+
+        // Card with sticky offset
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = config.countryFlag,
-                fontSize = 22.sp,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(
-                        if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f)
-                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                .offset { IntOffset(swipeOffsetX.value.toInt(), 0) }
+                .clip(shape)
+                .pointerInput(config.id) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { onSwipingChanged(true) },
+                        onDragEnd = {
+                            scope.launch {
+                                if (-swipeOffsetX.value >= deleteThresholdPx) {
+                                    swipeOffsetX.animateTo(
+                                        -size.width.toFloat(),
+                                        animationSpec = tween(260)
+                                    )
+                                    onDelete()
+                                    swipeOffsetX.snapTo(0f)
+                                } else {
+                                    swipeOffsetX.animateTo(
+                                        0f,
+                                        animationSpec = tween(260)
+                                    )
+                                    onSwipingChanged(false)
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                swipeOffsetX.animateTo(0f, animationSpec = tween(220))
+                            }
+                            onSwipingChanged(false)
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            val newOffset = (swipeOffsetX.value + dragAmount)
+                                .coerceIn(-size.width.toFloat(), 0f)
+                            scope.launch { swipeOffsetX.snapTo(newOffset) }
+                        }
                     )
-                    .padding(8.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = config.name,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    ProtocolPill(protocolDetails)
-                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                .clickable { onSelect() },
+            shape = shape,
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f)
+                            else MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                ) {
                     Text(
-                        text = endpointDetails,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                        text = config.countryFlag,
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = config.name,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurface
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                PingPill(config.ping)
-
-                IconButton(
-                    onClick = {
-                        val link = config.toConfigLink()
-                        if (link.isNotBlank()) {
-                            clipboardManager.setText(AnnotatedString(link))
-                            Toast.makeText(context, "Ссылка скопирована!", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.size(30.dp)
-                ) {
-                    CopyIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        ProtocolPill(protocolDetails)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = endpointDetails,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(30.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Удалить",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    PingPill(config.ping)
+                    IconButton(
+                        onClick = {
+                            val link = config.toConfigLink()
+                            if (link.isNotBlank()) {
+                                clipboardManager.setText(AnnotatedString(link))
+                                Toast.makeText(context, "Ссылка скопирована!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        CopyIcon(
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
+                    }
                 }
             }
         }
@@ -1454,8 +1611,7 @@ fun PingPill(ping: Int?) {
 @Composable
 fun SettingsTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel,
-    onScrollCollapsed: (Boolean) -> Unit
+    viewModel: MainScreenViewModel
 ) {
     var showAppPicker by remember { mutableStateOf(false) }
     val selectedAppPackages = remember(state.appRoutingPackages) {
@@ -1467,12 +1623,6 @@ fun SettingsTab(
     }
 
     val scrollState = rememberScrollState()
-    val collapsed by remember {
-        derivedStateOf { scrollState.value > 24 }
-    }
-    LaunchedEffect(collapsed) {
-        onScrollCollapsed(collapsed)
-    }
 
     if (showAppPicker) {
         AppPickerDialog(
@@ -1488,13 +1638,18 @@ fun SettingsTab(
             .fillMaxSize()
             .padding(horizontal = 8.dp)
             .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Theme Selection Card
-        SettingsSectionCard(
-            title = "Тема оформления (Material 3)",
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-        ) {
+        // Theme Selection Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Тема оформления",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1541,265 +1696,391 @@ fun SettingsTab(
             }
         }
 
-        // Routing Rules Selection Card
-        SettingsSectionCard(
-            title = "Правила маршрутизации",
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                RoutingProfile.values().forEach { profile ->
+        // Routing Rules Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Правила маршрутизации",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val profiles = RoutingProfile.values()
+                profiles.forEachIndexed { index, profile ->
                     val isSelected = state.routingProfile == profile
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainer
-                                }
-                            )
-                            .clickable { viewModel.changeRoutingProfile(profile) }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .border(
-                                    2.dp,
-                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                    CircleShape
-                                )
-                                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = profile.label,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        )
+                    val shape = when {
+                        profiles.size == 1 -> RoundedCornerShape(24.dp)
+                        index == 0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                        index == profiles.lastIndex -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+                        else -> RoundedCornerShape(4.dp)
                     }
-                }
-            }
-        }
-
-        // DNS configuration Card
-        SettingsSectionCard(
-            title = "Выбор DNS сервера",
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DnsServer.values().forEach { dns ->
-                    val isSelected = state.dnsServer == dns
-                    Row(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainer
-                                }
-                            )
-                            .clickable { viewModel.changeDnsServer(dns) }
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(shape)
+                            .clickable { viewModel.changeRoutingProfile(profile) },
+                        shape = shape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val primaryColor = MaterialTheme.colorScheme.primary
+                            val onSurfaceColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+                            Canvas(modifier = Modifier.size(20.dp)) {
+                                val radius = size.minDimension / 2
+                                if (isSelected) {
+                                    drawCircle(color = primaryColor, radius = radius)
+                                    drawCircle(color = onPrimaryColor, radius = radius / 2)
+                                } else {
+                                    drawCircle(
+                                        color = onSurfaceColor,
+                                        radius = radius - 1.dp.toPx(),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
                             Text(
-                                text = dns.label,
+                                text = profile.label,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             )
-                            Text(
-                                text = dns.address,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                )
-                            )
-                        }
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
                     }
                 }
             }
         }
 
-        SettingsSectionCard(
-            title = "TUN и Android VPN",
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ToggleSettingRow(
+        // DNS Server Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Выбор DNS сервера",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val dnsList = DnsServer.values()
+                dnsList.forEachIndexed { index, dns ->
+                    val isSelected = state.dnsServer == dns
+                    val shape = when {
+                        dnsList.size == 1 -> RoundedCornerShape(24.dp)
+                        index == 0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                        index == dnsList.lastIndex -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+                        else -> RoundedCornerShape(4.dp)
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(shape)
+                            .clickable { viewModel.changeDnsServer(dns) },
+                        shape = shape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val primaryColor = MaterialTheme.colorScheme.primary
+                                val onSurfaceColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+                                Canvas(modifier = Modifier.size(20.dp)) {
+                                    val radius = size.minDimension / 2
+                                    if (isSelected) {
+                                        drawCircle(color = primaryColor, radius = radius)
+                                        drawCircle(color = onPrimaryColor, radius = radius / 2)
+                                    } else {
+                                        drawCircle(
+                                            color = onSurfaceColor,
+                                            radius = radius - 1.dp.toPx(),
+                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        text = dns.label,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    )
+                                    Text(
+                                        text = dns.address,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // TUN settings Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "TUN и Android VPN",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                ToggleSettingCard(
                     title = "IPv6 в туннеле",
                     subtitle = "Временно выключено: Android TUN сейчас стабилизирован в IPv4-only",
                     checked = false,
                     enabled = false,
-                    onCheckedChange = {}
+                    onCheckedChange = {},
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
                 )
-                ToggleSettingRow(
+                ToggleSettingCard(
                     title = "Обход локальных сетей",
                     subtitle = "Не забирает RFC1918, loopback и link-local IPv4 сети в VPN",
                     checked = state.lanBypassEnabled,
-                    onCheckedChange = viewModel::changeLanBypassEnabled
+                    onCheckedChange = viewModel::changeLanBypassEnabled,
+                    shape = RoundedCornerShape(4.dp)
                 )
-                ToggleSettingRow(
+                ToggleSettingCard(
                     title = "Разрешить Android bypass",
                     subtitle = "Позволяет приложениям обходить VPN через системный API",
                     checked = state.systemBypassEnabled,
-                    onCheckedChange = viewModel::changeSystemBypassEnabled
+                    onCheckedChange = viewModel::changeSystemBypassEnabled,
+                    shape = RoundedCornerShape(4.dp)
                 )
-                ToggleSettingRow(
+                ToggleSettingCard(
                     title = "VPN как лимитная сеть",
                     subtitle = "Android будет считать туннель metered-соединением",
                     checked = state.meteredNetwork,
-                    onCheckedChange = viewModel::changeMeteredNetwork
+                    onCheckedChange = viewModel::changeMeteredNetwork,
+                    shape = RoundedCornerShape(4.dp)
                 )
-                ToggleSettingRow(
+                ToggleSettingCard(
                     title = "Автозапуск после загрузки",
                     subtitle = "Поднимает последний рабочий профиль после перезагрузки устройства",
                     checked = state.autostartEnabled,
-                    onCheckedChange = viewModel::changeAutostartEnabled
+                    onCheckedChange = viewModel::changeAutostartEnabled,
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
                 )
             }
         }
 
-        SettingsSectionCard(
-            title = "Профиль приложений",
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppRoutingMode.values().forEach { mode ->
+        // App Profile Settings Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Профиль приложений",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AppRoutingMode.values().forEachIndexed { index, mode ->
                     val isSelected = state.appRoutingMode == mode
-                    Column(
+                    val shape = when (index) {
+                        0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                        else -> RoundedCornerShape(4.dp)
+                    }
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainer
-                            )
-                            .clickable { viewModel.changeAppRoutingMode(mode) }
-                            .padding(14.dp)
+                            .clip(shape)
+                            .clickable { viewModel.changeAppRoutingMode(mode) },
+                        shape = shape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Text(
-                            text = mode.label,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val primaryColor = MaterialTheme.colorScheme.primary
+                                val onSurfaceColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+                                Canvas(modifier = Modifier.size(20.dp)) {
+                                    val radius = size.minDimension / 2
+                                    if (isSelected) {
+                                        drawCircle(color = primaryColor, radius = radius)
+                                        drawCircle(color = onPrimaryColor, radius = radius / 2)
+                                    } else {
+                                        drawCircle(
+                                            color = onSurfaceColor,
+                                            radius = radius - 1.dp.toPx(),
+                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text(
+                                    text = mode.label,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = mode.description,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.padding(start = 34.dp)
                             )
-                        )
-                        Text(
-                            text = mode.description,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
-                            )
-                        )
+                        }
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+
+                val pickerShape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth().clip(pickerShape),
+                    shape = pickerShape,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Text(
-                        text = "Выбрано: ${selectedAppPackages.size}",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                            fontWeight = FontWeight.Bold
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Выбрано: ${selectedAppPackages.size}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                            Button(
+                                onClick = { showAppPicker = true },
+                                enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Выбрать")
+                            }
+                            TextButton(
+                                onClick = viewModel::clearAppRoutingPackages,
+                                enabled = selectedAppPackages.isNotEmpty()
+                            ) {
+                                Text("Очистить")
+                            }
+                        }
+                        OutlinedTextField(
+                            value = state.appRoutingPackages,
+                            onValueChange = viewModel::changeAppRoutingPackages,
+                            label = { Text("Package names вручную") },
+                            placeholder = { Text("org.telegram.messenger\ncom.discord") },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                            minLines = 2,
+                            maxLines = 5,
+                            shape = RoundedCornerShape(16.dp)
                         )
-                    )
-                    Button(
-                        onClick = { showAppPicker = true },
-                        enabled = state.appRoutingMode != AppRoutingMode.OFF,
-                        shape = RoundedCornerShape(18.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Выбрать")
-                    }
-                    TextButton(
-                        onClick = viewModel::clearAppRoutingPackages,
-                        enabled = selectedAppPackages.isNotEmpty()
-                    ) {
-                        Text("Очистить")
                     }
                 }
-                OutlinedTextField(
-                    value = state.appRoutingPackages,
-                    onValueChange = viewModel::changeAppRoutingPackages,
-                    label = { Text("Package names вручную") },
-                    placeholder = { Text("org.telegram.messenger\ncom.discord") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = state.appRoutingMode != AppRoutingMode.OFF,
-                    minLines = 2,
-                    maxLines = 5,
-                    shape = RoundedCornerShape(18.dp)
-                )
             }
         }
 
-        SettingsSectionCard(
-            title = "Фильтр проверки узлов",
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.18f)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        // Health Check Settings Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Фильтр проверки узлов",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val inputShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth().clip(inputShape),
+                    shape = inputShape,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    OutlinedTextField(
-                        value = state.healthCheckUrl,
-                        onValueChange = viewModel::changeHealthCheckUrl,
-                        label = { Text("URL ресурса") },
-                        placeholder = { Text("https://www.gstatic.com/generate_204") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        shape = RoundedCornerShape(18.dp)
-                    )
-                    Button(
-                        onClick = viewModel::testHealthCheckUrl,
-                        shape = RoundedCornerShape(18.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(56.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        OutlinedTextField(
+                            value = state.healthCheckUrl,
+                            onValueChange = viewModel::changeHealthCheckUrl,
+                            label = { Text("URL ресурса") },
+                            placeholder = { Text("https://www.gstatic.com/generate_204") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        Button(
+                            onClick = viewModel::testHealthCheckUrl,
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(56.dp)
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
-                ToggleSettingRow(
+
+                ToggleSettingCard(
                     title = "Строгий фильтр",
                     subtitle = "При проверке узлов помечает timeout, если ресурс недоступен",
                     checked = state.strictHealthCheck,
-                    onCheckedChange = viewModel::changeStrictHealthCheck
+                    onCheckedChange = viewModel::changeStrictHealthCheck,
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(180.dp))
+        Spacer(modifier = Modifier
+            .height(180.dp)
+            .navigationBarsPadding())
     }
 }
 
@@ -1919,97 +2200,103 @@ fun AppPickerDialog(
 }
 
 @Composable
-fun ToggleSettingRow(
+fun ToggleSettingCard(
     title: String,
     subtitle: String,
     checked: Boolean,
     enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp)
 ) {
-    val rowColor by animateColorAsState(
-        targetValue = when {
-            checked -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.surfaceContainer
-        },
-        label = "toggleRowColor"
-    )
-
-    Row(
-        modifier = Modifier
+    Card(
+        modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(rowColor)
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
-            .padding(14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .clip(shape)
+            .clickable(enabled = enabled) { onCheckedChange(!checked) },
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(
-                    if (checked && enabled) {
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer
-                    }
-                ),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = null,
-                tint = if (checked && enabled) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                },
-                modifier = Modifier.size(20.dp)
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (checked && enabled) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = if (checked && enabled) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        },
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
+                        )
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.48f else 0.36f)
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = if (checked && enabled) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
-                    }
-                )
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.48f else 0.36f)
-                )
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled
-        )
     }
 }
 
 @Composable
 fun SettingsSectionCard(
     title: String,
-    containerColor: Color = MaterialTheme.colorScheme.surface,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconContainerColor: Color,
+    iconContentColor: Color,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     content: @Composable () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = containerColor
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp)
@@ -2022,16 +2309,16 @@ fun SettingsSectionCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .background(iconContainerColor),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Settings,
+                        imageVector = icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(22.dp)
+                        tint = iconContentColor,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -2080,12 +2367,9 @@ fun ThemeButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(accentColor)
-            )
+            Canvas(modifier = Modifier.size(12.dp)) {
+                drawCircle(color = accentColor, radius = size.minDimension / 2)
+            }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = label,
@@ -2100,18 +2384,11 @@ fun ThemeButton(
 @Composable
 fun LogsTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel,
-    onScrollCollapsed: (Boolean) -> Unit
+    viewModel: MainScreenViewModel
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val collapsed by remember {
-        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
-    }
-    LaunchedEffect(collapsed) {
-        onScrollCollapsed(collapsed)
-    }
     val filteredLogs = remember(searchQuery, state.logs) {
         if (searchQuery.isBlank()) {
             state.logs
@@ -2210,7 +2487,7 @@ fun LogsTab(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 180.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(
@@ -2235,6 +2512,12 @@ fun LogsTab(
                 }
             }
         }
+
+        Spacer(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .height(80.dp)
+        )
     }
 }
 
@@ -2281,21 +2564,21 @@ fun FloatingContextAction(
         2 -> MaterialTheme.colorScheme.onSecondaryContainer
         else -> MaterialTheme.colorScheme.onErrorContainer
     }
+    val buttonShape = RoundedCornerShape(16.dp)
 
     Surface(
         modifier = modifier
-            .padding(end = 18.dp, bottom = 4.dp)
             .size(54.dp)
             .shadow(
                 elevation = 12.dp,
-                shape = CircleShape,
+                shape = buttonShape,
                 clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.18f),
                 spotColor = Color.Black.copy(alpha = 0.24f)
             )
-            .clip(CircleShape)
+            .clip(buttonShape)
             .clickable { onClick() },
-        shape = CircleShape,
+        shape = buttonShape,
         color = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -2317,100 +2600,93 @@ fun MainTabBar(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            modifier = Modifier
-                .width(198.dp)
-                .shadow(
-                    elevation = 14.dp,
-                    shape = RoundedCornerShape(30.dp),
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.18f),
-                    spotColor = Color.Black.copy(alpha = 0.28f)
+            .width(240.dp)
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(30.dp),
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.18f),
+                spotColor = Color.Black.copy(alpha = 0.28f)
             ),
-            shape = RoundedCornerShape(30.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+        shape = RoundedCornerShape(30.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val tabs = listOf(
-                    Pair("Главная", Icons.Default.Refresh),
-                    Pair("Прокси", Icons.Default.List),
-                    Pair("Настройки", Icons.Default.Settings),
-                    Pair("Логи", Icons.Default.Info)
+            val tabs = listOf(
+                Pair("Главная", Icons.Default.Refresh),
+                Pair("Прокси", Icons.Default.List),
+                Pair("Настройки", Icons.Default.Settings),
+                Pair("Логи", Icons.Default.Info)
+            )
+
+            tabs.forEachIndexed { index, tab ->
+                val active = selectedTab == index
+                val activeContainer = when (index) {
+                    0 -> MaterialTheme.colorScheme.primaryContainer
+                    1 -> MaterialTheme.colorScheme.secondaryContainer
+                    2 -> MaterialTheme.colorScheme.tertiaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val activeOnContainer = when (index) {
+                    0 -> MaterialTheme.colorScheme.onPrimaryContainer
+                    1 -> MaterialTheme.colorScheme.onSecondaryContainer
+                    2 -> MaterialTheme.colorScheme.onTertiaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val tabWeight by animateFloatAsState(
+                    targetValue = if (active) 1.38f else 0.82f,
+                    label = "tabWeight"
+                )
+                val activeBgColor by animateColorAsState(
+                    targetValue = if (active) activeContainer else Color.Transparent,
+                    label = "tabBg"
+                )
+                val activeContentColor by animateColorAsState(
+                    targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+                    label = "tabContent"
                 )
 
-                tabs.forEachIndexed { index, tab ->
-                    val active = selectedTab == index
-                    val activeContainer = when (index) {
-                        0 -> MaterialTheme.colorScheme.primaryContainer
-                        1 -> MaterialTheme.colorScheme.secondaryContainer
-                        2 -> MaterialTheme.colorScheme.tertiaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                    val activeOnContainer = when (index) {
-                        0 -> MaterialTheme.colorScheme.onPrimaryContainer
-                        1 -> MaterialTheme.colorScheme.onSecondaryContainer
-                        2 -> MaterialTheme.colorScheme.onTertiaryContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    val tabWeight by animateFloatAsState(
-                        targetValue = if (active) 1.38f else 0.82f,
-                        label = "tabWeight"
-                    )
-                    val activeBgColor by animateColorAsState(
-                        targetValue = if (active) activeContainer.copy(alpha = 0.82f) else Color.Transparent,
-                        label = "tabBg"
-                    )
-                    val activeContentColor by animateColorAsState(
-                        targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
-                        label = "tabContent"
-                    )
-
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .weight(tabWeight)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(21.dp))
-                            .background(activeBgColor)
-                            .clickable { onTabSelected(index) }
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(tabWeight)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(21.dp))
+                        .background(activeBgColor)
+                        .clickable { onTabSelected(index) }
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 7.dp)
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp)
-                        ) {
-                            Icon(
-                                imageVector = tab.second,
-                                contentDescription = tab.first,
-                                tint = activeContentColor,
-                                modifier = Modifier.size(if (active) 19.dp else 18.dp)
-                            )
-                            AnimatedVisibility(visible = active) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = tab.first,
-                                        fontSize = 9.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontWeight = FontWeight.Black,
-                                        color = activeContentColor
-                                    )
-                                }
+                        Icon(
+                            imageVector = tab.second,
+                            contentDescription = tab.first,
+                            tint = activeContentColor,
+                            modifier = Modifier.size(if (active) 19.dp else 18.dp)
+                        )
+                        AnimatedVisibility(visible = active) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = tab.first,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Black,
+                                    color = activeContentColor
+                                )
                             }
                         }
                     }
