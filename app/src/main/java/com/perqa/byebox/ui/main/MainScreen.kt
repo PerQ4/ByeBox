@@ -12,6 +12,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +72,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -131,6 +134,7 @@ fun MainScreen(
             color = MaterialTheme.colorScheme.background
         ) {
             var selectedTab by remember { mutableIntStateOf(0) }
+            var headerCollapsed by remember { mutableStateOf(false) }
 
             Box(modifier = modifier.fillMaxSize()) {
                 Column(
@@ -139,7 +143,8 @@ fun MainScreen(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     AppHeader(
-                        status = state.connectionStatus
+                        status = state.connectionStatus,
+                        collapsed = headerCollapsed
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -154,10 +159,26 @@ fun MainScreen(
                             label = "mainTabCrossfade"
                         ) { tab ->
                             when (tab) {
-                                0 -> DashboardTab(state = state, viewModel = viewModel)
-                                1 -> ProxyTab(state = state, viewModel = viewModel)
-                                2 -> SettingsTab(state = state, viewModel = viewModel)
-                                3 -> LogsTab(state = state, viewModel = viewModel)
+                                0 -> DashboardTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onScrollCollapsed = { headerCollapsed = it }
+                                )
+                                1 -> ProxyTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onScrollCollapsed = { headerCollapsed = it }
+                                )
+                                2 -> SettingsTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onScrollCollapsed = { headerCollapsed = it }
+                                )
+                                3 -> LogsTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onScrollCollapsed = { headerCollapsed = it }
+                                )
                             }
                         }
                     }
@@ -179,7 +200,8 @@ fun MainScreen(
 
 @Composable
 fun AppHeader(
-    status: ConnectionStatus
+    status: ConnectionStatus,
+    collapsed: Boolean
 ) {
     val statusColor by animateColorAsState(
         targetValue = when (status) {
@@ -189,11 +211,23 @@ fun AppHeader(
         },
         label = "statusColor"
     )
+    val verticalPadding by animateDpAsState(
+        targetValue = if (collapsed) 2.dp else 6.dp,
+        label = "headerPadding"
+    )
+    val titleSize by animateFloatAsState(
+        targetValue = if (collapsed) 17f else 22f,
+        label = "headerTitleSize"
+    )
+    val titleSpacing by animateFloatAsState(
+        targetValue = if (collapsed) 1.2f else 2f,
+        label = "headerLetterSpacing"
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = verticalPadding),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -201,12 +235,14 @@ fun AppHeader(
             Text(
                 text = "BYEBOX",
                 style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = titleSize.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
+                    letterSpacing = titleSpacing.sp,
                     color = MaterialTheme.colorScheme.primary
                 )
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            AnimatedVisibility(visible = !collapsed) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -226,6 +262,7 @@ fun AppHeader(
                         letterSpacing = 1.sp
                     )
                 )
+                }
             }
         }
         Spacer(modifier = Modifier.width(48.dp))
@@ -235,16 +272,24 @@ fun AppHeader(
 @Composable
 fun DashboardTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel
+    viewModel: MainScreenViewModel,
+    onScrollCollapsed: (Boolean) -> Unit
 ) {
     val activeConfig = state.configs.find { it.id == state.activeConfigId }
     val context = LocalContext.current
     val activity = context.findActivity() as? MainActivity
+    val scrollState = rememberScrollState()
+    val collapsed by remember {
+        derivedStateOf { scrollState.value > 24 }
+    }
+    LaunchedEffect(collapsed) {
+        onScrollCollapsed(collapsed)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -727,10 +772,18 @@ fun SpeedCard(
 @Composable
 fun ProxyTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel
+    viewModel: MainScreenViewModel,
+    onScrollCollapsed: (Boolean) -> Unit
 ) {
     var importUrl by remember { mutableStateOf("") }
     var sortMode by remember { mutableStateOf(NodeSortMode.SOURCE) }
+    val listState = rememberLazyListState()
+    val collapsed by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(collapsed) {
+        onScrollCollapsed(collapsed)
+    }
     val sourceGroups = remember(state.configs, sortMode) {
         state.configs
             .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
@@ -889,6 +942,7 @@ fun ProxyTab(
         Spacer(modifier = Modifier.height(12.dp))
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(bottom = 148.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1216,18 +1270,18 @@ fun ServerItemCard(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val asymmetricShape = RoundedCornerShape(topStart = 20.dp, bottomEnd = 20.dp, topEnd = 10.dp, bottomStart = 10.dp)
+    val rowShape = RoundedCornerShape(20.dp)
     val protocolDetails = remember(config) { config.protocolSummary() }
     val endpointDetails = remember(config) { config.endpointSummary() }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(asymmetricShape)
+            .clip(rowShape)
             .clickable { onSelect() },
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                MaterialTheme.colorScheme.primaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceContainer
             }
@@ -1241,16 +1295,23 @@ fun ServerItemCard(
         ) {
             Text(
                 text = config.countryFlag,
-                fontSize = 24.sp,
-                modifier = Modifier.padding(end = 10.dp)
+                fontSize = 22.sp,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(
+                        if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f)
+                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                    .padding(8.dp)
             )
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = config.name,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1271,12 +1332,10 @@ fun ServerItemCard(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 PingPill(config.ping)
-                Spacer(modifier = Modifier.width(4.dp))
 
-                // Quick Copy Link Button
                 IconButton(
                     onClick = {
                         val link = config.toConfigLink()
@@ -1285,14 +1344,14 @@ fun ServerItemCard(
                             Toast.makeText(context, "Ссылка скопирована!", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(30.dp)
                 ) {
                     CopyIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                 }
 
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(30.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -1375,7 +1434,8 @@ fun PingPill(ping: Int?) {
 @Composable
 fun SettingsTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel
+    viewModel: MainScreenViewModel,
+    onScrollCollapsed: (Boolean) -> Unit
 ) {
     var showAppPicker by remember { mutableStateOf(false) }
     val selectedAppPackages = remember(state.appRoutingPackages) {
@@ -1384,6 +1444,14 @@ fun SettingsTab(
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .toSet()
+    }
+
+    val scrollState = rememberScrollState()
+    val collapsed by remember {
+        derivedStateOf { scrollState.value > 24 }
+    }
+    LaunchedEffect(collapsed) {
+        onScrollCollapsed(collapsed)
     }
 
     if (showAppPicker) {
@@ -1399,7 +1467,7 @@ fun SettingsTab(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp)
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Theme Selection Card
@@ -1971,10 +2039,18 @@ fun ThemeButton(
 @Composable
 fun LogsTab(
     state: MainUiState,
-    viewModel: MainScreenViewModel
+    viewModel: MainScreenViewModel,
+    onScrollCollapsed: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val collapsed by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(collapsed) {
+        onScrollCollapsed(collapsed)
+    }
     val filteredLogs = remember(searchQuery, state.logs) {
         if (searchQuery.isBlank()) {
             state.logs
@@ -1988,20 +2064,23 @@ fun LogsTab(
             .fillMaxSize()
             .padding(horizontal = 8.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Поиск в логах...") },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
                 maxLines = 1,
                 trailingIcon = {
@@ -2013,28 +2092,37 @@ fun LogsTab(
                 }
             )
 
-            Button(
-                onClick = { viewModel.exportLogs(context) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.height(56.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Экспорт", fontWeight = FontWeight.Bold)
-            }
+                Button(
+                    onClick = { viewModel.exportLogs(context) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .height(42.dp)
+                        .weight(1f)
+                ) {
+                    Text("Экспорт", fontWeight = FontWeight.Bold, maxLines = 1)
+                }
 
-            Button(
-                onClick = { viewModel.clearLogs() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
-                    contentColor = MaterialTheme.colorScheme.error
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.height(56.dp)
-            ) {
-                Text("Очистить", fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = { viewModel.clearLogs() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .height(42.dp)
+                        .weight(1f)
+                ) {
+                    Text("Очистить", fontWeight = FontWeight.Bold, maxLines = 1)
+                }
             }
         }
 
@@ -2059,6 +2147,7 @@ fun LogsTab(
                 )
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 132.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
