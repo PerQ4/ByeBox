@@ -19,6 +19,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -853,6 +854,7 @@ fun ProxyTab(
     var controlPanelExpanded by remember { mutableStateOf(true) }
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var swipingConfigId by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val sourceGroups = remember(state.configs, sortMode) {
         state.configs
@@ -913,7 +915,7 @@ fun ProxyTab(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(bottom = 190.dp)
         ) {
             sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
@@ -924,6 +926,16 @@ fun ProxyTab(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
+
+                val firstConfigActive = configs.firstOrNull()?.let { it.id == state.activeConfigId } ?: false
+                val firstConfigSwiping = configs.firstOrNull()?.id == swipingConfigId
+                val headerBottomCorner = if (groupCollapsed || configs.isEmpty() || firstConfigActive || firstConfigSwiping) 28.dp else 6.dp
+                val headerShape = RoundedCornerShape(
+                    topStart = 28.dp,
+                    topEnd = 28.dp,
+                    bottomStart = headerBottomCorner,
+                    bottomEnd = headerBottomCorner
+                )
 
                 stickyHeader(key = "source-$sourceName", contentType = "source") {
                     SourceGroupCard(
@@ -946,20 +958,45 @@ fun ProxyTab(
                             }
                         },
                         showConfigs = false,
-                        shape = RoundedCornerShape(28.dp)
+                        shape = headerShape
                     )
                 }
 
                 if (!groupCollapsed) {
-                    configs.forEach { config ->
+                    configs.forEachIndexed { index, config ->
                         val isActive = config.id == state.activeConfigId
+                        val prevIsActive = index > 0 && configs[index - 1].id == state.activeConfigId
+                        val nextIsActive = index < configs.lastIndex && configs[index + 1].id == state.activeConfigId
+                        val isLast = index == configs.lastIndex
+
+                        val baseTopCorner = when {
+                            isActive -> 28.dp
+                            prevIsActive -> 28.dp
+                            else -> 6.dp
+                        }
+                        val baseBottomCorner = when {
+                            isActive -> 28.dp
+                            nextIsActive -> 28.dp
+                            isLast -> 28.dp
+                            else -> 6.dp
+                        }
+
+                        val prevIsSwipingNeighbor = index > 0 && configs[index - 1].id == swipingConfigId
+                        val nextIsSwipingNeighbor = index < configs.lastIndex && configs[index + 1].id == swipingConfigId
+                        val effectiveTopCorner = if (prevIsSwipingNeighbor) 28.dp else baseTopCorner
+                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) 28.dp else baseBottomCorner
 
                         item(key = "config-${config.id}", contentType = "server") {
                             ServerItemCard(
                                 config = config,
                                 isActive = isActive,
                                 onSelect = { viewModel.selectConfig(config.id) },
-                                onDelete = { viewModel.deleteConfig(config.id) }
+                                onDelete = { viewModel.deleteConfig(config.id) },
+                                topCorner = effectiveTopCorner,
+                                bottomCorner = effectiveBottomCorner,
+                                onSwipingChanged = { isSwiping ->
+                                    swipingConfigId = if (isSwiping) config.id else null
+                                }
                             )
                         }
                     }
@@ -1432,6 +1469,8 @@ fun ServerItemCard(
     isActive: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
+    topCorner: androidx.compose.ui.unit.Dp = 6.dp,
+    bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
     onSwipingChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -1450,8 +1489,34 @@ fun ServerItemCard(
         derivedStateOf { (-swipeOffsetX.value / deleteThresholdPx).coerceIn(0f, 1f) }
     }
 
+    val animTopCorner by animateDpAsState(
+        targetValue = if (isActive) 28.dp else topCorner,
+        animationSpec = tween(260),
+        label = "topCorner"
+    )
+    val animBottomCorner by animateDpAsState(
+        targetValue = if (isActive) 28.dp else bottomCorner,
+        animationSpec = tween(260),
+        label = "bottomCorner"
+    )
+
     val swipeActive = swipeFraction > 0.04f
-    val shape = if (swipeActive || isActive) RoundedCornerShape(28.dp) else RoundedCornerShape(24.dp)
+    val cardTopCorner by animateDpAsState(
+        targetValue = if (swipeActive) 28.dp else animTopCorner,
+        animationSpec = tween(240),
+        label = "swipeTopCorner"
+    )
+    val cardBottomCorner by animateDpAsState(
+        targetValue = if (swipeActive) 28.dp else animBottomCorner,
+        animationSpec = tween(240),
+        label = "swipeBottomCorner"
+    )
+    val shape = RoundedCornerShape(
+        topStart = cardTopCorner,
+        topEnd = cardTopCorner,
+        bottomStart = cardBottomCorner,
+        bottomEnd = cardBottomCorner
+    )
 
     val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
                          else MaterialTheme.colorScheme.surfaceContainer
