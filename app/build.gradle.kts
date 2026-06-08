@@ -32,8 +32,8 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "0.3.0-alpha"
         ndk {
             abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
         }

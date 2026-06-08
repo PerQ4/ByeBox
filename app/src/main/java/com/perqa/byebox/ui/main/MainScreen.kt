@@ -860,6 +860,7 @@ fun ProxyTab(
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var swipingConfigId by remember { mutableStateOf<String?>(null) }
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
+    var configDetails by remember { mutableStateOf<ProxyConfig?>(null) }
     val listState = rememberLazyListState()
     val sourceGroups = remember(state.configs, sortMode) {
         state.configs
@@ -879,6 +880,13 @@ fun ProxyTab(
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 48 }
     }
     val controlPanelCollapsed = !controlPanelExpanded || (autoControlPanelCollapsed && !controlPanelManuallyExpanded)
+
+    configDetails?.let { config ->
+        ConfigDetailsDialog(
+            config = config,
+            onDismiss = { configDetails = null }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -988,11 +996,12 @@ fun ProxyTab(
 
                         val prevIsSwipingNeighbor = index > 0 && configs[index - 1].id == swipingConfigId
                         val nextIsSwipingNeighbor = index < configs.lastIndex && configs[index + 1].id == swipingConfigId
-                        val effectiveTopCorner = if (prevIsSwipingNeighbor) 28.dp else baseTopCorner
-                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) 28.dp else baseBottomCorner
-                        val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 72f).coerceIn(0f, 1f))
+                        val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 96f).coerceIn(0f, 1f))
+                        val neighborRoundnessProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 140f).coerceIn(0f, 1f))
+                        val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, 28.dp, neighborRoundnessProgress) else baseTopCorner
+                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, 28.dp, neighborRoundnessProgress) else baseBottomCorner
                         val neighborOffsetPx = if (prevIsSwipingNeighbor || nextIsSwipingNeighbor) {
-                            kotlin.math.sign(swipingDragPx) * 5.dp.value * neighborFollowProgress
+                            kotlin.math.sign(swipingDragPx) * 3.dp.value * neighborFollowProgress
                         } else {
                             0f
                         }
@@ -1003,6 +1012,7 @@ fun ProxyTab(
                                 isActive = isActive,
                                 onSelect = { viewModel.selectConfig(config.id) },
                                 onDelete = { viewModel.deleteConfig(config.id) },
+                                onOpenSettings = { configDetails = config },
                                 topCorner = effectiveTopCorner,
                                 bottomCorner = effectiveBottomCorner,
                                 neighborOffsetDp = neighborOffsetPx.dp,
@@ -1464,6 +1474,79 @@ fun SourceActionButton(
     }
 }
 
+@Composable
+fun ConfigDetailsDialog(
+    config: ProxyConfig,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = config.name,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                config.description?.takeIf { it.isNotBlank() && it != config.name }?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                        )
+                    )
+                }
+                ConfigDetailLine("Протокол", config.protocolSummary())
+                ConfigDetailLine("Адрес", "${config.address}:${config.port}")
+                ConfigDetailLine("Транспорт", config.network ?: "tcp")
+                config.security?.let { ConfigDetailLine("TLS", it) }
+                config.sni?.let { ConfigDetailLine("SNI", it) }
+                config.flow?.let { ConfigDetailLine("Flow", it) }
+                ConfigDetailLine("Источник", config.sourceName)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Готово")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ConfigDetailLine(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                fontWeight = FontWeight.Bold
+            )
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = value,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 private fun sourceSubtitle(sourceUrl: String?, source: com.perqa.byebox.data.SubscriptionSource?): String {
     val updated = source?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
@@ -1496,6 +1579,7 @@ fun ServerItemCard(
     isActive: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     topCorner: androidx.compose.ui.unit.Dp = 6.dp,
     bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
     neighborOffsetDp: androidx.compose.ui.unit.Dp = 0.dp,
@@ -1511,13 +1595,10 @@ fun ServerItemCard(
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
-    var deleteThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
-    val deleteThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
+    var actionThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
+    val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
     val detachStartPx = remember(density) { with(density) { 14.dp.toPx() } }
     val detachEndPx = remember(density) { with(density) { 58.dp.toPx() } }
-    val swipeFraction by remember {
-        derivedStateOf { (-swipeOffsetX / deleteThresholdPx).coerceIn(0f, 1f) }
-    }
     val detachProgress by remember {
         derivedStateOf {
             smoothStep(((kotlin.math.abs(swipeOffsetX) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
@@ -1529,9 +1610,15 @@ fun ServerItemCard(
             resisted + (swipeOffsetX - resisted) * detachProgress
         }
     }
+    val swipeFraction by remember {
+        derivedStateOf { (-displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
+    }
+    val settingsFraction by remember {
+        derivedStateOf { (displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
+    }
     val roundnessProgress by remember {
         derivedStateOf {
-            smoothStep((kotlin.math.abs(displayOffsetX) / deleteThresholdPx).coerceIn(0f, 1f))
+            smoothStep((kotlin.math.abs(displayOffsetX) / actionThresholdPx).coerceIn(0f, 1f))
         }
     }
 
@@ -1561,7 +1648,25 @@ fun ServerItemCard(
     val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        // Swipe-to-delete reveal background
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = settingsFraction)),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (settingsFraction > 0.08f) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Настройки",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = (settingsFraction * 2.5f).coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .padding(start = 20.dp)
+                        .size(22.dp)
+                )
+            }
+        }
+
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -1593,14 +1698,14 @@ fun ServerItemCard(
                 .pointerInput(config.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
-                            deleteThresholdFeedbackSent = false
+                            actionThresholdFeedbackSent = false
                             tactileFeedback()
                             onSwipingChanged(true)
                             onSwipeOffsetChanged(swipeOffsetX)
                         },
                         onDragEnd = {
                             scope.launch {
-                                if (-swipeOffsetX >= deleteThresholdPx) {
+                                if (-displayOffsetX >= actionThresholdPx) {
                                     tactileFeedback()
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
@@ -1614,6 +1719,18 @@ fun ServerItemCard(
                                     swipeOffsetX = 0f
                                     onSwipeOffsetChanged(0f)
                                     onSwipingChanged(false)
+                                } else if (displayOffsetX >= actionThresholdPx) {
+                                    tactileFeedback()
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
+                                        0f,
+                                        animationSpec = tween(220)
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
+                                    onSwipingChanged(false)
+                                    onOpenSettings()
                                 } else {
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
@@ -1640,9 +1757,14 @@ fun ServerItemCard(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             val newOffset = (swipeOffsetX + dragAmount)
-                                .coerceIn(-size.width.toFloat(), 0f)
-                            if (-newOffset >= deleteThresholdPx && !deleteThresholdFeedbackSent) {
-                                deleteThresholdFeedbackSent = true
+                                .coerceIn(-size.width.toFloat(), size.width.toFloat())
+                            val displayNewOffset = run {
+                                val progress = smoothStep(((kotlin.math.abs(newOffset) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
+                                val resisted = newOffset * 0.48f
+                                resisted + (newOffset - resisted) * progress
+                            }
+                            if (kotlin.math.abs(displayNewOffset) >= actionThresholdPx && !actionThresholdFeedbackSent) {
+                                actionThresholdFeedbackSent = true
                                 tactileFeedback()
                             }
                             swipeOffsetX = newOffset
