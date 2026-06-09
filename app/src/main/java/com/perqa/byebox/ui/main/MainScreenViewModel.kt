@@ -62,6 +62,12 @@ enum class AppRoutingMode(val label: String, val description: String) {
     BYPASS_SELECTED("Обход выбранных", "Приложения из списка идут напрямую, остальные через VPN")
 }
 
+enum class TunStack(val label: String, val description: String) {
+    MIXED("Mixed (рекомендуется)", "gVisor + system — баланс скорости и совместимости"),
+    GVISOR("gVisor", "Полная изоляция стека — максимальная совместимость, ниже скорость"),
+    SYSTEM("System", "Системный стек — максимальная скорость, ниже совместимость")
+}
+
 data class MainUiState(
     val configs: List<ProxyConfig> = emptyList(),
     val subscriptionSources: List<SubscriptionSource> = emptyList(),
@@ -86,7 +92,8 @@ data class MainUiState(
     val isPinging: Boolean = false,
     val toastMessage: String? = null,
     val httpProxyEnabled: Boolean = false,
-    val region: RegionProxyLists.Region = RegionProxyLists.Region.OTHER
+    val region: RegionProxyLists.Region = RegionProxyLists.Region.OTHER,
+    val tunStack: TunStack = TunStack.MIXED
 )
 
 data class InstalledAppInfo(
@@ -116,6 +123,7 @@ class MainScreenViewModel(
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
     private val _region = MutableStateFlow(readEnum(KEY_REGION, RegionProxyLists.Region.OTHER))
     private val _httpProxyEnabled = MutableStateFlow(readBoolean(KEY_HTTP_PROXY_ENABLED, false))
+    private val _tunStack = MutableStateFlow(readEnum(KEY_TUN_STACK, TunStack.MIXED))
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     private val _healthCheckUrl = MutableStateFlow(readString(KEY_HEALTH_CHECK_URL, "https://www.gstatic.com/generate_204"))
     private val _strictHealthCheck = MutableStateFlow(readBoolean(KEY_STRICT_HEALTH_CHECK, false))
@@ -150,7 +158,8 @@ class MainScreenViewModel(
         _isPinging,
         _toastMessage,
         _httpProxyEnabled,
-        _region
+        _region,
+        _tunStack
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         MainUiState(
@@ -177,7 +186,8 @@ class MainScreenViewModel(
             isPinging = flows[20] as Boolean,
             toastMessage = flows[21] as String?,
             httpProxyEnabled = flows[22] as Boolean,
-            region = flows[23] as RegionProxyLists.Region
+            region = flows[23] as RegionProxyLists.Region,
+            tunStack = flows[24] as TunStack
         )
     }.stateIn(
         scope = viewModelScope,
@@ -800,6 +810,13 @@ class MainScreenViewModel(
         showToast("HTTP-прокси: ${if (enabled) "включен" else "выключен"}")
     }
 
+    fun changeTunStack(stack: TunStack) {
+        _tunStack.value = stack
+        writeString(KEY_TUN_STACK, stack.name)
+        addLog("[SYSTEM] TUN стек: ${stack.label}")
+        showToast("TUN стек: ${stack.label}")
+    }
+
     /**
      * Fetch GFW/China package lists from GitHub and apply to app routing.
      * @param include true = proxy list (VPN only for listed apps), false = direct list (bypass for listed apps)
@@ -988,6 +1005,7 @@ class MainScreenViewModel(
         private const val KEY_STRICT_HEALTH_CHECK = "strict_health_check"
         private const val KEY_REGION = "region"
         private const val KEY_HTTP_PROXY_ENABLED = "http_proxy_enabled"
+        private const val KEY_TUN_STACK = "tun_stack"
     }
 }
 

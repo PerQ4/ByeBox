@@ -1,7 +1,6 @@
 package com.perqa.byebox.service
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -70,9 +69,6 @@ class HiddifyVpnService : VpnService(), Runnable {
         val upBytes: Long,
         val source: String
     )
-
-    private val NOTIFICATION_CHANNEL_ID = "byebox_vpn_channel"
-    private val NOTIFICATION_ID = 1001
 
     companion object {
         private val _vpnState = MutableStateFlow(false)
@@ -299,15 +295,11 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.httpProxyEnabled = httpProxy
         saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal, httpProxy)
 
-        createNotificationChannel()
-        val notification = buildNotification(isConnecting = true)
+        createVpnNotification()
+        val notification = buildVpnNotification(isConnecting = true)
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+            VpnNotification.startForeground(this, notification)
         } catch (e: Exception) {
             setCoreState(CoreRuntimeState.FAILED)
             appendCoreLog("startForeground failed: ${e.message}")
@@ -488,7 +480,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         val trafficLine = "${formatSpeed(stats.downSpeed)} down  ${formatSpeed(stats.upSpeed)} up  |  ${formatBytes(stats.downBytes)} down  ${formatBytes(stats.upBytes)} up"
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, buildNotification(trafficLine))
+            notificationManager.notify(VpnNotification.NOTIFICATION_ID, buildVpnNotification(trafficLine))
         } catch (e: Exception) {
             Log.d("HiddifyVpnService", "Traffic notification update failed: ${e.message}")
         }
@@ -562,63 +554,25 @@ class HiddifyVpnService : VpnService(), Runnable {
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "ByeBox VPN Status"
-            val descriptionText = "Displays active VPN connection status"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-                setShowBadge(false)
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
+    private fun createVpnNotification() {
+        VpnNotification.createChannel(this)
     }
 
-    private fun buildNotification(trafficLine: String? = null, isConnecting: Boolean = false): Notification {
-        val pm = packageManager
-        val launchIntent = pm.getLaunchIntentForPackage(packageName)
-            ?: Intent(this, com.perqa.byebox.MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-        val clickPendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
+    private fun buildVpnNotification(trafficLine: String? = null, isConnecting: Boolean = false): Notification {
         val disconnectIntent = Intent(this, HiddifyVpnService::class.java).apply {
             action = ACTION_DISCONNECT
         }
         val disconnectPendingIntent = PendingIntent.getService(
-            this,
-            1,
-            disconnectIntent,
+            this, 1, disconnectIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val title = if (isConnecting) "🟡 ByeBox VPN · $serverName (Подключение)" else "🟢 ByeBox VPN · $serverName"
         val content = trafficLine ?: if (isConnecting) "Соединение..." else "Соединение установлено · Защищено"
+        val subText = listOfNotNull(protocol, serverEndpoint, routingLabel(routingProfile))
+            .filter { it.isNotBlank() }.joinToString(" · ")
 
-        val builder = androidx.core.app.NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(com.perqa.byebox.R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setSubText(listOfNotNull(protocol, serverEndpoint, routingLabel(routingProfile)).filter { it.isNotBlank() }.joinToString(" · "))
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
-            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_SERVICE)
-            .setContentIntent(clickPendingIntent)
-            .addAction(
-                com.perqa.byebox.R.drawable.ic_notification,
-                "Отключить",
-                disconnectPendingIntent
-            )
-
-        return builder.build()
+        return VpnNotification.build(this, title, content, subText, disconnectPendingIntent)
     }
 
     override fun run() {
@@ -741,7 +695,7 @@ class HiddifyVpnService : VpnService(), Runnable {
             appendCoreLog("Connection interrupted. Reconnect ${retryCount + 1}/$maxRetries in $retryDelaySec sec...")
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.notify(NOTIFICATION_ID, buildNotification("Reconnect ${retryCount + 1}/$maxRetries in $retryDelaySec sec...", isConnecting = true))
+                notificationManager.notify(VpnNotification.NOTIFICATION_ID, buildVpnNotification("Reconnect ${retryCount + 1}/$maxRetries in $retryDelaySec sec...", isConnecting = true))
             } catch (e: Exception) {
                 Log.d("HiddifyVpnService", "Reconnect notification update failed: ${e.message}")
             }

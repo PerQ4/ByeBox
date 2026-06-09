@@ -25,6 +25,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -2639,6 +2640,49 @@ fun SettingsTab(
             }
         }
 
+        // TUN Stack Settings Group
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "TUN стек",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TunStack.values().forEachIndexed { index, stack ->
+                    val isSelected = state.tunStack == stack
+                    val shape = when (index) {
+                        0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                        TunStack.values().size - 1 -> RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp, topStart = 4.dp, topEnd = 4.dp)
+                        else -> RoundedCornerShape(4.dp)
+                    }
+                    Surface(
+                        onClick = { viewModel.changeTunStack(stack) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shape,
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = stack.label,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            )
+                            Text(
+                                text = stack.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // App Profile Settings Group
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -2951,6 +2995,17 @@ fun SettingsTabV2(
                 bottom = true,
                 onCheckedChange = viewModel::changeAutostartEnabled
             )
+        }
+
+        SettingsGroup(title = "TUN стек") {
+            TunStack.values().forEachIndexed { index, stack ->
+                SettingsChoiceRow(
+                    title = stack.label,
+                    subtitle = stack.description,
+                    selected = state.tunStack == stack,
+                    onClick = { viewModel.changeTunStack(stack) }
+                )
+            }
         }
 
         SettingsGroup(title = "Профиль приложений") {
