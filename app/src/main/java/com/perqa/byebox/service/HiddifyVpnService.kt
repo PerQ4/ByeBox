@@ -214,6 +214,13 @@ class HiddifyVpnService : VpnService(), Runnable {
             stopSelf()
             return
         }
+        if (prepare(this) != null) {
+            setCoreState(CoreRuntimeState.FAILED)
+            appendCoreLog("VPN permission is missing; start aborted")
+            Log.e("HiddifyVpnService", "VPN permission is missing; start aborted")
+            stopSelf()
+            return
+        }
         stopVpn()
         userStopRequested = false
         isRunning = false
