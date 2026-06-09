@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 enum class CoreRuntimeState {
-    IDLE, MISSING, CONFIG_READY, STARTING, RUNNING, FAILED, STOPPED
+    IDLE, MISSING, CONFIG_READY, STARTING, RUNNING, RECONNECTING, FAILED, STOPPED
 }
 
 class HiddifyVpnService : VpnService(), Runnable {
@@ -511,6 +511,7 @@ class HiddifyVpnService : VpnService(), Runnable {
 
     override fun run() {
         var retryCount = 0
+        val maxRetries = 5
         val maxRetryDelay = 30000L
         var retryDelay = 2000L
 
@@ -593,12 +594,19 @@ class HiddifyVpnService : VpnService(), Runnable {
                 break
             }
 
+            if (retryCount >= maxRetries) {
+                setCoreState(CoreRuntimeState.FAILED)
+                appendCoreLog("Reconnect stopped after $maxRetries failed attempts")
+                break
+            }
+
             // Exponential backoff
             val retryDelaySec = retryDelay / 1000
-            appendCoreLog("Connection interrupted. Reconnect in $retryDelaySec sec...")
+            setCoreState(CoreRuntimeState.RECONNECTING)
+            appendCoreLog("Connection interrupted. Reconnect ${retryCount + 1}/$maxRetries in $retryDelaySec sec...")
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.notify(NOTIFICATION_ID, buildNotification("Reconnect in $retryDelaySec sec...", isConnecting = true))
+                notificationManager.notify(NOTIFICATION_ID, buildNotification("Reconnect ${retryCount + 1}/$maxRetries in $retryDelaySec sec...", isConnecting = true))
             } catch (e: Exception) {
                 Log.d("HiddifyVpnService", "Reconnect notification update failed: ${e.message}")
             }

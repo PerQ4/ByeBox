@@ -30,8 +30,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -215,6 +217,7 @@ fun MainScreen(
                         text = when (state.connectionStatus) {
                             ConnectionStatus.CONNECTED -> "ПОДКЛЮЧЕНО"
                             ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ..."
+                            ConnectionStatus.RECONNECTING -> "ПЕРЕПОДКЛЮЧЕНИЕ..."
                             ConnectionStatus.DISCONNECTED -> "ОТКЛЮЧЕНО"
                         },
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -331,11 +334,11 @@ fun DashboardTab(
             status = state.connectionStatus,
             onClick = {
                 if (activity != null) {
-                    val isConnecting = state.connectionStatus == ConnectionStatus.DISCONNECTED
-                    if (isConnecting) {
+                    val shouldConnect = state.connectionStatus == ConnectionStatus.DISCONNECTED
+                    if (shouldConnect) {
                         viewModel.setConnectingState()
                     }
-                    activity.handleVpnToggle(isConnecting)
+                    activity.handleVpnToggle(shouldConnect)
                 }
             }
         )
@@ -501,6 +504,7 @@ fun StatusOverviewCard(
         targetValue = when (status) {
             ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer
             ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiaryContainer
+            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.errorContainer
             ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
         label = "statusOverviewColor"
@@ -519,6 +523,7 @@ fun StatusOverviewCard(
                 text = when (status) {
                     ConnectionStatus.CONNECTED -> "VPN защищает трафик"
                     ConnectionStatus.CONNECTING -> "Поднимаем VPN-туннель"
+                    ConnectionStatus.RECONNECTING -> "Связь потеряна, переподключаемся"
                     ConnectionStatus.DISCONNECTED -> "VPN отключен"
                 },
                 style = MaterialTheme.typography.titleLarge.copy(
@@ -667,6 +672,7 @@ fun ConnectionButton(
         targetValue = when (status) {
             ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
             ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
+            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
             ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surface
         },
         label = "buttonColor"
@@ -685,7 +691,7 @@ fun ConnectionButton(
             val center = center
             val baseRadius = 80.dp.toPx()
             
-            if (status == ConnectionStatus.CONNECTING) {
+            if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING) {
                 // Wave 1: 5 crests, rotating forward
                 val path1 = androidx.compose.ui.graphics.Path()
                 val steps = 100
@@ -779,13 +785,14 @@ fun ConnectionButton(
                     },
                     modifier = Modifier
                         .size(36.dp)
-                        .rotate(if (status == ConnectionStatus.CONNECTING) progressRotate else 0f)
+                        .rotate(if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING) progressRotate else 0f)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = when (status) {
                         ConnectionStatus.CONNECTED -> "ВКЛЮЧЕНО"
                         ConnectionStatus.CONNECTING -> "ПОИСК..."
+                        ConnectionStatus.RECONNECTING -> "ОТМЕНА"
                         ConnectionStatus.DISCONNECTED -> "СТАРТ"
                     },
                     style = MaterialTheme.typography.titleMedium.copy(
@@ -2340,6 +2347,9 @@ fun SettingsTab(
     state: MainUiState,
     viewModel: MainScreenViewModel
 ) {
+    SettingsTabV2(state = state, viewModel = viewModel)
+    return
+
     var showAppPicker by remember { mutableStateOf(false) }
     val selectedAppPackages = remember(state.appRoutingPackages) {
         state.appRoutingPackages
@@ -2824,6 +2834,450 @@ fun SettingsTab(
         Spacer(modifier = Modifier
             .height(180.dp)
             .navigationBarsPadding())
+    }
+}
+
+@Composable
+fun SettingsTabV2(
+    state: MainUiState,
+    viewModel: MainScreenViewModel
+) {
+    var showAppPicker by remember { mutableStateOf(false) }
+    val selectedAppPackages = remember(state.appRoutingPackages) {
+        state.appRoutingPackages
+            .split(',', '\n', '\r', ';', ' ', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+    val scrollState = rememberScrollState()
+    val tactileFeedback = rememberTactileFeedback()
+
+    if (showAppPicker) {
+        AppPickerDialog(
+            apps = state.installedApps,
+            selectedPackages = selectedAppPackages,
+            onToggle = viewModel::toggleAppRoutingPackage,
+            onDismiss = { showAppPicker = false }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        SettingsHeroCard(
+            status = state.connectionStatus,
+            routingProfile = state.routingProfile,
+            dnsServer = state.dnsServer,
+            appRoutingMode = state.appRoutingMode
+        )
+
+        SettingsGroup(title = "Внешний вид") {
+            SettingsThemeGrid(state = state, viewModel = viewModel)
+        }
+
+        SettingsGroup(title = "Маршрутизация") {
+            RoutingProfile.values().forEachIndexed { index, profile ->
+                SettingsChoiceRow(
+                    title = profile.label,
+                    subtitle = when (profile) {
+                        RoutingProfile.BYPASS_LAN_CN_RU -> "Локальные сети и популярные региональные диапазоны идут напрямую"
+                        RoutingProfile.PROXY_ALL -> "Весь трафик устройства проходит через выбранный узел"
+                        RoutingProfile.DIRECT -> "Туннель не забирает трафик, удобно для диагностики"
+                        RoutingProfile.BLOCK_ADS -> "Прокси с DNS-фильтрацией рекламы"
+                    },
+                    selected = state.routingProfile == profile,
+                    top = index == 0,
+                    bottom = index == RoutingProfile.values().lastIndex,
+                    onClick = {
+                        tactileFeedback()
+                        viewModel.changeRoutingProfile(profile)
+                    }
+                )
+            }
+        }
+
+        SettingsGroup(title = "DNS") {
+            DnsServer.values().forEachIndexed { index, dns ->
+                SettingsChoiceRow(
+                    title = dns.label,
+                    subtitle = dns.address,
+                    selected = state.dnsServer == dns,
+                    top = index == 0,
+                    bottom = index == DnsServer.values().lastIndex,
+                    onClick = {
+                        tactileFeedback()
+                        viewModel.changeDnsServer(dns)
+                    }
+                )
+            }
+        }
+
+        SettingsGroup(title = "Android VPN") {
+            SettingsSwitchRow(
+                title = "IPv6 в туннеле",
+                subtitle = "Временно отключено, пока TUN стабилизирован в IPv4-only",
+                checked = false,
+                enabled = false,
+                top = true,
+                onCheckedChange = {}
+            )
+            SettingsSwitchRow(
+                title = "Обход локальных сетей",
+                subtitle = "LAN, loopback и link-local сети не попадают в VPN",
+                checked = state.lanBypassEnabled,
+                onCheckedChange = viewModel::changeLanBypassEnabled
+            )
+            SettingsSwitchRow(
+                title = "Разрешить системный bypass",
+                subtitle = "Приложения смогут обходить VPN через Android API",
+                checked = state.systemBypassEnabled,
+                onCheckedChange = viewModel::changeSystemBypassEnabled
+            )
+            SettingsSwitchRow(
+                title = "Лимитная сеть",
+                subtitle = "Android будет считать VPN metered-соединением",
+                checked = state.meteredNetwork,
+                onCheckedChange = viewModel::changeMeteredNetwork
+            )
+            SettingsSwitchRow(
+                title = "Автозапуск",
+                subtitle = "Поднимать последний профиль после перезагрузки устройства",
+                checked = state.autostartEnabled,
+                bottom = true,
+                onCheckedChange = viewModel::changeAutostartEnabled
+            )
+        }
+
+        SettingsGroup(title = "Профиль приложений") {
+            AppRoutingMode.values().forEachIndexed { index, mode ->
+                SettingsChoiceRow(
+                    title = mode.label,
+                    subtitle = mode.description,
+                    selected = state.appRoutingMode == mode,
+                    top = index == 0,
+                    bottom = false,
+                    onClick = {
+                        tactileFeedback()
+                        viewModel.changeAppRoutingMode(mode)
+                    }
+                )
+            }
+            SettingsActionRow(
+                title = "Выбранные приложения",
+                subtitle = "${selectedAppPackages.size} пакетов",
+                button = "Выбрать",
+                enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                onClick = {
+                    tactileFeedback()
+                    showAppPicker = true
+                }
+            )
+            SettingsInputRow(
+                value = state.appRoutingPackages,
+                onValueChange = viewModel::changeAppRoutingPackages,
+                placeholder = "org.telegram.messenger\ncom.discord",
+                enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                bottom = true
+            )
+        }
+
+        SettingsGroup(title = "Проверка узлов") {
+            SettingsHealthRow(
+                value = state.healthCheckUrl,
+                onValueChange = viewModel::changeHealthCheckUrl,
+                onTest = viewModel::testHealthCheckUrl,
+                top = true
+            )
+            SettingsSwitchRow(
+                title = "Строгий фильтр",
+                subtitle = "Узел считается рабочим только если ресурс доступен",
+                checked = state.strictHealthCheck,
+                bottom = true,
+                onCheckedChange = viewModel::changeStrictHealthCheck
+            )
+        }
+
+        Spacer(
+            modifier = Modifier
+                .height(190.dp)
+                .navigationBarsPadding()
+        )
+    }
+}
+
+@Composable
+private fun SettingsHeroCard(
+    status: ConnectionStatus,
+    routingProfile: RoutingProfile,
+    dnsServer: DnsServer,
+    appRoutingMode: AppRoutingMode
+) {
+    val color by animateColorAsState(
+        targetValue = when (status) {
+            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer
+            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiaryContainer
+            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.errorContainer
+            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        label = "settingsHeroColor"
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(30.dp),
+        color = color
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = when (status) {
+                    ConnectionStatus.CONNECTED -> "VPN подключен"
+                    ConnectionStatus.CONNECTING -> "Поднимаем туннель"
+                    ConnectionStatus.RECONNECTING -> "Идёт переподключение"
+                    ConnectionStatus.DISCONNECTED -> "VPN отключен"
+                },
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InfoChip(text = routingProfile.label, modifier = Modifier.weight(1f))
+                InfoChip(text = dnsServer.label, modifier = Modifier.weight(1f))
+            }
+            InfoChip(text = appRoutingMode.label, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(start = 8.dp),
+            style = MaterialTheme.typography.titleMedium.copy(
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Black
+            )
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp), content = content)
+    }
+}
+
+@Composable
+private fun SettingsThemeGrid(
+    state: MainUiState,
+    viewModel: MainScreenViewModel
+) {
+    val themes = listOf(
+        Triple("System", AppTheme.SYSTEM_DYNAMIC, MaterialTheme.colorScheme.primary),
+        Triple("Slate", AppTheme.MIDNIGHT_AURORA, Color(0xFFB4C6E7)),
+        Triple("Desert", AppTheme.SOLAR_FLARE, Color(0xFFE2B697)),
+        Triple("Sage", AppTheme.FOREST_CYBER, Color(0xFFA3B899))
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        themes.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                row.forEach { (label, theme, accent) ->
+                    ThemeButton(
+                        label = label,
+                        theme = theme,
+                        active = state.appTheme == theme,
+                        accentColor = accent,
+                        onClick = { viewModel.changeTheme(theme) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsChoiceRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    top: Boolean = false,
+    bottom: Boolean = false,
+    onClick: () -> Unit
+) {
+    SettingsRowSurface(top = top, bottom = bottom, selected = selected, onClick = onClick) {
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val radius = size.minDimension / 2
+            if (selected) {
+                drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius)
+                drawCircle(color = Color.Black.copy(alpha = 0.28f), radius = radius / 2.6f)
+            } else {
+                drawCircle(color = Color.White.copy(alpha = 0.38f), radius = radius - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
+            }
+        }
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    top: Boolean = false,
+    bottom: Boolean = false,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val tactileFeedback = rememberTactileFeedback()
+    SettingsRowSurface(
+        top = top,
+        bottom = bottom,
+        selected = checked && enabled,
+        enabled = enabled,
+        onClick = {
+            tactileFeedback()
+            onCheckedChange(!checked)
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = if (checked && enabled) 0.42f else 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    subtitle: String,
+    button: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    SettingsRowSurface(onClick = onClick, enabled = enabled) {
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            shape = RoundedCornerShape(18.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(button, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun SettingsInputRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    bottom: Boolean
+) {
+    SettingsRowSurface(bottom = bottom, enabled = enabled) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder) },
+            enabled = enabled,
+            minLines = 2,
+            maxLines = 4,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingsHealthRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onTest: () -> Unit,
+    top: Boolean
+) {
+    SettingsRowSurface(top = top) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text("URL ресурса") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(20.dp)
+        )
+        IconButton(onClick = onTest) {
+            Icon(Icons.Default.Search, contentDescription = "Проверить")
+        }
+    }
+}
+
+@Composable
+private fun SettingsRowSurface(
+    top: Boolean = false,
+    bottom: Boolean = false,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit
+) {
+    val shape = when {
+        top && bottom -> RoundedCornerShape(28.dp)
+        top -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 10.dp, bottomEnd = 10.dp)
+        bottom -> RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 28.dp, bottomEnd = 28.dp)
+        else -> RoundedCornerShape(10.dp)
+    }
+    val targetColor = when {
+        selected -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    val color by animateColorAsState(targetValue = targetColor, label = "settingsRowColor")
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(color.copy(alpha = if (enabled) 1f else 0.52f))
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled) { onClick() } else Modifier)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
+private fun SettingsRowText(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.48f),
+                fontWeight = FontWeight.Bold
+            )
+        )
+        Text(
+            text = subtitle,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.62f else 0.36f)
+            )
+        )
     }
 }
 

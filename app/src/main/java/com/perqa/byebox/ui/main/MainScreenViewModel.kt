@@ -37,6 +37,7 @@ import kotlin.system.measureTimeMillis
 enum class ConnectionStatus {
     DISCONNECTED,
     CONNECTING,
+    RECONNECTING,
     CONNECTED
 }
 
@@ -228,9 +229,19 @@ class MainScreenViewModel(
                 val shouldDisconnect = when (coreState) {
                     com.perqa.byebox.service.CoreRuntimeState.FAILED -> true
                     com.perqa.byebox.service.CoreRuntimeState.STOPPED ->
-                        _connectionStatus.value == ConnectionStatus.CONNECTED &&
+                        _connectionStatus.value != ConnectionStatus.DISCONNECTED &&
                             !com.perqa.byebox.service.HiddifyVpnService.isRunning
                     else -> false
+                }
+                if (coreState == com.perqa.byebox.service.CoreRuntimeState.RECONNECTING) {
+                    trafficJob?.cancel()
+                    _connectionStatus.value = ConnectionStatus.RECONNECTING
+                    _downloadSpeed.value = "0.0 KB/s"
+                    _uploadSpeed.value = "0.0 KB/s"
+                    return@collect
+                }
+                if (coreState == com.perqa.byebox.service.CoreRuntimeState.STARTING && _connectionStatus.value != ConnectionStatus.CONNECTED) {
+                    _connectionStatus.value = ConnectionStatus.CONNECTING
                 }
                 if (shouldDisconnect) {
                     if (_connectionStatus.value != ConnectionStatus.DISCONNECTED) {
