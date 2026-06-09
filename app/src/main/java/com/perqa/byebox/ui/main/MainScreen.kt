@@ -71,10 +71,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -85,6 +88,7 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Divider
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.core.Animatable
@@ -848,13 +852,16 @@ fun SpeedCard(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 fun ProxyTab(
     state: MainUiState,
     viewModel: MainScreenViewModel
 ) {
     var importUrl by remember { mutableStateOf("") }
+    var importUrlError by remember { mutableStateOf(false) }
+    var nodeSearchQuery by remember { mutableStateOf("") }
     var sortMode by remember { mutableStateOf(NodeSortMode.SOURCE) }
+    var showProxyToolsSheet by remember { mutableStateOf(false) }
     var controlPanelExpanded by remember { mutableStateOf(true) }
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -862,8 +869,23 @@ fun ProxyTab(
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
     var configDetails by remember { mutableStateOf<ProxyConfig?>(null) }
     val listState = rememberLazyListState()
-    val sourceGroups = remember(state.configs, sortMode) {
+    val sourceGroups = remember(state.configs, sortMode, nodeSearchQuery) {
+        val query = nodeSearchQuery.trim().lowercase()
         state.configs
+            .asSequence()
+            .filter { config ->
+                query.isEmpty() ||
+                    config.name.lowercase().contains(query) ||
+                    config.sourceName.lowercase().contains(query) ||
+                    config.address.lowercase().contains(query) ||
+                    config.protocol.lowercase().contains(query) ||
+                    config.countryFlag.lowercase().contains(query) ||
+                    (config.description?.lowercase()?.contains(query) == true) ||
+                    (config.sni?.lowercase()?.contains(query) == true) ||
+                    (config.network?.lowercase()?.contains(query) == true) ||
+                    (config.security?.lowercase()?.contains(query) == true)
+            }
+            .toList()
             .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
             .mapValues { (_, configs) -> configs.sortedFor(sortMode) }
             .toList()
@@ -882,10 +904,37 @@ fun ProxyTab(
     val controlPanelCollapsed = !controlPanelExpanded || (autoControlPanelCollapsed && !controlPanelManuallyExpanded)
 
     configDetails?.let { config ->
-        ConfigDetailsDialog(
-            config = config,
-            onDismiss = { configDetails = null }
-        )
+        ModalBottomSheet(
+            onDismissRequest = { configDetails = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            ConfigDetailsSheet(
+                config = config,
+                onDismiss = { configDetails = null }
+            )
+        }
+    }
+
+    if (showProxyToolsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showProxyToolsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            ProxyToolsSheet(
+                sortMode = sortMode,
+                onSortModeSelected = {
+                    sortMode = it
+                    showProxyToolsSheet = false
+                },
+                searchQuery = nodeSearchQuery,
+                onSearchQueryChange = { nodeSearchQuery = it },
+                resultCount = sourceGroups.sumOf { it.second.size },
+                totalCount = state.configs.size,
+                onClearSearch = { nodeSearchQuery = "" }
+            )
+        }
     }
 
     Column(
@@ -898,7 +947,13 @@ fun ProxyTab(
             configCount = state.configs.size,
             isPinging = state.isPinging,
             importUrl = importUrl,
-            onImportUrlChange = { importUrl = it },
+            onImportUrlChange = {
+                importUrl = it
+                importUrlError = false
+            },
+            importUrlError = importUrlError,
+            searchQuery = nodeSearchQuery,
+            onSearchQueryChange = { nodeSearchQuery = it },
             collapsed = controlPanelCollapsed,
             onToggleExpanded = {
                 if (controlPanelCollapsed) {
@@ -910,15 +965,16 @@ fun ProxyTab(
                 }
             },
             sortMode = sortMode,
-            onSortModeSelected = { sortMode = it },
+            onOpenFilters = { showProxyToolsSheet = true },
             onRefreshSubscriptions = { viewModel.refreshSubscriptions() },
             onPingAll = { viewModel.testPings() },
             onAddConfig = {
                 if (importUrl.isNotBlank()) {
                     viewModel.addConfigFromUrl(importUrl)
                     importUrl = ""
+                    importUrlError = false
                 } else {
-                    viewModel.showToast("Вставьте ссылку в поле!")
+                    importUrlError = true
                 }
             }
         )
@@ -931,6 +987,14 @@ fun ProxyTab(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(bottom = 190.dp)
         ) {
+            if (sourceGroups.isEmpty()) {
+                item(key = "proxy-empty", contentType = "empty") {
+                    ProxyEmptyState(
+                        hasSearch = nodeSearchQuery.isNotBlank(),
+                        onClearSearch = { nodeSearchQuery = "" }
+                    )
+                }
+            }
             sourceGroups.forEachIndexed { groupIndex, (sourceName, configs) ->
                 val groupCollapsed = sourceName in collapsedGroupKeys
 
@@ -1050,10 +1114,13 @@ fun ProxyControlPanel(
     isPinging: Boolean,
     importUrl: String,
     onImportUrlChange: (String) -> Unit,
+    importUrlError: Boolean,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     collapsed: Boolean,
     onToggleExpanded: () -> Unit,
     sortMode: NodeSortMode,
-    onSortModeSelected: (NodeSortMode) -> Unit,
+    onOpenFilters: () -> Unit,
     onRefreshSubscriptions: () -> Unit,
     onPingAll: () -> Unit,
     onAddConfig: () -> Unit
@@ -1109,9 +1176,29 @@ fun ProxyControlPanel(
                 }
             }
 
+            AnimatedVisibility(visible = isPinging) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clip(RoundedCornerShape(999.dp)),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            }
+
             AnimatedVisibility(visible = !collapsed) {
                 Column {
                     Spacer(modifier = Modifier.height(10.dp))
+                    ProxySearchField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        onOpenFilters = {
+                            tactileFeedback()
+                            onOpenFilters()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = importUrl,
                         onValueChange = onImportUrlChange,
@@ -1124,8 +1211,7 @@ fun ProxyControlPanel(
                             )
                         },
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp),
+                            .fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color.Transparent,
@@ -1133,7 +1219,13 @@ fun ProxyControlPanel(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         ),
-                        maxLines = 1
+                        maxLines = 1,
+                        isError = importUrlError,
+                        supportingText = if (importUrlError) {
+                            { Text("Вставьте ссылку на конфиг или подписку") }
+                        } else {
+                            null
+                        }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     CompositionLocalProvider(
@@ -1204,9 +1296,13 @@ fun ProxyControlPanel(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    SortModeBar(
+                    SortSummaryBar(
                         selected = sortMode,
-                        onSelected = onSortModeSelected
+                        searchQuery = searchQuery,
+                        onOpenFilters = {
+                            tactileFeedback()
+                            onOpenFilters()
+                        }
                     )
                 }
             }
@@ -1223,57 +1319,286 @@ private fun List<ProxyConfig>.sortedFor(mode: NodeSortMode): List<ProxyConfig> {
 }
 
 @Composable
-fun SortModeBar(
-    selected: NodeSortMode,
-    onSelected: (NodeSortMode) -> Unit
+fun ProxySearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onOpenFilters: () -> Unit
 ) {
-    val tactileFeedback = rememberTactileFeedback()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 0.dp
     ) {
-        NodeSortMode.values().forEach { mode ->
-            val active = selected == mode
-            Button(
-                onClick = {
-                    if (!active) {
-                        tactileFeedback()
-                    }
-                    onSelected(mode)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .padding(start = 14.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(19.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = {
+                    Text(
+                        text = "Поиск узлов, стран, протоколов",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(34.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (active) {
-                        when (mode) {
-                            NodeSortMode.SOURCE -> MaterialTheme.colorScheme.primaryContainer
-                            NodeSortMode.PING -> MaterialTheme.colorScheme.tertiaryContainer
-                            NodeSortMode.NAME -> MaterialTheme.colorScheme.secondaryContainer
-                        }
-                    } else {
-                        Color.Transparent
-                    },
-                    contentColor = if (active) {
-                        when (mode) {
-                            NodeSortMode.SOURCE -> MaterialTheme.colorScheme.onPrimaryContainer
-                            NodeSortMode.PING -> MaterialTheme.colorScheme.onTertiaryContainer
-                            NodeSortMode.NAME -> MaterialTheme.colorScheme.onSecondaryContainer
-                        }
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                ),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                    .fillMaxHeight(),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
+            )
+            IconButton(
+                onClick = onOpenFilters,
+                modifier = Modifier.size(40.dp)
             ) {
-                Text(mode.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Сортировка и фильтры",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
+        }
+    }
+}
+
+@Composable
+fun ProxyEmptyState(
+    hasSearch: Boolean,
+    onClearSearch: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+            Text(
+                text = if (hasSearch) "Ничего не найдено" else "Нет конфигураций",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = if (hasSearch) {
+                    "Попробуйте изменить запрос или сбросить фильтр."
+                } else {
+                    "Добавьте ссылку на конфиг или подписку выше."
+                },
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                textAlign = TextAlign.Center
+            )
+            if (hasSearch) {
+                TextButton(onClick = onClearSearch) {
+                    Text("Сбросить поиск", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProxyToolsSheet(
+    sortMode: NodeSortMode,
+    onSortModeSelected: (NodeSortMode) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    resultCount: Int,
+    totalCount: Int,
+    onClearSearch: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "Поиск и сортировка",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+        )
+        Text(
+            text = "$resultCount из $totalCount узлов",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+        )
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null)
+            },
+            trailingIcon = if (searchQuery.isNotBlank()) {
+                {
+                    TextButton(onClick = onClearSearch) {
+                        Text("Сброс")
+                    }
+                }
+            } else {
+                null
+            },
+            placeholder = { Text("Имя, страна, адрес, протокол") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(22.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+        )
+
+        Text(
+            text = "Сортировка",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            NodeSortMode.values().forEachIndexed { index, mode ->
+                val selected = sortMode == mode
+                val shape = when (index) {
+                    0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 6.dp, bottomEnd = 6.dp)
+                    NodeSortMode.values().lastIndex -> RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+                    else -> RoundedCornerShape(6.dp)
+                }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .clickable { onSortModeSelected(mode) },
+                    shape = shape,
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SortSummaryBar(
+    selected: NodeSortMode,
+    searchQuery: String,
+    onOpenFilters: () -> Unit
+) {
+    val label = if (searchQuery.isBlank()) {
+        "Сортировка: ${selected.label}"
+    } else {
+        "Фильтр: $searchQuery"
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpenFilters),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = "Открыть фильтры",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(18.dp)
+                    .rotate(90f)
+            )
         }
     }
 }
@@ -1475,45 +1800,120 @@ fun SourceActionButton(
 }
 
 @Composable
-fun ConfigDetailsDialog(
+fun ConfigDetailsSheet(
     config: ProxyConfig,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = config.name,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                config.description?.takeIf { it.isNotBlank() && it != config.name }?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
-                        )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Text(
+                    text = config.countryFlag,
+                    fontSize = 23.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = config.name,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+                Text(
+                    text = config.protocolSummary(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
-                }
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Закрыть")
+            }
+        }
+
+        config.description?.takeIf { it.isNotBlank() && it != config.name }?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(26.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 ConfigDetailLine("Протокол", config.protocolSummary())
                 ConfigDetailLine("Адрес", "${config.address}:${config.port}")
                 ConfigDetailLine("Транспорт", config.network ?: "tcp")
                 config.security?.let { ConfigDetailLine("TLS", it) }
                 config.sni?.let { ConfigDetailLine("SNI", it) }
                 config.flow?.let { ConfigDetailLine("Flow", it) }
+                config.wsPath?.let { ConfigDetailLine("Path", it) }
+                config.grpcServiceName?.let { ConfigDetailLine("gRPC", it) }
                 ConfigDetailLine("Источник", config.sourceName)
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Готово")
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Text("Готово", fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Text("Настройки", fontWeight = FontWeight.Bold)
             }
         }
-    )
+    }
 }
 
 @Composable
