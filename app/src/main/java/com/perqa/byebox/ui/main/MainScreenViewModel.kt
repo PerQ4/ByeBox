@@ -222,6 +222,32 @@ class MainScreenViewModel(
                 }
             }
         }
+
+        viewModelScope.launch {
+            com.perqa.byebox.service.HiddifyVpnService.coreState.collect { coreState ->
+                val shouldDisconnect = when (coreState) {
+                    com.perqa.byebox.service.CoreRuntimeState.FAILED -> true
+                    com.perqa.byebox.service.CoreRuntimeState.STOPPED ->
+                        _connectionStatus.value == ConnectionStatus.CONNECTED &&
+                            !com.perqa.byebox.service.HiddifyVpnService.isRunning
+                    else -> false
+                }
+                if (shouldDisconnect) {
+                    if (_connectionStatus.value != ConnectionStatus.DISCONNECTED) {
+                        trafficJob?.cancel()
+                        _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                        _downloadSpeed.value = "0.0 KB/s"
+                        _uploadSpeed.value = "0.0 KB/s"
+                        if (coreState == com.perqa.byebox.service.CoreRuntimeState.FAILED) {
+                            addLog("[ERROR] Сбой ядра sing-box при запуске. Проверьте логи.")
+                            showToast("Сбой подключения")
+                        } else {
+                            addLog("[INFO] Соединение остановлено.")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun setConnectingState() {
@@ -710,6 +736,10 @@ class MainScreenViewModel(
     fun changeAppRoutingMode(mode: AppRoutingMode) {
         _appRoutingMode.value = mode
         writeString(KEY_APP_ROUTING_MODE, mode.name)
+        if (mode == AppRoutingMode.OFF) {
+            _appRoutingPackages.value = ""
+            writeString(KEY_APP_ROUTING_PACKAGES, "")
+        }
         addLog("[SYSTEM] Профиль приложений VPN: ${mode.label}")
         showToast("Приложения: ${mode.label}")
     }

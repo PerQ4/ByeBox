@@ -2,6 +2,7 @@ package com.perqa.byebox.core
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
@@ -187,6 +188,8 @@ class BoxService(private val context: Context) {
         private val context: Context,
         private val vpnService: VpnService?
     ) : PlatformInterface {
+        private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
         override fun localDNSTransport(): LocalDNSTransport? = null
 
@@ -218,7 +221,7 @@ class BoxService(private val context: Context) {
             if (!hasPermission) {
                 throw Exception("android: missing vpn permission")
             }
-            
+
             val builder = service.Builder()
                 .setSession("ByeBox: ${service.serverName}")
                 .setMtu(if (options.getMTU() > 0) options.getMTU() else 9000)
@@ -240,21 +243,80 @@ class BoxService(private val context: Context) {
             }
             
             // Add Routes
-            val inet4Routes = options.getInet4RouteRange()
-            if (inet4Routes != null) {
-                while (inet4Routes.hasNext()) {
-                    val prefix = inet4Routes.next()
-                    builder.addRoute(prefix.address(), prefix.prefix())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val inet4RouteAddress = options.getInet4RouteAddress()
+                if (inet4RouteAddress != null && inet4RouteAddress.hasNext()) {
+                    while (inet4RouteAddress.hasNext()) {
+                        val prefix = inet4RouteAddress.next()
+                        try {
+                            builder.addRoute(android.net.IpPrefix(java.net.InetAddress.getByName(prefix.address()), prefix.prefix()))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to add IPv4 route: ${prefix.address()}/${prefix.prefix()}", e)
+                        }
+                    }
+                } else {
+                    builder.addRoute("0.0.0.0", 0)
+                }
+
+                val inet6RouteAddress = options.getInet6RouteAddress()
+                if (inet6RouteAddress != null && inet6RouteAddress.hasNext()) {
+                    while (inet6RouteAddress.hasNext()) {
+                        val prefix = inet6RouteAddress.next()
+                        try {
+                            builder.addRoute(android.net.IpPrefix(java.net.InetAddress.getByName(prefix.address()), prefix.prefix()))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to add IPv6 route: ${prefix.address()}/${prefix.prefix()}", e)
+                        }
+                    }
+                } else if (service.ipv6Enabled) {
+                    builder.addRoute("::", 0)
+                }
+
+                val inet4RouteExcludeAddress = options.getInet4RouteExcludeAddress()
+                if (inet4RouteExcludeAddress != null) {
+                    while (inet4RouteExcludeAddress.hasNext()) {
+                        val prefix = inet4RouteExcludeAddress.next()
+                        try {
+                            builder.excludeRoute(android.net.IpPrefix(java.net.InetAddress.getByName(prefix.address()), prefix.prefix()))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to exclude IPv4 route: ${prefix.address()}/${prefix.prefix()}", e)
+                        }
+                    }
+                }
+
+                val inet6RouteExcludeAddress = options.getInet6RouteExcludeAddress()
+                if (inet6RouteExcludeAddress != null) {
+                    while (inet6RouteExcludeAddress.hasNext()) {
+                        val prefix = inet6RouteExcludeAddress.next()
+                        try {
+                            builder.excludeRoute(android.net.IpPrefix(java.net.InetAddress.getByName(prefix.address()), prefix.prefix()))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to exclude IPv6 route: ${prefix.address()}/${prefix.prefix()}", e)
+                        }
+                    }
+                }
+            } else {
+                val inet4Routes = options.getInet4RouteRange()
+                if (inet4Routes != null && inet4Routes.hasNext()) {
+                    while (inet4Routes.hasNext()) {
+                        val prefix = inet4Routes.next()
+                        builder.addRoute(prefix.address(), prefix.prefix())
+                    }
+                } else {
+                    builder.addRoute("0.0.0.0", 0)
+                }
+
+                val inet6Routes = options.getInet6RouteRange()
+                if (inet6Routes != null && inet6Routes.hasNext()) {
+                    while (inet6Routes.hasNext()) {
+                        val prefix = inet6Routes.next()
+                        builder.addRoute(prefix.address(), prefix.prefix())
+                    }
+                } else if (service.ipv6Enabled) {
+                    builder.addRoute("::", 0)
                 }
             }
-            val inet6Routes = options.getInet6RouteRange()
-            if (inet6Routes != null) {
-                while (inet6Routes.hasNext()) {
-                    val prefix = inet6Routes.next()
-                    builder.addRoute(prefix.address(), prefix.prefix())
-                }
-            }
-            
+
             // Add DNS Servers
             try {
                 val dnsServers = options.getDNSServerAddress()
@@ -363,10 +425,73 @@ class BoxService(private val context: Context) {
 
         override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
             Log.d(TAG, "startDefaultInterfaceMonitor")
+            if (listener == null) return
+
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    updateInterface(network)
+                }
+
+                override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                    updateInterface(network)
+                }
+
+                override fun onLost(network: Network) {
+                    Log.d(TAG, "Default network lost")
+                    listener.updateDefaultInterface("", -1, false, false)
+                }
+
+                private fun updateInterface(network: Network) {
+                    val linkProperties = connectivity.getLinkProperties(network) ?: return
+                    val interfaceName = linkProperties.interfaceName ?: return
+                    var interfaceIndex = -1
+                    try {
+                        interfaceIndex = java.net.NetworkInterface.getByName(interfaceName)?.index ?: -1
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to get interface index for $interfaceName", e)
+                    }
+                    Log.d(TAG, "Default network interface updated: $interfaceName ($interfaceIndex)")
+                    listener.updateDefaultInterface(interfaceName, interfaceIndex, false, false)
+                }
+            }
+
+            defaultNetworkCallback = callback
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    connectivity.registerDefaultNetworkCallback(callback)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register default network callback", e)
+            }
+
+            // Immediately notify listener of current active interface if available
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val activeNet = connectivity.activeNetwork
+                if (activeNet != null) {
+                    val linkProperties = connectivity.getLinkProperties(activeNet)
+                    val interfaceName = linkProperties?.interfaceName
+                    if (interfaceName != null) {
+                        var interfaceIndex = -1
+                        try {
+                            interfaceIndex = java.net.NetworkInterface.getByName(interfaceName)?.index ?: -1
+                        } catch (_: Exception) {}
+                        listener.updateDefaultInterface(interfaceName, interfaceIndex, false, false)
+                    }
+                }
+            }
         }
 
         override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
             Log.d(TAG, "closeDefaultInterfaceMonitor")
+            val callback = defaultNetworkCallback
+            if (callback != null) {
+                try {
+                    connectivity.unregisterNetworkCallback(callback)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to unregister network callback", e)
+                }
+                defaultNetworkCallback = null
+            }
         }
 
         override fun getInterfaces(): NetworkInterfaceIterator? {

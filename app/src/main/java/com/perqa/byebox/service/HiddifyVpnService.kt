@@ -39,7 +39,7 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var serverEndpoint: String = ""
     private var protocol: String = "PROXY"
     private var routingProfile: String = "BYPASS_LAN_CN_RU"
-    private var ipv6Enabled: Boolean = false
+    var ipv6Enabled: Boolean = false
     private var lanBypassEnabled: Boolean = true
     var systemBypassEnabled: Boolean = false
     var meteredNetwork: Boolean = false
@@ -48,6 +48,9 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var activeConfig: ProxyConfig? = null
     private var boxService: BoxService? = null
     private var statsThread: Thread? = null
+
+    @Volatile
+    private var userStopRequested = false
 
     private data class TrafficSnapshot(
         val downBytes: Long,
@@ -84,13 +87,17 @@ class HiddifyVpnService : VpnService(), Runnable {
 
         private var lastTrafficDown: Long = 0L
         private var lastTrafficUp: Long = 0L
+        private var sessionStartDown: Long = 0L
+        private var sessionStartUp: Long = 0L
         private var lastTrafficTime: Long = 0L
 
         private fun resetTrafficBaseline(down: Long = 0L, up: Long = 0L) {
             lastTrafficDown = down
             lastTrafficUp = up
+            sessionStartDown = down
+            sessionStartUp = up
             lastTrafficTime = System.currentTimeMillis()
-            _trafficStats.value = TrafficStats(downBytes = down, upBytes = up)
+            _trafficStats.value = TrafficStats(downBytes = 0L, upBytes = 0L)
         }
 
         private fun updateTraffic(down: Long, up: Long): TrafficStats {
@@ -102,8 +109,8 @@ class HiddifyVpnService : VpnService(), Runnable {
             lastTrafficUp = up
             lastTrafficTime = now
             val stats = TrafficStats(
-                downBytes = down,
-                upBytes = up,
+                downBytes = (down - sessionStartDown).coerceAtLeast(0L),
+                upBytes = (up - sessionStartUp).coerceAtLeast(0L),
                 downSpeed = ((down - prevDown) * 1000L / dt).coerceAtLeast(0),
                 upSpeed = ((up - prevUp) * 1000L / dt).coerceAtLeast(0)
             )
@@ -208,6 +215,7 @@ class HiddifyVpnService : VpnService(), Runnable {
             return
         }
         stopVpn()
+        userStopRequested = false
         isRunning = false
         this.activeConfig = config
         this.serverName = config.name
@@ -224,7 +232,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages)
 
         createNotificationChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(isConnecting = true)
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -359,7 +367,7 @@ class HiddifyVpnService : VpnService(), Runnable {
     }
 
     private fun updateTrafficNotification(stats: TrafficStats) {
-        val trafficLine = "${formatSpeed(stats.downSpeed)} ↓  ${formatSpeed(stats.upSpeed)} ↑"
+        val trafficLine = "⚡ ${formatSpeed(stats.downSpeed)} ↓  ${formatSpeed(stats.upSpeed)} ↑   |   📊 ${formatBytes(stats.downBytes)} ↓  ${formatBytes(stats.upBytes)} ↑"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, buildNotification(trafficLine))
     }
@@ -373,7 +381,18 @@ class HiddifyVpnService : VpnService(), Runnable {
         return value
     }
 
+    private fun formatBytes(bytes: Long): String {
+        val value = when {
+            bytes >= 1_073_741_824L -> String.format(java.util.Locale.US, "%.2f GB", bytes / 1_073_741_824.0)
+            bytes >= 1_048_576L -> String.format(java.util.Locale.US, "%.1f MB", bytes / 1_048_576.0)
+            bytes >= 1024L -> String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0)
+            else -> "$bytes B"
+        }
+        return value
+    }
+
     private fun stopVpn() {
+        userStopRequested = true
         isRunning = false
         stopStatsPolling()
         boxService?.close()
@@ -423,7 +442,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         }
     }
 
-    private fun buildNotification(trafficLine: String? = null): Notification {
+    private fun buildNotification(trafficLine: String? = null, isConnecting: Boolean = false): Notification {
         val pm = packageManager
         val launchIntent = pm.getLaunchIntentForPackage(packageName)
             ?: Intent(this, com.perqa.byebox.MainActivity::class.java).apply {
@@ -446,10 +465,13 @@ class HiddifyVpnService : VpnService(), Runnable {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val title = if (isConnecting) "🟡 ByeBox VPN · $serverName (Подключение)" else "🟢 ByeBox VPN · $serverName"
+        val content = trafficLine ?: if (isConnecting) "Соединение..." else "Соединение установлено · Защищено"
+
         val builder = androidx.core.app.NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(com.perqa.byebox.R.drawable.ic_notification)
-            .setContentTitle("ByeBox VPN подключен")
-            .setContentText(trafficLine ?: serverName)
+            .setContentTitle(title)
+            .setContentText(content)
             .setSubText(listOfNotNull(protocol, serverEndpoint, routingLabel(routingProfile)).filter { it.isNotBlank() }.joinToString(" · "))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -466,67 +488,114 @@ class HiddifyVpnService : VpnService(), Runnable {
     }
 
     override fun run() {
-        try {
-            val config = activeConfig ?: run {
-                Log.e("HiddifyVpnService", "No active config — cannot start VPN")
-                isRunning = false
-                updateTile()
-                return
-            }
+        var retryCount = 0
+        val maxRetryDelay = 30000L
+        var retryDelay = 2000L
 
-            setCoreState(CoreRuntimeState.CONFIG_READY)
+        while (!Thread.currentThread().isInterrupted && !userStopRequested) {
+            try {
+                val config = activeConfig ?: run {
+                    Log.e("HiddifyVpnService", "No active config — cannot start VPN")
+                    isRunning = false
+                    updateTile()
+                    return
+                }
 
-            val configJson = SingBoxConfigGenerator.generate(
-                activeConfig = config,
-                options = SingBoxOptions(
-                    dnsAddress = dnsAddress,
-                    routingProfile = routingProfile,
-                    ipv6Enabled = false,
-                    lanBypassEnabled = lanBypassEnabled,
-                    appRoutingMode = appRoutingMode,
-                    appRoutingPackages = appRoutingPackages,
-                    statsEnabled = true
+                setCoreState(CoreRuntimeState.CONFIG_READY)
+
+                val configJson = SingBoxConfigGenerator.generate(
+                    activeConfig = config,
+                    options = SingBoxOptions(
+                        dnsAddress = dnsAddress,
+                        routingProfile = routingProfile,
+                        ipv6Enabled = false,
+                        lanBypassEnabled = lanBypassEnabled,
+                        appRoutingMode = appRoutingMode,
+                        appRoutingPackages = appRoutingPackages,
+                        statsEnabled = true
+                    )
                 )
-            )
-            appendCoreLog("sing-box config generated")
-            com.perqa.byebox.core.AppLogger.info("HiddifyVpnService", "sing-box config:\n$configJson")
+                appendCoreLog("sing-box config generated")
+                com.perqa.byebox.core.AppLogger.info("HiddifyVpnService", "sing-box config:\n$configJson")
 
-            setCoreState(CoreRuntimeState.STARTING)
-            appendCoreLog("Starting sing-box via libbox...")
+                setCoreState(CoreRuntimeState.STARTING)
+                appendCoreLog("Starting sing-box via libbox...")
 
-            val svc = BoxService(this)
-            boxService = svc
-            svc.setup()
+                val svc = BoxService(this)
+                boxService = svc
+                svc.setup()
 
-            val result = svc.start(configJson, this)
-            if (result.isSuccess) {
-                isRunning = true
-                setCoreState(CoreRuntimeState.RUNNING)
-                appendCoreLog("sing-box running (libbox)")
-                startStatsPolling()
-            } else {
-                val ex = result.exceptionOrNull()
+                val result = svc.start(configJson, this)
+                if (result.isSuccess) {
+                    isRunning = true
+                    setCoreState(CoreRuntimeState.RUNNING)
+                    appendCoreLog("sing-box running (libbox)")
+                    startStatsPolling()
+
+                    // Reset reconnect delay on successful start
+                    retryDelay = 2000L
+                    retryCount = 0
+
+                    // Wait until interrupted or service stops
+                    while (!Thread.currentThread().isInterrupted && !userStopRequested && isRunning) {
+                        try {
+                            Thread.sleep(1000)
+                        } catch (e: InterruptedException) {
+                            break
+                        }
+                    }
+                } else {
+                    val ex = result.exceptionOrNull()
+                    setCoreState(CoreRuntimeState.FAILED)
+                    val msg = "sing-box failed: ${ex?.message ?: "unknown error"}"
+                    appendCoreLog(msg)
+                    Log.e("HiddifyVpnService", msg, ex)
+                    isRunning = false
+                    updateTile()
+                }
+
+            } catch (e: InterruptedException) {
+                Log.d("HiddifyVpnService", "VPN thread interrupted")
+                break
+            } catch (e: Exception) {
+                val msg = "VPN error: ${e.javaClass.simpleName}: ${e.message}"
                 setCoreState(CoreRuntimeState.FAILED)
-                val msg = "sing-box failed: ${ex?.message ?: "unknown error"}"
+                Log.e("HiddifyVpnService", msg, e)
                 appendCoreLog(msg)
-                Log.e("HiddifyVpnService", msg, ex)
-                isRunning = false
-                updateTile()
-                return
+            } finally {
+                // Cleanup current attempt resources
+                stopStatsPolling()
+                boxService?.close()
+                boxService = null
+                try {
+                    vpnInterface?.close()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                vpnInterface = null
             }
 
-            Thread.currentThread().join()
+            if (userStopRequested) {
+                break
+            }
 
-        } catch (e: InterruptedException) {
-            Log.d("HiddifyVpnService", "VPN thread interrupted")
-        } catch (e: Exception) {
-            val msg = "VPN error: ${e.javaClass.simpleName}: ${e.message}"
-            setCoreState(CoreRuntimeState.FAILED)
-            Log.e("HiddifyVpnService", msg, e)
-            appendCoreLog(msg)
-        } finally {
-            stopVpn()
+            // Exponential backoff
+            val retryDelaySec = retryDelay / 1000
+            appendCoreLog("Соединение прервано. Повторное подключение через $retryDelaySec сек...")
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, buildNotification("Повторное подключение через $retryDelaySec сек...", isConnecting = true))
+
+            try {
+                Thread.sleep(retryDelay)
+            } catch (e: InterruptedException) {
+                break
+            }
+            retryDelay = (retryDelay * 1.5).toLong().coerceAtMost(maxRetryDelay)
+            retryCount++
         }
+
+        // Final cleanup on termination
+        stopVpn()
     }
 
     private fun routingLabel(routing: String): String {
