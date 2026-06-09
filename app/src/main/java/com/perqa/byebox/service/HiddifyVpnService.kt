@@ -367,9 +367,13 @@ class HiddifyVpnService : VpnService(), Runnable {
     }
 
     private fun updateTrafficNotification(stats: TrafficStats) {
-        val trafficLine = "⚡ ${formatSpeed(stats.downSpeed)} ↓  ${formatSpeed(stats.upSpeed)} ↑   |   📊 ${formatBytes(stats.downBytes)} ↓  ${formatBytes(stats.upBytes)} ↑"
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, buildNotification(trafficLine))
+        val trafficLine = "${formatSpeed(stats.downSpeed)} down  ${formatSpeed(stats.upSpeed)} up  |  ${formatBytes(stats.downBytes)} down  ${formatBytes(stats.upBytes)} up"
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, buildNotification(trafficLine))
+        } catch (e: Exception) {
+            Log.d("HiddifyVpnService", "Traffic notification update failed: ${e.message}")
+        }
     }
 
     private fun formatSpeed(bytesPerSec: Long): String {
@@ -394,25 +398,36 @@ class HiddifyVpnService : VpnService(), Runnable {
     private fun stopVpn() {
         userStopRequested = true
         isRunning = false
+        cleanupRuntimeResources()
+        setCoreState(CoreRuntimeState.STOPPED)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (e: Exception) {
+            Log.d("HiddifyVpnService", "stopForeground failed: ${e.message}")
+        }
+        val thread = vpnThread
+        if (thread != null && thread != Thread.currentThread()) {
+            thread.interrupt()
+        }
+        vpnThread = null
+        updateTile()
+    }
+
+    private fun cleanupRuntimeResources() {
         stopStatsPolling()
         boxService?.close()
         boxService = null
-        setCoreState(CoreRuntimeState.STOPPED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
-        vpnThread?.interrupt()
-        vpnThread = null
         try {
             vpnInterface?.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.d("HiddifyVpnService", "VPN interface close failed: ${e.message}")
         }
         vpnInterface = null
-        updateTile()
     }
 
     private fun updateTile() {
@@ -564,15 +579,7 @@ class HiddifyVpnService : VpnService(), Runnable {
                 appendCoreLog(msg)
             } finally {
                 // Cleanup current attempt resources
-                stopStatsPolling()
-                boxService?.close()
-                boxService = null
-                try {
-                    vpnInterface?.close()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-                vpnInterface = null
+                cleanupRuntimeResources()
             }
 
             if (userStopRequested) {
@@ -581,9 +588,13 @@ class HiddifyVpnService : VpnService(), Runnable {
 
             // Exponential backoff
             val retryDelaySec = retryDelay / 1000
-            appendCoreLog("Соединение прервано. Повторное подключение через $retryDelaySec сек...")
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, buildNotification("Повторное подключение через $retryDelaySec сек...", isConnecting = true))
+            appendCoreLog("Connection interrupted. Reconnect in $retryDelaySec sec...")
+            try {
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(NOTIFICATION_ID, buildNotification("Reconnect in $retryDelaySec sec...", isConnecting = true))
+            } catch (e: Exception) {
+                Log.d("HiddifyVpnService", "Reconnect notification update failed: ${e.message}")
+            }
 
             try {
                 Thread.sleep(retryDelay)
@@ -594,8 +605,13 @@ class HiddifyVpnService : VpnService(), Runnable {
             retryCount++
         }
 
-        // Final cleanup on termination
-        stopVpn()
+        vpnThread = null
+        if (!userStopRequested) {
+            isRunning = false
+            setCoreState(CoreRuntimeState.STOPPED)
+            updateTile()
+            stopSelf()
+        }
     }
 
     private fun routingLabel(routing: String): String {
