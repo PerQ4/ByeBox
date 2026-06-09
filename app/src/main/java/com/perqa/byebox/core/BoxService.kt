@@ -424,61 +424,12 @@ class BoxService(private val context: Context) {
         }
 
         override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
-            Log.d(TAG, "startDefaultInterfaceMonitor")
-            if (listener == null) return
-
-            val callback = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    updateInterface(network)
-                }
-
-                override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                    updateInterface(network)
-                }
-
-                override fun onLost(network: Network) {
-                    Log.d(TAG, "Default network lost")
-                    listener.updateDefaultInterface("", -1, false, false)
-                }
-
-                private fun updateInterface(network: Network) {
-                    val linkProperties = connectivity.getLinkProperties(network) ?: return
-                    val interfaceName = linkProperties.interfaceName ?: return
-                    var interfaceIndex = -1
-                    try {
-                        interfaceIndex = java.net.NetworkInterface.getByName(interfaceName)?.index ?: -1
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to get interface index for $interfaceName", e)
-                    }
-                    Log.d(TAG, "Default network interface updated: $interfaceName ($interfaceIndex)")
-                    listener.updateDefaultInterface(interfaceName, interfaceIndex, false, false)
-                }
-            }
-
-            defaultNetworkCallback = callback
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    connectivity.registerDefaultNetworkCallback(callback)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to register default network callback", e)
-            }
-
-            // Immediately notify listener of current active interface if available
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val activeNet = connectivity.activeNetwork
-                if (activeNet != null) {
-                    val linkProperties = connectivity.getLinkProperties(activeNet)
-                    val interfaceName = linkProperties?.interfaceName
-                    if (interfaceName != null) {
-                        var interfaceIndex = -1
-                        try {
-                            interfaceIndex = java.net.NetworkInterface.getByName(interfaceName)?.index ?: -1
-                        } catch (_: Exception) {}
-                        listener.updateDefaultInterface(interfaceName, interfaceIndex, false, false)
-                    }
-                }
-            }
+            Log.d(TAG, "startDefaultInterfaceMonitor disabled")
+            // The libbox callback is invoked from Go-owned threads. On recent Android 16
+            // builds, pushing interface updates through this JNI listener can abort the
+            // process before TUN is established. Hiddify keeps this path conservative;
+            // socket protection still happens through autoDetectInterfaceControl(fd).
+            defaultNetworkCallback = null
         }
 
         override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
