@@ -13,7 +13,7 @@ data class SingBoxOptions(
     val appRoutingPackages: List<String> = emptyList(),
     val mtu: Int = 1500,
     val statsEnabled: Boolean = false,
-    val statsPort: Int = 9090
+    val statsPort: Int = 0
 )
 
 object SingBoxConfigGenerator {
@@ -134,6 +134,7 @@ object SingBoxConfigGenerator {
         return JSONArray()
             .put(proxyOutbound(config))
             .put(JSONObject().put("type", "direct").put("tag", "direct"))
+            .put(JSONObject().put("type", "block").put("tag", "block"))
     }
 
     private fun proxyOutbound(config: ProxyConfig): JSONObject {
@@ -394,8 +395,7 @@ object SingBoxConfigGenerator {
     )
 
     private fun adBlockDomainSuffixes(): List<String> = listOf(
-        "ads",
-        "adservice.google.com",
+        "ads.google.com",
         "doubleclick.net",
         "googlesyndication.com",
         "googleadservices.com",
@@ -405,6 +405,14 @@ object SingBoxConfigGenerator {
         "facebook.com",
         "scorecardresearch.com",
         "taboola.com",
-        "outbrain.com"
+        "outbrain.com",
+        "moatads.com",
+        "adform.net",
+        "adcolony.com",
+        "adjust.com",
+        "branch.io",
+        "singular.net",
+        "unity3d.com",
+        "unityads.unity3d.com"
     )
 }

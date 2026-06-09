@@ -6,6 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.net.TrafficStats as AndroidTrafficStats
 import android.os.Build
@@ -48,6 +52,8 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var activeConfig: ProxyConfig? = null
     private var boxService: BoxService? = null
     private var statsThread: Thread? = null
+    private var statsEnabled: Boolean = false
+    private var statsPort: Int = 0
 
     @Volatile
     private var userStopRequested = false
@@ -230,7 +236,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.protocol = config.protocol
         this.dnsAddress = dnsAddr
         this.routingProfile = routing
-        this.ipv6Enabled = false
+        this.ipv6Enabled = ipv6
         this.lanBypassEnabled = lanBypass
         this.systemBypassEnabled = systemBypass
         this.meteredNetwork = metered
@@ -316,9 +322,10 @@ class HiddifyVpnService : VpnService(), Runnable {
     }
 
     private fun readClashConnectionTotals(): TrafficSnapshot? {
+        if (!statsEnabled) return null
         var conn: HttpURLConnection? = null
         return try {
-            val url = URL("http://127.0.0.1:9090/connections")
+            val url = URL("http://127.0.0.1:$statsPort/connections")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 connectTimeout = 700
                 readTimeout = 700
@@ -514,6 +521,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         val maxRetries = 5
         val maxRetryDelay = 30000L
         var retryDelay = 2000L
+        var configLogged = false
 
         while (!Thread.currentThread().isInterrupted && !userStopRequested) {
             try {
@@ -531,15 +539,22 @@ class HiddifyVpnService : VpnService(), Runnable {
                     options = SingBoxOptions(
                         dnsAddress = dnsAddress,
                         routingProfile = routingProfile,
-                        ipv6Enabled = false,
+                        ipv6Enabled = ipv6Enabled,
                         lanBypassEnabled = lanBypassEnabled,
                         appRoutingMode = appRoutingMode,
                         appRoutingPackages = appRoutingPackages,
-                        statsEnabled = true
+                        statsEnabled = false
                     )
                 )
-                appendCoreLog("sing-box config generated")
-                com.perqa.byebox.core.AppLogger.info("HiddifyVpnService", "sing-box config:\n$configJson")
+                statsEnabled = false
+                statsPort = 0
+                if (!configLogged) {
+                    appendCoreLog("sing-box config generated")
+                    com.perqa.byebox.core.AppLogger.info("HiddifyVpnService", "sing-box config:\n$configJson")
+                    configLogged = true
+                } else {
+                    appendCoreLog("sing-box config regenerated")
+                }
 
                 setCoreState(CoreRuntimeState.STARTING)
                 appendCoreLog("Starting sing-box via libbox...")
@@ -597,6 +612,13 @@ class HiddifyVpnService : VpnService(), Runnable {
             if (retryCount >= maxRetries) {
                 setCoreState(CoreRuntimeState.FAILED)
                 appendCoreLog("Reconnect stopped after $maxRetries failed attempts")
+                break
+            }
+
+            // Wait for OS to release the port (e.g. clash_api :9090) before retrying
+            try {
+                Thread.sleep(1500)
+            } catch (_: InterruptedException) {
                 break
             }
 
