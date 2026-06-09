@@ -81,6 +81,7 @@ object ConfigParser {
                         "type" -> network = value
                         "path" -> wsPath = value
                         "host" -> wsHost = value
+                        "servicename" -> grpcServiceName = value
                         in descriptionKeys -> description = value
                     }
                 }
@@ -174,6 +175,10 @@ object ConfigParser {
         val port = portStr.toIntOrNull() ?: 443
 
         var sni: String? = null
+        var network: String? = null
+        var wsPath: String? = null
+        var wsHost: String? = null
+        var grpcServiceName: String? = null
         var description: String? = null
         if (queryStartIndex != -1) {
             val query = rest.substring(queryStartIndex + 1)
@@ -185,6 +190,10 @@ object ConfigParser {
                     val value = URLDecoder.decode(keyValue[1], "UTF-8")
                     when (key) {
                         "sni" -> sni = value
+                        "type" -> network = value
+                        "path" -> wsPath = value
+                        "host" -> wsHost = value
+                        "servicename" -> grpcServiceName = value
                         in descriptionKeys -> description = value
                     }
                 }
@@ -202,6 +211,10 @@ object ConfigParser {
             port = port,
             uuid = password,
             sni = sni,
+            network = network,
+            wsPath = wsPath,
+            wsHost = wsHost,
+            grpcServiceName = grpcServiceName,
             countryFlag = flag
         )
     }
@@ -351,7 +364,7 @@ object ConfigParser {
     }
 
     private fun parseHysteria2(url: String): ProxyConfig {
-        val prefix = if (url.startsWith("hy2://", ignoreCase = true)) 5 else 12
+        val prefix = if (url.startsWith("hy2://", ignoreCase = true)) 6 else 12
         val cleanUrl = url.substring(prefix)
         val hashIndex = cleanUrl.indexOf('#')
         val name = if (hashIndex != -1) {

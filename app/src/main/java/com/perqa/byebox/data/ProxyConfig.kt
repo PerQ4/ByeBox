@@ -61,6 +61,10 @@ data class ProxyConfig(
                     if (pbk != null) params.add("pbk=$pbk")
                     if (sid != null) params.add("sid=$sid")
                     if (flow != null) params.add("flow=$flow")
+                    if (network != null) params.add("type=$network")
+                    if (wsPath != null) params.add("path=$wsPath")
+                    if (wsHost != null) params.add("host=$wsHost")
+                    if (grpcServiceName != null) params.add("serviceName=$grpcServiceName")
                     val query = if (params.isNotEmpty()) "?" + params.joinToString("&") else ""
                     "vless://$uuid@$address:$port$query#$name"
                 }
@@ -72,14 +76,28 @@ data class ProxyConfig(
                         put("port", port)
                         put("id", uuid)
                         put("scy", security ?: "auto")
-                        put("net", "tcp")
+                        put("net", network ?: "tcp")
                         put("type", "none")
+                        if (security == "tls") put("tls", "tls")
+                        if (sni != null) put("sni", sni)
+                        if (grpcServiceName != null) {
+                            put("path", grpcServiceName)
+                        } else if (wsPath != null) {
+                            put("path", wsPath)
+                        }
+                        if (wsHost != null) put("host", wsHost)
                     }
                     val base64 = Base64.encodeToString(json.toString().toByteArray(), Base64.NO_WRAP)
                     "vmess://$base64"
                 }
                 "Trojan" -> {
-                    val query = if (sni != null) "?sni=$sni" else ""
+                    val params = mutableListOf<String>()
+                    if (sni != null) params.add("sni=$sni")
+                    if (network != null) params.add("type=$network")
+                    if (wsPath != null) params.add("path=$wsPath")
+                    if (wsHost != null) params.add("host=$wsHost")
+                    if (grpcServiceName != null) params.add("serviceName=$grpcServiceName")
+                    val query = if (params.isNotEmpty()) "?" + params.joinToString("&") else ""
                     "trojan://$uuid@$address:$port$query#$name"
                 }
                 "TUIC" -> {

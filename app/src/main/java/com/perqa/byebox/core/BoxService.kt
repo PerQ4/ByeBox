@@ -133,9 +133,13 @@ class BoxService(private val context: Context) {
     fun close() {
         try {
             commandServer?.closeService()
+        } catch (e: Exception) {
+            Log.w(TAG, "closeService error: ${e.message}")
+        }
+        try {
             commandServer?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Error closing CommandServer: ${e.message}", e)
+            Log.w(TAG, "close error: ${e.message}")
         }
         commandServer = null
         platformImpl = null
