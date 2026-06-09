@@ -52,6 +52,12 @@ object SingBoxConfigGenerator {
             options.routingProfile == "BLOCK_ADS" -> "94.140.14.14"
             usesSystemDns -> "1.1.1.1"
             else -> options.dnsAddress
+                .removePrefix("https://")
+                .removePrefix("tls://")
+                .removePrefix("tcp://")
+                .substringBefore("/")
+                .substringBefore(":")
+                .ifBlank { "1.1.1.1" }
         }
 
         val dnsRules = JSONArray()
