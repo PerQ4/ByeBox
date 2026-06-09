@@ -54,9 +54,13 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var statsThread: Thread? = null
     private var statsEnabled: Boolean = false
     private var statsPort: Int = 0
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     @Volatile
     private var userStopRequested = false
+
+    @Volatile
+    private var networkChanged = false
 
     private data class TrafficSnapshot(
         val downBytes: Long,
@@ -188,8 +192,43 @@ class HiddifyVpnService : VpnService(), Runnable {
             } else if (ACTION_DISCONNECT == action) {
                 stopVpn()
             }
+        } else {
+            // Always-On VPN: Android restarts the service with null intent.
+            // Load last saved connection from SharedPreferences.
+            Log.i("HiddifyVpnService", "Always-On restart: loading saved config")
+            startVpnFromSavedPrefs()
         }
         return START_STICKY
+    }
+
+    private fun startVpnFromSavedPrefs() {
+        val vpnPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val configJson = vpnPrefs.getString(PREF_CONFIG_JSON, null) ?: run {
+            Log.w("HiddifyVpnService", "No saved config — cannot restart")
+            stopSelf()
+            return
+        }
+        val config = try {
+            ProxyConfig.fromJson(JSONObject(configJson))
+        } catch (e: Exception) {
+            Log.e("HiddifyVpnService", "Failed to parse saved config on always-on restart", e)
+            stopSelf()
+            return
+        }
+        if (prepare(this) != null) {
+            Log.w("HiddifyVpnService", "VPN permission missing on always-on restart")
+            stopSelf()
+            return
+        }
+        val dnsAddr = vpnPrefs.getString(PREF_DNS_ADDRESS, "8.8.8.8") ?: "8.8.8.8"
+        val routing = vpnPrefs.getString(PREF_ROUTING_PROFILE, "BYPASS_LAN_CN_RU") ?: "BYPASS_LAN_CN_RU"
+        val ipv6 = vpnPrefs.getBoolean(PREF_IPV6_ENABLED, false)
+        val lanBypass = vpnPrefs.getBoolean(PREF_LAN_BYPASS_ENABLED, true)
+        val systemBypass = vpnPrefs.getBoolean(PREF_SYSTEM_BYPASS_ENABLED, false)
+        val metered = vpnPrefs.getBoolean(PREF_METERED_NETWORK, false)
+        val appMode = vpnPrefs.getString(PREF_APP_ROUTING_MODE, "OFF") ?: "OFF"
+        val appPackages = vpnPrefs.getString(PREF_APP_ROUTING_PACKAGES, "") ?: ""
+        startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages)
     }
 
     override fun onDestroy() {
@@ -198,6 +237,7 @@ class HiddifyVpnService : VpnService(), Runnable {
     }
 
     override fun onRevoke() {
+        userStopRequested = true
         stopVpn()
         super.onRevoke()
     }
@@ -262,7 +302,52 @@ class HiddifyVpnService : VpnService(), Runnable {
         }
 
         vpnThread = Thread(this, "HiddifyVPNThread").apply { start() }
+        registerNetworkCallback()
         updateTile()
+    }
+
+    private fun registerNetworkCallback() {
+        unregisterNetworkCallback()
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    if (isRunning) {
+                        Log.i("HiddifyVpnService", "Network available: $network — triggering reconnect")
+                        networkChanged = true
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    if (isRunning) {
+                        Log.i("HiddifyVpnService", "Network lost: $network — triggering reconnect")
+                        networkChanged = true
+                    }
+                }
+
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    if (isRunning) {
+                        Log.d("HiddifyVpnService", "Network capabilities changed: $network")
+                        networkChanged = true
+                    }
+                }
+            }
+            cm.registerNetworkCallback(request, networkCallback!!)
+            Log.i("HiddifyVpnService", "Network callback registered")
+        } catch (e: Exception) {
+            Log.e("HiddifyVpnService", "Failed to register network callback", e)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            networkCallback?.let { cm.unregisterNetworkCallback(it) }
+        } catch (_: Exception) {}
+        networkCallback = null
     }
 
     private fun saveLastConnection(
@@ -434,6 +519,7 @@ class HiddifyVpnService : VpnService(), Runnable {
 
     private fun cleanupRuntimeResources() {
         stopStatsPolling()
+        unregisterNetworkCallback()
         boxService?.close()
         boxService = null
         try {
@@ -574,8 +660,14 @@ class HiddifyVpnService : VpnService(), Runnable {
                     retryDelay = 2000L
                     retryCount = 0
 
-                    // Wait until interrupted or service stops
+                    // Wait until interrupted, service stops, or network changes
                     while (!Thread.currentThread().isInterrupted && !userStopRequested && isRunning) {
+                        if (networkChanged) {
+                            networkChanged = false
+                            Log.i("HiddifyVpnService", "Network changed — restarting VPN")
+                            appendCoreLog("Сеть изменилась — перезапуск VPN...")
+                            break
+                        }
                         try {
                             Thread.sleep(1000)
                         } catch (e: InterruptedException) {
