@@ -81,11 +81,11 @@ class MainActivity : ComponentActivity() {
                         if (lastRuntimeSignature == null) {
                             lastRuntimeSignature = runtimeSignature
                             if (serviceConfigJson != null && serviceConfigJson != activeConfigJson) {
-                                startVpnServiceInternal()
+                                requestStartVpn()
                             }
                         } else if (lastRuntimeSignature != runtimeSignature) {
                             lastRuntimeSignature = runtimeSignature
-                            startVpnServiceInternal()
+                            requestStartVpn()
                         }
                     } else {
                         lastRuntimeSignature = null
@@ -135,14 +135,18 @@ class MainActivity : ComponentActivity() {
 
     fun handleVpnToggle(connect: Boolean) {
         if (connect) {
-            val intent = VpnService.prepare(this)
-            if (intent != null) {
-                vpnPrepareLauncher.launch(intent)
-            } else {
-                startVpnServiceInternal()
-            }
+            requestStartVpn()
         } else {
             stopVpnServiceInternal()
+        }
+    }
+
+    private fun requestStartVpn() {
+        val intent = VpnService.prepare(this)
+        if (intent != null) {
+            vpnPrepareLauncher.launch(intent)
+        } else {
+            startVpnServiceInternal()
         }
     }
 
