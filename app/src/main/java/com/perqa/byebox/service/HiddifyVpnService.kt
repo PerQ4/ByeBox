@@ -50,6 +50,8 @@ class HiddifyVpnService : VpnService(), Runnable {
     private var appRoutingMode: String = "OFF"
     private var appRoutingPackages: List<String> = emptyList()
     private var tunStack: String = "mixed"
+    var httpProxyEnabled: Boolean = false
+        private set
     private var activeConfig: ProxyConfig? = null
     private var boxService: BoxService? = null
     private var statsThread: Thread? = null
@@ -141,6 +143,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val EXTRA_APP_ROUTING_MODE = "app_routing_mode"
         const val EXTRA_APP_ROUTING_PACKAGES = "app_routing_packages"
         const val EXTRA_TUN_STACK = "tun_stack"
+        const val EXTRA_HTTP_PROXY_ENABLED = "http_proxy_enabled"
 
         const val PREFS_NAME = "byebox_vpn"
         const val PREF_SERVER_NAME = "server_name"
@@ -154,6 +157,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val PREF_APP_ROUTING_MODE = "app_routing_mode"
         const val PREF_APP_ROUTING_PACKAGES = "app_routing_packages"
         const val PREF_TUN_STACK = "tun_stack"
+        const val PREF_HTTP_PROXY_ENABLED = "http_proxy_enabled"
 
         val PUBLIC_IPV4_ROUTES = listOf(
             "1.0.0.0" to 8, "2.0.0.0" to 7, "4.0.0.0" to 6, "8.0.0.0" to 7,
@@ -192,7 +196,8 @@ class HiddifyVpnService : VpnService(), Runnable {
                 val appMode = intent.getStringExtra(EXTRA_APP_ROUTING_MODE) ?: "OFF"
                 val appPackages = intent.getStringExtra(EXTRA_APP_ROUTING_PACKAGES).orEmpty()
                 val tunStackVal = intent.getStringExtra(EXTRA_TUN_STACK) ?: "mixed"
-                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
+                val httpProxy = intent.getBooleanExtra(EXTRA_HTTP_PROXY_ENABLED, false)
+                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal, httpProxy)
             } else if (ACTION_DISCONNECT == action) {
                 stopVpn()
             }
@@ -233,7 +238,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         val appMode = vpnPrefs.getString(PREF_APP_ROUTING_MODE, "OFF") ?: "OFF"
         val appPackages = vpnPrefs.getString(PREF_APP_ROUTING_PACKAGES, "") ?: ""
         val tunStackVal = vpnPrefs.getString(PREF_TUN_STACK, "mixed") ?: "mixed"
-        startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
+        val httpProxy = vpnPrefs.getBoolean(PREF_HTTP_PROXY_ENABLED, false)
+        startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal, httpProxy)
     }
 
     override fun onDestroy() {
@@ -257,7 +263,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         metered: Boolean,
         appMode: String,
         appPackages: String,
-        tunStackVal: String = "mixed"
+        tunStackVal: String = "mixed",
+        httpProxy: Boolean = false
     ) {
         if (config == null || config.address.isBlank() || config.port <= 0) {
             setCoreState(CoreRuntimeState.FAILED)
@@ -289,7 +296,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.appRoutingMode = appMode
         this.appRoutingPackages = parsePackageList(appPackages)
         this.tunStack = tunStackVal
-        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
+        this.httpProxyEnabled = httpProxy
+        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal, httpProxy)
 
         createNotificationChannel()
         val notification = buildNotification(isConnecting = true)
@@ -367,7 +375,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         metered: Boolean,
         appMode: String,
         appPackages: String,
-        tunStackVal: String = "mixed"
+        tunStackVal: String = "mixed",
+        httpProxy: Boolean = false
     ) {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -381,6 +390,7 @@ class HiddifyVpnService : VpnService(), Runnable {
             .putString(PREF_APP_ROUTING_MODE, appMode)
             .putString(PREF_APP_ROUTING_PACKAGES, appPackages)
             .putString(PREF_TUN_STACK, tunStackVal)
+            .putBoolean(PREF_HTTP_PROXY_ENABLED, httpProxy)
             .apply()
     }
 
@@ -639,7 +649,8 @@ class HiddifyVpnService : VpnService(), Runnable {
                         appRoutingMode = appRoutingMode,
                         appRoutingPackages = appRoutingPackages,
                         statsEnabled = false,
-                        tunStack = tunStack
+                        tunStack = tunStack,
+                        httpProxyEnabled = httpProxyEnabled
                     )
                 )
                 statsEnabled = false

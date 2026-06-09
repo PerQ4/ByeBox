@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.perqa.byebox.data.DataRepository
 import com.perqa.byebox.data.ProxyConfig
+import com.perqa.byebox.data.RegionProxyLists
 import com.perqa.byebox.data.SubscriptionSource
 import com.perqa.byebox.service.CoreRuntimeState
 import com.perqa.byebox.theme.AppTheme
@@ -83,7 +84,9 @@ data class MainUiState(
     val strictHealthCheck: Boolean = false,
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
-    val toastMessage: String? = null
+    val toastMessage: String? = null,
+    val httpProxyEnabled: Boolean = false,
+    val region: RegionProxyLists.Region = RegionProxyLists.Region.OTHER
 )
 
 data class InstalledAppInfo(
@@ -111,6 +114,8 @@ class MainScreenViewModel(
     private val _autostartEnabled = MutableStateFlow(readBoolean(KEY_AUTOSTART_ENABLED, false))
     private val _appRoutingMode = MutableStateFlow(readEnum(KEY_APP_ROUTING_MODE, AppRoutingMode.OFF))
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
+    private val _region = MutableStateFlow(readEnum(KEY_REGION, RegionProxyLists.Region.OTHER))
+    private val _httpProxyEnabled = MutableStateFlow(readBoolean(KEY_HTTP_PROXY_ENABLED, false))
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     private val _healthCheckUrl = MutableStateFlow(readString(KEY_HEALTH_CHECK_URL, "https://www.gstatic.com/generate_204"))
     private val _strictHealthCheck = MutableStateFlow(readBoolean(KEY_STRICT_HEALTH_CHECK, false))
@@ -143,7 +148,9 @@ class MainScreenViewModel(
         _strictHealthCheck,
         _logs,
         _isPinging,
-        _toastMessage
+        _toastMessage,
+        _httpProxyEnabled,
+        _region
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         MainUiState(
@@ -168,7 +175,9 @@ class MainScreenViewModel(
             strictHealthCheck = flows[18] as Boolean,
             logs = flows[19] as List<String>,
             isPinging = flows[20] as Boolean,
-            toastMessage = flows[21] as String?
+            toastMessage = flows[21] as String?,
+            httpProxyEnabled = flows[22] as Boolean,
+            region = flows[23] as RegionProxyLists.Region
         )
     }.stateIn(
         scope = viewModelScope,
@@ -777,6 +786,46 @@ class MainScreenViewModel(
         showToast("Список приложений очищен")
     }
 
+    fun changeRegion(region: RegionProxyLists.Region) {
+        _region.value = region
+        writeString(KEY_REGION, region.name)
+        addLog("[SYSTEM] Регион: ${region.displayName}")
+        showToast("Регион: ${region.displayName}")
+    }
+
+    fun changeHttpProxyEnabled(enabled: Boolean) {
+        _httpProxyEnabled.value = enabled
+        writeBoolean(KEY_HTTP_PROXY_ENABLED, enabled)
+        addLog("[SYSTEM] HTTP-прокси: ${if (enabled) "включен" else "выключен"}")
+        showToast("HTTP-прокси: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    /**
+     * Fetch GFW/China package lists from GitHub and apply to app routing.
+     * @param include true = proxy list (VPN only for listed apps), false = direct list (bypass for listed apps)
+     */
+    fun fetchRegionPackages(include: Boolean) {
+        val region = _region.value
+        val mode = if (include) RegionProxyLists.AppProxyMode.INCLUDE else RegionProxyLists.AppProxyMode.EXCLUDE
+        viewModelScope.launch {
+            addLog("[SYSTEM] Загрузка списка приложений для ${region.displayName}...")
+            val packages = RegionProxyLists.fetch(region, mode)
+            if (packages != null) {
+                val joined = packages.sorted().joinToString("\n")
+                _appRoutingPackages.value = joined
+                writeString(KEY_APP_ROUTING_PACKAGES, joined)
+                val appMode = if (include) AppRoutingMode.ONLY_SELECTED else AppRoutingMode.BYPASS_SELECTED
+                _appRoutingMode.value = appMode
+                writeString(KEY_APP_ROUTING_MODE, appMode.name)
+                addLog("[SYSTEM] Загружено ${packages.size} приложений для ${region.displayName}")
+                showToast("Загружено ${packages.size} приложений")
+            } else {
+                addLog("[SYSTEM] Ошибка загрузки списка для ${region.displayName}")
+                showToast("Ошибка загрузки списка")
+            }
+        }
+    }
+
     fun changeHealthCheckUrl(value: String) {
         _healthCheckUrl.value = value
         writeString(KEY_HEALTH_CHECK_URL, value)
@@ -937,6 +986,8 @@ class MainScreenViewModel(
         private const val KEY_APP_ROUTING_PACKAGES = "app_routing_packages"
         private const val KEY_HEALTH_CHECK_URL = "health_check_url"
         private const val KEY_STRICT_HEALTH_CHECK = "strict_health_check"
+        private const val KEY_REGION = "region"
+        private const val KEY_HTTP_PROXY_ENABLED = "http_proxy_enabled"
     }
 }
 

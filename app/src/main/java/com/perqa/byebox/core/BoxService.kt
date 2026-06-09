@@ -392,7 +392,22 @@ class BoxService(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(service.meteredNetwork)
             }
-            
+
+            // HTTP proxy (Android Q+): routes HTTP/HTTPS traffic through system proxy
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && service.httpProxyEnabled) {
+                try {
+                    val httpProxyHost = options.httpProxyServer
+                    val httpProxyPort = options.httpProxyServerPort
+                    if (httpProxyHost.isNotBlank() && httpProxyPort > 0) {
+                        val proxyInfo = android.net.ProxyInfo.buildDirectProxy(httpProxyHost, httpProxyPort)
+                        builder.setHttpProxy(proxyInfo)
+                        Log.i(TAG, "HTTP proxy enabled: $httpProxyHost:$httpProxyPort")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to set HTTP proxy: ${e.message}")
+                }
+            }
+
             val pfd = builder.establish() ?: throw Exception("Failed to establish VPN interface")
             service.vpnInterface = pfd
             Log.i(TAG, "VPN interface established, fd=${pfd.fd}")
