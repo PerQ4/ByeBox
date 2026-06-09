@@ -13,7 +13,9 @@ data class SingBoxOptions(
     val appRoutingPackages: List<String> = emptyList(),
     val mtu: Int = 1500,
     val statsEnabled: Boolean = false,
-    val statsPort: Int = 0
+    val statsPort: Int = 0,
+    val usePlatformDns: Boolean = true,
+    val tunStack: String = "mixed"  // gvisor, mixed, system
 )
 
 object SingBoxConfigGenerator {
@@ -60,6 +62,10 @@ object SingBoxConfigGenerator {
                 .ifBlank { "1.1.1.1" }
         }
 
+        // When platform DNS is enabled, the "remote" server still needs a real address
+        // for fallback, but DNS queries will primarily go through LocalResolver
+        val remoteDnsServer = dnsAddress
+
         val dnsRules = JSONArray()
             .put(
                 JSONObject()
@@ -73,26 +79,23 @@ object SingBoxConfigGenerator {
                     .put("server", "local")
             )
 
-        return JSONObject()
+        val servers = JSONArray()
             .put(
-                "servers",
-                JSONArray()
-                    .put(
-                        JSONObject()
-                            .put("type", "udp")
-                            .put("tag", "remote")
-                            .put("server", dnsAddress)
-                            .put("detour", "proxy")
-                    )
-                    .put(
-                        JSONObject()
-                            // "local" tag uses system/DHCP DNS — does NOT go through TUN
-                            // This is the real physical network DNS, not through proxy
-                            .put("type", "local")
-                            .put("tag", "local")
-                            .put("detour", "direct")
-                    )
+                JSONObject()
+                    .put("type", "udp")
+                    .put("tag", "remote")
+                    .put("server", remoteDnsServer)
+                    .put("detour", "proxy")
             )
+            .put(
+                JSONObject()
+                    .put("type", "local")
+                    .put("tag", "local")
+                    .put("detour", "direct")
+            )
+
+        return JSONObject()
+            .put("servers", servers)
             .put("rules", dnsRules)
             .put("final", if (usesSystemDns) "local" else "remote")
             .put("strategy", if (options.ipv6Enabled) "prefer_ipv4" else "ipv4_only")
@@ -112,7 +115,7 @@ object SingBoxConfigGenerator {
             .put("mtu", options.mtu)
             .put("auto_route", true)
             .put("strict_route", true)
-            .put("stack", "mixed")
+            .put("stack", options.tunStack)
             .put("endpoint_independent_nat", true)
             .apply {
                 val packages = options.appRoutingPackages

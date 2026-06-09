@@ -32,10 +32,10 @@ class MainScreenViewModelTest {
 private class FakeMyModelRepository : DataRepository {
     private val _configs = MutableStateFlow<List<ProxyConfig>>(
         listOf(
-            ProxyConfig("1", "DE", "VLESS", "addr", 443, "uuid", ping = 10),
-            ProxyConfig("2", "US", "VMESS", "addr", 80, "uuid", ping = 20),
-            ProxyConfig("3", "NL", "Trojan", "addr", 443, "uuid", ping = 30),
-            ProxyConfig("4", "RU", "Shadowsocks", "addr", 1080, "uuid", ping = 40)
+            ProxyConfig(id = "1", name = "DE", protocol = "VLESS", address = "addr", port = 443, uuid = "uuid", ping = 10),
+            ProxyConfig(id = "2", name = "US", protocol = "VMESS", address = "addr", port = 80, uuid = "uuid", ping = 20),
+            ProxyConfig(id = "3", name = "NL", protocol = "Trojan", address = "addr", port = 443, uuid = "uuid", ping = 30),
+            ProxyConfig(id = "4", name = "RU", protocol = "Shadowsocks", address = "addr", port = 1080, uuid = "uuid", ping = 40)
         )
     )
     override val configs: StateFlow<List<ProxyConfig>> = _configs.asStateFlow()

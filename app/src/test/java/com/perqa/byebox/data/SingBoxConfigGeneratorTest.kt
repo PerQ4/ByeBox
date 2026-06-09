@@ -435,6 +435,29 @@ class SingBoxConfigGeneratorTest {
         assertEquals("127.0.0.1:9090", clash.getString("external_controller"))
     }
 
+    @Test
+    fun tun_defaultMixed() {
+        val json = JSONObject(SingBoxConfigGenerator.generate(baseVless, defaultOptions()))
+        val tun = json.getJSONArray("inbounds").getJSONObject(0)
+        assertEquals("mixed", tun.getString("stack"))
+    }
+
+    @Test
+    fun tun_gvisorStack() {
+        val opts = defaultOptions().copy(tunStack = "gvisor")
+        val json = JSONObject(SingBoxConfigGenerator.generate(baseVless, opts))
+        val tun = json.getJSONArray("inbounds").getJSONObject(0)
+        assertEquals("gvisor", tun.getString("stack"))
+    }
+
+    @Test
+    fun tun_systemStack() {
+        val opts = defaultOptions().copy(tunStack = "system")
+        val json = JSONObject(SingBoxConfigGenerator.generate(baseVless, opts))
+        val tun = json.getJSONArray("inbounds").getJSONObject(0)
+        assertEquals("system", tun.getString("stack"))
+    }
+
     // ── helpers ────────────────────────────────────────────────────
 
     private fun findProxyOutbound(json: JSONObject): JSONObject {

@@ -49,6 +49,7 @@ class HiddifyVpnService : VpnService(), Runnable {
     var meteredNetwork: Boolean = false
     private var appRoutingMode: String = "OFF"
     private var appRoutingPackages: List<String> = emptyList()
+    private var tunStack: String = "mixed"
     private var activeConfig: ProxyConfig? = null
     private var boxService: BoxService? = null
     private var statsThread: Thread? = null
@@ -139,6 +140,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val EXTRA_METERED_NETWORK = "metered_network"
         const val EXTRA_APP_ROUTING_MODE = "app_routing_mode"
         const val EXTRA_APP_ROUTING_PACKAGES = "app_routing_packages"
+        const val EXTRA_TUN_STACK = "tun_stack"
 
         const val PREFS_NAME = "byebox_vpn"
         const val PREF_SERVER_NAME = "server_name"
@@ -151,6 +153,7 @@ class HiddifyVpnService : VpnService(), Runnable {
         const val PREF_METERED_NETWORK = "metered_network"
         const val PREF_APP_ROUTING_MODE = "app_routing_mode"
         const val PREF_APP_ROUTING_PACKAGES = "app_routing_packages"
+        const val PREF_TUN_STACK = "tun_stack"
 
         val PUBLIC_IPV4_ROUTES = listOf(
             "1.0.0.0" to 8, "2.0.0.0" to 7, "4.0.0.0" to 6, "8.0.0.0" to 7,
@@ -188,7 +191,8 @@ class HiddifyVpnService : VpnService(), Runnable {
                 val metered = intent.getBooleanExtra(EXTRA_METERED_NETWORK, false)
                 val appMode = intent.getStringExtra(EXTRA_APP_ROUTING_MODE) ?: "OFF"
                 val appPackages = intent.getStringExtra(EXTRA_APP_ROUTING_PACKAGES).orEmpty()
-                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages)
+                val tunStackVal = intent.getStringExtra(EXTRA_TUN_STACK) ?: "mixed"
+                startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
             } else if (ACTION_DISCONNECT == action) {
                 stopVpn()
             }
@@ -228,7 +232,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         val metered = vpnPrefs.getBoolean(PREF_METERED_NETWORK, false)
         val appMode = vpnPrefs.getString(PREF_APP_ROUTING_MODE, "OFF") ?: "OFF"
         val appPackages = vpnPrefs.getString(PREF_APP_ROUTING_PACKAGES, "") ?: ""
-        startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages)
+        val tunStackVal = vpnPrefs.getString(PREF_TUN_STACK, "mixed") ?: "mixed"
+        startVpn(config, dnsAddr, routing, ipv6, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
     }
 
     override fun onDestroy() {
@@ -251,7 +256,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         systemBypass: Boolean,
         metered: Boolean,
         appMode: String,
-        appPackages: String
+        appPackages: String,
+        tunStackVal: String = "mixed"
     ) {
         if (config == null || config.address.isBlank() || config.port <= 0) {
             setCoreState(CoreRuntimeState.FAILED)
@@ -282,7 +288,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         this.meteredNetwork = metered
         this.appRoutingMode = appMode
         this.appRoutingPackages = parsePackageList(appPackages)
-        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages)
+        this.tunStack = tunStackVal
+        saveLastConnection(config, dnsAddr, routing, false, lanBypass, systemBypass, metered, appMode, appPackages, tunStackVal)
 
         createNotificationChannel()
         val notification = buildNotification(isConnecting = true)
@@ -359,7 +366,8 @@ class HiddifyVpnService : VpnService(), Runnable {
         systemBypass: Boolean,
         metered: Boolean,
         appMode: String,
-        appPackages: String
+        appPackages: String,
+        tunStackVal: String = "mixed"
     ) {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -372,6 +380,7 @@ class HiddifyVpnService : VpnService(), Runnable {
             .putBoolean(PREF_METERED_NETWORK, metered)
             .putString(PREF_APP_ROUTING_MODE, appMode)
             .putString(PREF_APP_ROUTING_PACKAGES, appPackages)
+            .putString(PREF_TUN_STACK, tunStackVal)
             .apply()
     }
 
@@ -629,7 +638,8 @@ class HiddifyVpnService : VpnService(), Runnable {
                         lanBypassEnabled = lanBypassEnabled,
                         appRoutingMode = appRoutingMode,
                         appRoutingPackages = appRoutingPackages,
-                        statsEnabled = false
+                        statsEnabled = false,
+                        tunStack = tunStack
                     )
                 )
                 statsEnabled = false
