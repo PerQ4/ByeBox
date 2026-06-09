@@ -195,6 +195,7 @@ class BoxService(private val context: Context) {
     ) : PlatformInterface {
         private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
+        private val bgExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         override fun localDNSTransport(): LocalDNSTransport {
             // Return platform DNS resolver — uses Android's DnsResolver API (Q+)
@@ -487,20 +488,22 @@ class BoxService(private val context: Context) {
 
         private fun notifyInterfaceUpdate(listener: InterfaceUpdateListener?, network: Network) {
             if (listener == null) return
-            try {
-                val linkProps = connectivity.getLinkProperties(network) ?: return
-                val ifaceName = linkProps.interfaceName ?: return
-                for (attempt in 0 until 10) {
-                    try {
-                        val index = java.net.NetworkInterface.getByName(ifaceName)?.index ?: continue
-                        listener.updateDefaultInterface(ifaceName, index, false, false)
-                        return
-                    } catch (e: Exception) {
-                        Thread.sleep(100)
+            bgExecutor.execute {
+                try {
+                    val linkProps = connectivity.getLinkProperties(network) ?: return@execute
+                    val ifaceName = linkProps.interfaceName ?: return@execute
+                    for (attempt in 0 until 10) {
+                        try {
+                            val index = java.net.NetworkInterface.getByName(ifaceName)?.index ?: continue
+                            listener.updateDefaultInterface(ifaceName, index, false, false)
+                            return@execute
+                        } catch (e: Exception) {
+                            Thread.sleep(100)
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "notifyInterfaceUpdate failed", e)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "notifyInterfaceUpdate failed", e)
             }
         }
 

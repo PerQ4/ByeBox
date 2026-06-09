@@ -223,7 +223,7 @@ class MainActivity : ComponentActivity() {
             putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, state.meteredNetwork)
                 putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, state.appRoutingMode.name)
                 putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, state.appRoutingPackages)
-                putExtra(HiddifyVpnService.EXTRA_TUN_STACK, "mixed")
+                putExtra(HiddifyVpnService.EXTRA_TUN_STACK, state.tunStack.name.lowercase())
                 putExtra(HiddifyVpnService.EXTRA_HTTP_PROXY_ENABLED, state.httpProxyEnabled)
         }
         try {
