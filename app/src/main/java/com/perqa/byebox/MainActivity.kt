@@ -221,8 +221,10 @@ class MainActivity : ComponentActivity() {
             putExtra(HiddifyVpnService.EXTRA_LAN_BYPASS_ENABLED, state.lanBypassEnabled)
             putExtra(HiddifyVpnService.EXTRA_SYSTEM_BYPASS_ENABLED, state.systemBypassEnabled)
             putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, state.meteredNetwork)
-            putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, state.appRoutingMode.name)
-            putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, state.appRoutingPackages)
+                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, state.appRoutingMode.name)
+                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, state.appRoutingPackages)
+                putExtra(HiddifyVpnService.EXTRA_TUN_STACK, "mixed")
+                putExtra(HiddifyVpnService.EXTRA_HTTP_PROXY_ENABLED, state.httpProxyEnabled)
         }
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {

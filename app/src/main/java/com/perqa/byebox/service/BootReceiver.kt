@@ -74,6 +74,8 @@ class BootReceiver : BroadcastReceiver() {
             putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, metered)
             putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, appRoutingMode)
             putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, appRoutingPackages)
+            putExtra(HiddifyVpnService.EXTRA_TUN_STACK, vpnPrefs.getString(HiddifyVpnService.PREF_TUN_STACK, "mixed") ?: "mixed")
+            putExtra(HiddifyVpnService.EXTRA_HTTP_PROXY_ENABLED, vpnPrefs.getBoolean(HiddifyVpnService.PREF_HTTP_PROXY_ENABLED, false))
         }
 
         try {

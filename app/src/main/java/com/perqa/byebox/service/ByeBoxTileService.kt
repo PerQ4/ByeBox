@@ -59,6 +59,8 @@ class ByeBoxTileService : TileService() {
                 putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, metered)
                 putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, appRoutingMode)
                 putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, appRoutingPackages)
+                putExtra(HiddifyVpnService.EXTRA_TUN_STACK, prefs.getString(HiddifyVpnService.PREF_TUN_STACK, "mixed") ?: "mixed")
+                putExtra(HiddifyVpnService.EXTRA_HTTP_PROXY_ENABLED, prefs.getBoolean(HiddifyVpnService.PREF_HTTP_PROXY_ENABLED, false))
             }
             startServiceCompat(context, intent)
             updateTileState(active = true)

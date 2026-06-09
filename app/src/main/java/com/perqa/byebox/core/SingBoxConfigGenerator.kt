@@ -15,7 +15,8 @@ data class SingBoxOptions(
     val statsEnabled: Boolean = false,
     val statsPort: Int = 0,
     val usePlatformDns: Boolean = true,
-    val tunStack: String = "mixed"  // gvisor, mixed, system
+    val tunStack: String = "mixed",  // gvisor, mixed, system
+    val httpProxyEnabled: Boolean = false
 )
 
 object SingBoxConfigGenerator {
