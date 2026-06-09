@@ -1,264 +1,543 @@
-# ByeBox MD3E design system
+# ByeBox MD3E design guidelines
 
-## Цель
+Дата ревизии: 2026-06-09
 
-ByeBox должен ощущаться как современный Android VPN-клиент уровня V2RayTun/Happ: быстрый, плотный, понятный, нативный и визуально собранный. Интерфейс не должен выглядеть как набор карточек с одинаковым цветом. Основной стиль: Material 3 Expressive поверх Android dynamic color, с короткой плавающей навигацией, ясной иерархией, живыми состояниями и минимумом лишних рамок.
+## 1. Назначение
 
-## Источники и ограничения
+ByeBox должен ощущаться как современный нативный Android VPN-клиент: быстрый, плотный, понятный, с динамическими цветами системы и выразительными, но не декоративными Material 3 Expressive-паттернами.
 
-- Material 3 NavigationBar: нижняя навигация предназначена для 3-5 основных разделов, контейнер может быть прозрачным, а tonal elevation влияет на overlay поверхности.
-- Android Material 3 Expressive guidance: акцент на dynamic color, более широкую тональную палитру, выразительные формы и motion.
-- Android edge-to-edge: контент должен жить за системными bars, а не упираться в прямоугольные системные подложки.
-- VPN-клиент - это рабочий инструмент. MD3E здесь не означает декоративность ради декоративности: плотность, читаемость, доступность и быстрые действия важнее крупных маркетинговых блоков.
+MD3E для ByeBox не означает "много карточек, много скруглений и много всплывашек". Для VPN-клиента важнее:
 
-## Принципы
+- быстро понять состояние VPN;
+- быстро выбрать рабочий узел;
+- быстро увидеть источник, ping, протокол, транспорт и ошибку;
+- не терять контент под плавающей навигацией;
+- не видеть заявленных настроек, у которых нет backend-эффекта.
 
-1. Никаких полноширинных подложек под плавающими элементами. Если элемент называется островом, вокруг него должен быть виден реальный контент или фон.
-2. Не использовать border как основной способ разделения. Разделять элементы цветовым тоном, размером, формой, отступом и elevation.
-3. Dynamic color - основной источник цветов. Ручные темы Slate/Desert/Sage могут остаться как пресеты, но системная тема должна быть первой и самой нативной.
-4. Соседние элементы не должны иметь один и тот же container color. Минимальная разница между соседними поверхностями: один тональный уровень.
-5. Главный экран показывает состояние VPN и лучший следующий шаг. Экран прокси показывает подписки и узлы. Настройки не должны забирать функции, которые нужны каждый день.
-6. Любая всплывашка снизу используется только для ошибок или редких подтверждений. Для обычного результата действия использовать inline-state, progress, badge или маленький status-chip.
-7. Логи - отдельный раздел. Не дублировать кнопку логов в шапке и нижней навигации.
+## 2. Источники
 
-## Цветовые токены
+Основные источники для сверки:
 
-Использовать только `MaterialTheme.colorScheme` и локальные semantic wrappers:
+- Material 3 components: https://m3.material.io/components
+- Material 3 lists guidelines: https://m3.material.io/components/lists/guidelines
+- Jetpack Compose Material components overview: https://developer.android.com/develop/ui/compose/components
+- Compose Material 3 design system: https://developer.android.com/develop/ui/compose/designsystems/material3
+- Compose app bars: https://developer.android.com/develop/ui/compose/components/app-bars
+- Compose navigation bar: https://developer.android.com/develop/ui/compose/components/navigation-bar
+- Compose Material insets: https://developer.android.com/develop/ui/compose/system/material-insets
+- Compose Material 3 release notes for current component behavior: https://developer.android.com/jetpack/androidx/releases/compose-material3
 
-- `appBackground`: `background`.
-- `surfaceBase`: `surface`.
-- `surfaceRaised`: `surfaceContainer`.
-- `surfaceIsland`: `surfaceContainerHigh`.
-- `surfacePressed`: `surfaceContainerHighest`.
-- `primaryAction`: `primaryContainer` + `onPrimaryContainer`.
-- `secondaryAction`: `secondaryContainer` + `onSecondaryContainer`.
-- `dangerAction`: `errorContainer` + `onErrorContainer`.
-- `successState`: `primary` или отдельный semantic green только для ping/connected, но не для крупных контейнеров.
-- `warningState`: `tertiary`.
+Официальный сайт M3 рендерит guideline-страницы через JavaScript, поэтому этот документ фиксирует правила на уровне компонентной системы, а для Android-реализации опирается на актуальные Compose Material 3 API и официальный Android guidance.
 
-Правила:
+## 3. Текущее состояние и главные проблемы
 
-- Не ставить рядом два больших блока `surface`.
-- Карточка подписки: `surfaceContainer`.
-- Активный узел: `primaryContainer` с низкой насыщенностью или тональным акцентом слева.
-- Кнопки внутри карточки: `secondaryContainer`, `tertiaryContainer`, `errorContainer` по смыслу.
-- Нижний остров: непрозрачный `surfaceContainerHigh`.
-- Bottom edge fade: маленький прозрачный градиент от `Transparent` к `background` alpha 0.25-0.35, высота 16-24dp.
+Проверенный код: `app/src/main/java/com/perqa/byebox/ui/main/MainScreen.kt`, `app/src/main/java/com/perqa/byebox/theme/*`.
 
-## Формы
+### Что уже близко к MD3E
 
-- Плавающий nav island: capsule 28-32dp radius, высота 52-56dp, ширина по содержимому.
-- Активный nav item: capsule 20-24dp radius.
-- Большие панели: 24-28dp radius.
-- Списки узлов: 18-22dp radius, без border.
-- Чипы протокола/ping: 12-16dp radius.
-- Текстовые поля: 18-22dp radius, без outline в спокойном состоянии; outline только focus/error.
-- FAB/быстрая кнопка: 22-28dp radius или circle для single-icon.
+- Используется `MaterialTheme.colorScheme`, есть поддержка dynamic color.
+- Нижняя навигация реализована как кастомная floating pill, а не стандартная full-width панель.
+- Экран прокси уже использует группировку по источникам и sticky headers.
+- У элементов прокси есть swipe actions, хаптик и частично прогрессивное скругление.
+- Есть попытка tonal separation через `surfaceContainer`, `surfaceContainerHigh`, `primaryContainer`, `tertiaryContainer`.
 
-## Elevation и слои
+### Что сейчас не соответствует
 
-Слои сверху вниз:
+- Слишком много `Card` как универсального контейнера. В M3 lists список должен быть непрерывной вертикальной структурой однородных строк, а не набором самостоятельных карточек для каждого простого item.
+- Ручные формы 4dp/6dp/28dp используются непоследовательно. Из-за этого группировки выглядят поломанными, особенно в списках прокси и настройках.
+- В настройках многие группы похожи на вложенные карточки внутри карточек. Для M3 это визуально тяжелее, чем grouped list с tonal rows.
+- В некоторых местах border используется как основной разделитель. Для MD3E предпочтительнее тональная иерархия, spacing, shape и state layer.
+- Нижний остров должен быть самостоятельным floating element. Любая прямоугольная подложка, даже полупрозрачная, визуально отменяет "остров".
+- Контент должен прокручиваться за островом, но иметь достаточный bottom padding, чтобы последний элемент можно было вытащить выше навигации.
+- Toast/snackbar используются слишком часто для штатных действий. M3 snackbars предназначены для коротких важных обновлений процесса, а не для каждого клика.
+- Списки прокси при 40+ узлах должны оставаться плавными: минимизировать recomposition, тяжелые `animate*AsState`, nested Column внутри sticky header, лишние shadows и бесконечные анимации.
+- В строках конфигов сейчас смешаны действия, данные и декоративность. Для списка нужен читаемый one/two-line row: leading, headline, supporting, trailing.
 
-1. Dialog, modal sheet.
-2. Toast/snackbar, но использовать редко.
-3. Bottom nav island.
-4. Floating action cluster.
-5. Cards/panels.
-6. Page background.
+## 4. Общие правила MD3E для ByeBox
 
-Правила:
+1. Сначала нативность, потом выразительность.
+2. Dynamic color является основой. Ручные темы Slate/Desert/Sage допустимы только как fallback/presets.
+3. Рядом стоящие крупные элементы не должны иметь одинаковый container color.
+4. Border не является стандартным способом группировки. Использовать border только для focus, error, selected outline или редкого high-emphasis состояния.
+5. Поверхности различаются уровнем: `surface`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`.
+6. Любой floating element должен быть визуально отделен от layout: вокруг виден фон/контент, нет родительской прямоугольной панели.
+7. Большой текст только для экранных заголовков. Внутри cards/lists использовать compact type scale.
+8. В списках не должно быть постоянных destructive buttons на каждой строке. Удаление: swipe в одну сторону, overflow, confirm при необходимости.
+9. Штатный результат действия показывать inline: progress, badge, status chip, updated time. Toast только для ошибки или редкого подтверждения.
+10. Все видимые настройки должны иметь backend-эффект. Если backend не готов, настройка скрывается или помечается disabled с честным supporting text.
 
-- Нижний nav island не имеет родительской панели.
-- Контент прокручивается за островом. Последние элементы списка получают `contentPadding(bottom = navHeight + gestureInset)`, но фон под островом не рисуется отдельным прямоугольником.
-- Для dark theme тень острова слабая, потому что сильная тень выглядит как грязная плашка.
+## 5. Цвет и контраст
 
-## Типографика
+### Семантические роли
 
-- App title: `titleLarge`, weight 800-900, letterSpacing 1.5-2sp.
-- Section title: `titleMedium`, weight 700-800.
-- Config name: `bodyLarge` или `titleSmall`, weight 700.
-- Endpoint/description: `bodySmall`, max 1-2 lines, ellipsis.
-- Protocol chip: 10-11sp, uppercase only для короткого протокола.
-- Ping chip: 11sp, monospace или bold tabular если доступно.
+- App background: `colorScheme.background`.
+- Main large panel: `surfaceContainerLow` или `surfaceContainer`.
+- Group header/source header: `surfaceContainer`.
+- Ordinary list row: `surfaceContainerLow` или прозрачный row на grouped surface.
+- Active VPN/config row: `primaryContainer` с `onPrimaryContainer`.
+- Secondary action: `secondaryContainer`.
+- Test/ping/action accent: `tertiaryContainer`.
+- Delete/destructive: `errorContainer`.
+- Floating nav island: `surfaceContainerHigh` или `surfaceContainerHighest`.
+- Bottom fade: transparent to `background` alpha 0.20-0.35, высота 20-32dp.
 
-Запреты:
+### Запреты
 
-- Не использовать hero-scale типографику внутри карточек.
-- Не сжимать длинный русский текст в кнопке до нечитаемости. Если не помещается, менять layout: icon-only, перенос, overflow menu.
+- Не ставить рядом две большие поверхности одного тона.
+- Не красить весь экран одной цветовой семьей, особенно в dark theme.
+- Не использовать `primary` как заливку для больших блоков, кроме явного connected/active состояния.
+- Не использовать `onSurface.copy(alpha < 0.38f)` для важного текста, ping или endpoint, если это ухудшает читаемость.
 
-## Motion
+## 6. Формы
 
-Базовые параметры:
+Использовать стабильную шкалу форм, а не случайные значения.
 
-- Tab switch: crossfade + shared axis по X, 180-240ms.
-- Nav item selection: shape/width/color morph, 220-280ms, easing emphasized.
-- Button press: scale 0.96-0.98, 80-120ms down, 160-220ms up.
-- Config card select: background tone morph + tiny leading accent, 180-240ms.
-- List item insert/remove: fade + vertical expand/shrink, 180-260ms.
-- Ping all: progress indication inline на source card, no snackbar spam.
-- Connection button: state transition disconnected/connecting/connected через color + icon morph + progress ring.
+- Full screen/page background: без shape.
+- Large section container: 28dp.
+- Grouped list container: 24-28dp outer, 4-8dp inner connected corners.
+- List row standalone: 20-24dp.
+- List row inside connected group:
+  - first: top 24dp, bottom 4-8dp;
+  - middle: 4-8dp;
+  - last: top 4-8dp, bottom 24dp.
+- Floating nav island: capsule 28-32dp, высота 52-58dp.
+- Active nav item: capsule 20-24dp.
+- Chips: 12-16dp.
+- Text fields/search fields: 18-24dp, filled tonal container, outline только focus/error.
+- FAB/context action: круг или expressive rounded square 20-28dp.
 
-Запреты:
+Важно: если элемент "отрывается" свайпом, его собственное скругление растет только в процессе отрыва. Соседние элементы слегка увеличивают corner radius и получают минимальный follow-offset.
 
-- Не анимировать весь экран без причины.
-- Не использовать бесконечные декоративные анимации в списках, где много узлов.
-- Не показывать toast/snackbar на каждое успешное действие.
+## 7. Motion и хаптик
 
-## Главная
+### Motion tokens
 
-Состав:
+- Button press: scale 0.96-0.98, down 80-120ms, up 160-220ms.
+- Nav selection: width + color + shape morph 220-280ms.
+- Screen/tab switch: fade + shared axis X, 180-240ms.
+- Sticky header collapse: height, alpha, shape 180-260ms, без резкого snap-back.
+- List reorder/filter: `animateItemPlacement` или equivalent placement animation, 180-260ms.
+- Swipe detach:
+  - 0-14dp: resistance, item двигается примерно на 45-55% пальца;
+  - 14-58dp: быстрый detach curve;
+  - после detach: item следует за пальцем почти 1:1;
+  - threshold 120-150dp: haptic tick;
+  - release below threshold: spring/tween back 180-240ms;
+  - release over threshold left: delete;
+  - release over threshold right: open config settings.
 
-- Верхняя шапка: название, статус, без кнопки логов.
-- Connection hero: состояние, активный узел, входящий/исходящий трафик, uptime.
-- Quick actions: лучший узел, поделиться, VPN Android, плитка. Не больше 2 колонок.
-- Active config preview: компактная строка с флагом/именем, endpoint, protocol/transport/security, ping, refresh.
-- Routing summary: текущий профиль маршрутизации и приложения в обходе/прокси.
+### Хаптик
 
-Что убрать:
+- Легкий tick: tab/nav/select row.
+- Небольшой confirm tick: threshold reached, connect/disconnect, ping all started.
+- Не использовать грубую вибрацию на каждом drag frame.
+- На detach start нужен отдельный короткий feedback, но только один раз за gesture.
 
-- Слово Expressive на главной.
-- Дубли логов.
-- Всплывашки при штатных действиях.
+### Запреты
 
-## Прокси
+- Бесконечные декоративные анимации в больших списках.
+- Запаздывающие corner animations, которые продолжаются после окончания жеста.
+- Массовые recomposition при scroll из-за изменения глобальных mutable states на каждый пиксель.
 
-Состав:
+## 8. Navigation и edge-to-edge
 
-- Источники подписок группируются. Одна source card содержит описание, URL, число узлов, traffic info, updated time, действия.
-- Узлы внутри источника компактные: флаг/иконка, имя, protocol stack, address preview, ping, overflow.
-- Primary actions source card: обновить, пинг всех, сортировка.
-- Secondary actions уходят в overflow: rename, delete, export, edit URL.
+### Нижний остров
 
-Данные узла:
+Требования:
 
-- Protocol: VLESS/VMESS/Trojan/SS.
-- Network: tcp/ws/grpc/httpupgrade/quic.
-- Security: tls/reality/none.
-- SNI/host/path/fingerprint при наличии.
-- Subscription name/description при наличии.
-- Last ping и дата проверки.
+- самостоятельный `Surface`/`Box` поверх контента;
+- нет full-width parent panel;
+- непрозрачная pill, чтобы текст под ней не просвечивал;
+- по бокам и сверху видно контент/фон;
+- расположен близко к gesture bar, но не перекрывает системную область;
+- bottom fade рисуется отдельно и очень мягко;
+- контент получает bottom padding: `navHeight + gestureInset + 32-48dp`.
 
-QoL:
+Текущий риск: `BottomEdgeFade` и layout bottom padding могут выглядеть как прямоугольная подложка. Fade должен быть фоном края экрана, а не контейнером навигации.
 
-- Ping all by source.
-- Sort by source/ping/name/protocol/country/last used.
-- Filter by resource availability.
-- Copy link, QR, details/edit page.
-- После 40+ конфигов список должен оставаться кликабельным и виртуализированным.
+### Секции навигации
 
-## Списки в стиле Android Material 3
+Текущие разделы допустимы:
 
-Базовый паттерн для большинства списков в ByeBox - не карточка на каждый элемент, а tonal list row:
-
-- leading content: флаг, иконка приложения, статусная точка или протокол;
-- headline: имя узла, приложения, DNS или правила;
-- supporting text: endpoint, protocol stack, описание, package name;
-- trailing content: ping, switch, selected check, overflow или одно основное действие;
-- высота: 56dp для one-line, 64-72dp для two-line, 88dp только если реально нужны три строки;
-- контейнер: `surfaceContainer` для обычного item, `primaryContainer` для selected/active item;
-- shape: 16-20dp, одинаковая внутри одной группы;
-- spacing: 8dp между rows, 12-16dp padding внутри row;
-- divider не нужен, если rows разделены container tone и spacing;
-- destructive actions не держать постоянно в строке большого списка, если они создают шум; лучше overflow/details, кроме маленьких внутренних списков.
-
-Grouped lists:
-
-- группы подписок показываются как section card/source header;
-- узлы внутри группы - list rows;
-- actions группы остаются в header/source card: refresh, ping all, sort, rename/delete через overflow;
-- длинные списки используют `LazyColumn` и обязательный bottom content padding под floating navigation.
-
-Scroll behavior:
-
-- верхняя шапка схлопывается после небольшого scroll offset;
-- при возврате к началу списка шапка раскрывается;
-- pull/overscroll сверху может дополнительно раскрывать header, если будет добавлен nested scroll;
-- list rows могут иметь press scale/ripple, selected color morph и animateItemPlacement для сортировки/пинга.
-
-## Страница настройки конфига
-
-Сделать отдельный экран вместо перегруза карточки:
-
-- Header: back, title, save, overflow.
-- Sections: Basic, Transport, Security, Routing, Test.
-- Fields: name, address, port, id/password, flow, network, host, path, SNI, fingerprint, ALPN.
-- Actions: test ping, test resource, duplicate, export, delete.
-
-## Настройки
-
-Состав:
-
-- Theme: System first, then presets. Dynamic color toggle only where системная тема недоступна.
-- Routing: clear profile cards without borders.
-- DNS: compact selector plus advanced sheet.
-- Android integration: VPN settings, tile setup, battery optimization, notification traffic.
-- App routing profiles: profiles list, include/exclude mode, package picker, resource filter.
-
-## Уведомление VPN
-
-Должно показывать:
-
-- Connection state.
-- Active config name.
-- Up/down speed.
-- Total session traffic.
-- Quick action disconnect.
-
-Не должно:
-
-- Всегда показывать 0 B/s при активном трафике.
-- Дублировать длинные технические строки.
-
-## Нижняя навигация
-
-Текущие разделы:
-
-- Главная.
-- Прокси.
-- Настройки.
+- Главная;
+- Прокси;
+- Настройки;
 - Логи.
 
-Правила:
+Если логи доступны снизу, не дублировать кнопку логов в top area.
 
-- Остров непрозрачный.
-- Нет родительской панели.
-- Контент виден по бокам и за островом.
-- Активный item расширяется и показывает label.
-- Неактивные items icon-only или короткий label только если хватает места.
-- Нижний edge fade 16-24dp, прозрачный и не воспринимается как плашка.
+## 9. Lists guidelines для ByeBox
 
-## Диалоги и sheets
+M3 lists предназначены для вертикальных наборов однородных элементов. Основной паттерн ByeBox: grouped tonal list, а не card-per-row.
 
-- Dialog только для подтверждения разрушительного действия или сложного выбора.
-- Bottom sheet для выбора DNS, routing profile, app profile.
-- Context menu/overflow для редких действий.
-- Long press quick tile открывает главную, без диалога действий.
+### Анатомия row
 
-## Контраст и доступность
+Каждая строка должна иметь:
 
-- Минимум WCAG AA для текста и иконок.
-- Интерактивные targets минимум 48dp, кроме плотных списков, где визуальная высота может быть 44dp, но touch target расширяется.
-- Цвет не единственный индикатор состояния: использовать текст/иконку/status chip.
-- Русский текст проверять на маленьких экранах 360dp.
+- leading: flag/avatar/icon/status dot;
+- headline: основное имя;
+- supporting text: endpoint, package, protocol stack, description;
+- trailing: ping, switch, check, overflow или одна главная action;
+- state layer: pressed/selected/dragged;
+- минимум 48dp touch target.
 
-## План переработки
+### Высоты
 
-1. Navigation cleanup: прозрачная system bar, непрозрачный island, маленький fade, без дубля логов.
-2. Token layer: вынести semantic colors/shapes/motion в отдельный файл темы.
-3. Main screen: переписать hero/status/quick actions на MD3E blocks.
-4. Proxy screen: source grouping, compact node rows, details page, overflow actions.
-5. Settings screen: убрать одноцветные соседние blocks, заменить borders на tonal separation.
-6. Motion pass: tab transition, card selection, button press, ping progress.
-7. Android integration pass: notification traffic, quick tile, VPN settings, app routing profiles.
-8. QA pass: 360dp/412dp/tablet, dark/light/system dynamic color, 40/100/500 configs.
+- One-line row: 56dp.
+- Two-line row: 64-72dp.
+- Three-line row: 88dp, только когда реально нужны три строки.
+- Config row ByeBox: целевой диапазон 64-76dp.
+- Settings row: 64-80dp в зависимости от supporting text.
 
-## Definition of done
+### Разделение
 
-- Внизу нет прямоугольной панели под островом.
-- На скриншоте остров читается как отдельный элемент.
-- В каждом экране есть понятная tonal hierarchy.
-- Нет соседних крупных элементов одного цвета.
-- Нет обрезанного русского текста в кнопках и чипах.
-- Нет лишних snackbars/toasts.
-- Все заявленные actions работают или скрыты до реализации.
-- Сборка проходит `assembleDebug`.
+- Предпочтение: tonal rows + spacing 2-6dp внутри группы.
+- Dividers использовать редко, в основном inset divider после leading keyline.
+- Не делать толстые gaps между каждым item в длинном списке.
+- Не делать nested cards в каждой строке.
+
+### Sticky headers
+
+- На экране Прокси главный блок "Конфигурации" остается сверху и схлопывается.
+- Header текущей подписки остается sticky при прокрутке ее узлов.
+- Sticky header должен менять высоту/форму плавно и не дергаться при возвращении.
+- Sticky header не должен содержать полный набор тяжелых controls в collapsed state.
+
+### Производительность списков
+
+- `LazyColumn` с `key` и `contentType` обязателен.
+- Не рендерить configs внутри `SourceGroupCard`, если они уже рендерятся LazyColumn item-ами.
+- Для 40/100/500 configs проверять scroll jank.
+- Вынести derived summaries (`protocolSummary`, `endpointSummary`, flags, source counters) в memoized/derived data.
+- Не писать в общие states на каждый drag pixel, если можно держать gesture state локально.
+
+## 10. Component audit against Material components
+
+### App bars
+
+Material guidance: top app bars дают доступ к ключевым задачам и информации; bottom app bars/navigation используются для нижних действий и навигации.
+
+ByeBox:
+
+- Верхняя область главной сейчас скорее brand/status header, а не TopAppBar.
+- При scroll верхний статус должен схлопываться до компактного centered state text: "Отключено", "Подключено", "Подключение".
+- Не держать большую верхнюю плашку, если пользователь читает список.
+
+### Navigation bar
+
+Material guidance: navigation bar для 3-5 постоянных destinations на compact devices.
+
+ByeBox:
+
+- 4 destinations подходят.
+- Floating island допустим как MD3E interpretation, но должен соблюдать edge-to-edge.
+- Active item может расширяться, inactive можно делать icon-only при нехватке места.
+
+### Buttons
+
+ByeBox:
+
+- Primary action на главной: connect/disconnect.
+- Secondary actions: refresh, ping, share, VPN Android.
+- В compact toolbars использовать icon buttons с tooltip/contentDescription.
+- Текстовые кнопки с длинным русским label не сжимать до нечитаемости. Если не помещается: icon-only, overflow или split menu.
+
+### Button groups / segmented buttons
+
+ByeBox:
+
+- Sort mode `Источник / Пинг / Имя` должен быть segmented button row, не набор обычных filled buttons.
+- Theme presets можно сделать segmented/cards grid, но выбранное состояние через filled tonal + check/icon, без border как основного признака.
+- Routing modes лучше grouped list с radio trailing/leading, а не большие карточки одного цвета.
+
+### Cards
+
+Material cards описывают один subject.
+
+ByeBox:
+
+- Status overview, source summary, active config preview могут быть cards.
+- Config row, DNS row, app row, log row не должны быть тяжелыми cards.
+- Не вкладывать card в card.
+
+### Lists
+
+ByeBox:
+
+- Proxy nodes: grouped list rows.
+- Settings: grouped list rows как Android Settings, с leading icon, headline, supporting, trailing switch/value.
+- Logs: monospace list/log surface, controls в top compact toolbar.
+
+### Text fields and search
+
+ByeBox:
+
+- Import URL/search fields: filled tonal field, 54-56dp, outline только focus/error.
+- Placeholder не должен быть единственным описанием функции.
+- Для поиска configs лучше dedicated SearchBar/expanded search, а не маленькое поле, которое съедает layout.
+
+### Chips
+
+ByeBox:
+
+- Protocol, transport, security, country, ping-state, route summary.
+- Chips не должны быть длиннее основного headline.
+- Protocol chip: `VLESS / REALITY`, `VMESS / WS / TLS`, `TROJAN / TCP / TLS`.
+
+### Progress indicators
+
+ByeBox:
+
+- Ping all: inline progress в source header и общий progress в control panel.
+- Connection: progress ring/indicator внутри connect hero.
+- Не использовать snackbar spam для каждого ping.
+
+### Snackbars/toasts
+
+ByeBox:
+
+- Только ошибки, undo delete, редкие подтверждения.
+- Refresh done, copied, selected, ping started лучше показывать inline/status chip.
+
+### Dialogs and sheets
+
+ByeBox:
+
+- Диалог: destructive confirm, QR/details, serious choice.
+- Bottom sheet: sort/filter, DNS picker, app profile picker.
+- Config settings должен быть отдельным экраном или full-height sheet, не маленьким AlertDialog с таблицей.
+
+### Menus
+
+ByeBox:
+
+- Overflow на source: rename, edit URL, export, delete.
+- Overflow на config: copy link, QR, details/edit, duplicate, delete.
+
+### Switches, radio, checkbox
+
+ByeBox:
+
+- Switch: binary settings.
+- Radio: routing mode, DNS single choice.
+- Checkbox: multi-select app packages.
+- Не делать binary setting как обычную Card без понятного trailing switch/check.
+
+## 11. Экран Главная
+
+Цель: один экран отвечает на вопрос "VPN работает?" и дает следующий лучший шаг.
+
+Структура:
+
+1. Compact brand/status header.
+2. Connection hero:
+   - status;
+   - active config;
+   - connect/disconnect;
+   - progress when connecting;
+   - uptime when connected.
+3. Traffic mini cards:
+   - download speed;
+   - upload speed;
+   - optional total session traffic.
+4. Quick action toolbar/button group:
+   - лучший узел;
+   - поделиться;
+   - VPN Android;
+   - tile setup.
+5. Active config preview row.
+
+Убрать:
+
+- слово Expressive;
+- дубли логов;
+- постоянные toast на обычные действия;
+- одинаковые соседние контейнеры.
+
+## 12. Экран Прокси
+
+Цель: быстро управлять подписками и узлами.
+
+### Control panel "Конфигурации"
+
+- Sticky сверху.
+- Expanded state:
+  - title + counts;
+  - import field;
+  - compact action toolbar;
+  - segmented sort/filter row.
+- Collapsed state:
+  - title;
+  - source/config count;
+  - current sort/filter chips;
+  - expand icon.
+- Не занимать слишком много vertical space при scroll.
+
+### Source header
+
+- Sticky внутри текущей подписки.
+- Содержит name, URL/description, node count, average ping, updated time, traffic info.
+- Действия: refresh, ping source, overflow.
+- Toggle collapse скрывает все configs этой подписки.
+
+### Config row
+
+Целевая структура:
+
+- Leading: flag/globe/status.
+- Headline: country/name, active marker.
+- Supporting 1: `protocol / transport / security`.
+- Supporting 2 optional: endpoint/description, ellipsis.
+- Trailing: ping chip + overflow/copy.
+- Swipe left: delete.
+- Swipe right: settings/details.
+- Long press: context menu/details.
+
+Данные, которые нужно показывать при наличии:
+
+- protocol;
+- network/transport;
+- security/TLS/Reality;
+- SNI/host/path/fingerprint short;
+- source;
+- description from subscription/config;
+- last ping and failure state.
+
+## 13. Экран Настройки
+
+Паттерн: Android Settings style grouped lists.
+
+Структура:
+
+- Page title.
+- Groups as rounded containers.
+- Rows:
+  - leading icon in tonal circle;
+  - headline;
+  - supporting text;
+  - trailing switch/value/chevron.
+
+Рекомендуемые группы:
+
+- Appearance:
+  - system dynamic color;
+  - dark theme mode;
+  - reduce motion;
+  - pure black.
+- VPN behavior:
+  - routing profile;
+  - DNS;
+  - IPv6 disabled until backend ready;
+  - metered network;
+  - allow Android VPN bypass.
+- App routing:
+  - profiles;
+  - include/exclude mode;
+  - app picker;
+  - resource filter.
+- Android integration:
+  - Quick Settings tile;
+  - battery optimization;
+  - notification traffic;
+  - VPN system settings.
+- Diagnostics:
+  - logs;
+  - export debug bundle.
+
+Что сейчас исправить:
+
+- заменить крупные одноцветные cards на grouped list rows;
+- убрать border у обычных rows;
+- сделать leading icons;
+- длинные тексты переносить в supporting, не в кнопки;
+- hidden/disabled для backend-неготовых функций.
+
+## 14. Экран Логи
+
+Паттерн: diagnostics surface.
+
+- Верхняя toolbar: search/filter level/export/clear.
+- Логи в `LazyColumn`, monospace, selectable/copyable.
+- Уровни логов цветом и label, но без радужного шума.
+- Автоскролл только если пользователь уже внизу.
+- Не держать отдельную кнопку логов на главной, если есть вкладка.
+
+## 15. Config details/settings
+
+AlertDialog текущего типа недостаточен для редактирования конфига.
+
+Нужен отдельный screen или modal full-height sheet:
+
+- Top app bar: back, title, save, overflow.
+- Sections:
+  - Basic: name, address, port, id/password.
+  - Protocol: protocol, flow, encryption.
+  - Transport: tcp/ws/grpc/httpupgrade/quic, host, path.
+  - Security: TLS/Reality, SNI, fingerprint, ALPN, public key, short id.
+  - Routing/test: ping, resource filter, app profile override.
+- Actions:
+  - duplicate;
+  - export/copy;
+  - QR;
+  - delete.
+
+## 16. Implementation checklist
+
+### Immediate UI cleanup
+
+- Убрать все оставшиеся full-width подложки под floating nav.
+- Проверить bottom content padding на всех вкладках.
+- Перевести settings rows на grouped-list pattern.
+- Перевести sort bar на segmented button pattern.
+- Уменьшить vertical footprint control panel "Конфигурации".
+- Убрать toast для select/copy/ping success, заменить inline status.
+
+### Proxy performance
+
+- Проверить recomposition в `ServerItemCard`.
+- Уменьшить глобальные state updates во время swipe.
+- Не вычислять summaries в draw path без `remember`.
+- Использовать stable keys/contentType везде.
+- Проверить 40, 100, 500 configs.
+
+### Motion pass
+
+- Sticky headers должны двигаться и отпускаться без snap-back.
+- Corner morph должен зависеть от gesture progress.
+- Neighbor rows должны получать легкий follow offset и corner response.
+- Haptic: light, threshold-based, не грубый.
+
+### Component replacement
+
+- `Card` for rows -> custom `Surface`/`ListRow`.
+- Big action rows -> `ButtonGroup`/toolbar pattern where available.
+- Dialog details -> details screen/full sheet.
+- Text actions in tight places -> icon buttons + contentDescription.
+
+## 17. Definition of Done
+
+Экран считается MD3E-ready, если:
+
+- все основные элементы используют Material color roles;
+- соседние крупные поверхности различимы по tonal level;
+- нет border как основного разделителя;
+- нет card-in-card;
+- floating nav не имеет прямоугольной подложки;
+- последний элемент списка можно поднять выше nav island;
+- строки списков читаются как M3 list rows;
+- sticky/collapse/swipe motion плавные и не snap-back;
+- нет лишних snackbars/toasts;
+- русские labels не обрезаются в кнопках;
+- 360dp width выглядит профессионально;
+- 40+ configs остаются кликабельными и плавными;
+- все видимые настройки реально работают или честно disabled.
+
+## 18. Приоритеты переработки
+
+1. Navigation/insets: окончательно убрать подложку, выровнять fade, проверить bottom padding.
+2. Proxy list: list row component, source sticky header, compact control panel, performance.
+3. Settings: grouped Android Settings-style rows.
+4. Main: connection hero and compact quick actions.
+5. Motion/haptics: swipe detach, sticky collapse, nav morph.
+6. Dialogs/sheets: config details screen, overflow menus.
+7. QA: dark/light/system dynamic, 360dp/412dp/tablet, 40/100/500 configs.
