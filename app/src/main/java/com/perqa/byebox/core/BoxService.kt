@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.Process
@@ -195,7 +196,13 @@ class BoxService(private val context: Context) {
         private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
-        override fun localDNSTransport(): LocalDNSTransport? = null
+        override fun localDNSTransport(): LocalDNSTransport {
+            // Return platform DNS resolver — uses Android's DnsResolver API (Q+)
+            // This eliminates DNS leaks by using the system's own DNS
+            LocalResolver.connectivityManager = connectivity
+            LocalResolver.defaultNetwork = connectivity.activeNetwork
+            return LocalResolver
+        }
 
         override fun usePlatformAutoDetectInterfaceControl(): Boolean = true
 
@@ -428,12 +435,58 @@ class BoxService(private val context: Context) {
         }
 
         override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
-            Log.d(TAG, "startDefaultInterfaceMonitor disabled")
-            // The libbox callback is invoked from Go-owned threads. On recent Android 16
-            // builds, pushing interface updates through this JNI listener can abort the
-            // process before TUN is established. Hiddify keeps this path conservative;
-            // socket protection still happens through autoDetectInterfaceControl(fd).
-            defaultNetworkCallback = null
+            Log.d(TAG, "startDefaultInterfaceMonitor")
+            // Track default network changes for LocalResolver
+            try {
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+
+                defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        LocalResolver.defaultNetwork = network
+                        Log.d(TAG, "Default network available: $network")
+                        notifyInterfaceUpdate(listener, network)
+                    }
+
+                    override fun onLost(network: Network) {
+                        if (LocalResolver.defaultNetwork == network) {
+                            LocalResolver.defaultNetwork = connectivity.activeNetwork
+                        }
+                        Log.d(TAG, "Default network lost: $network")
+                    }
+
+                    override fun onCapabilitiesChanged(
+                        network: Network,
+                        caps: NetworkCapabilities
+                    ) {
+                        LocalResolver.defaultNetwork = network
+                    }
+                }
+
+                connectivity.registerNetworkCallback(request, defaultNetworkCallback!!)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register network callback", e)
+            }
+        }
+
+        private fun notifyInterfaceUpdate(listener: InterfaceUpdateListener?, network: Network) {
+            if (listener == null) return
+            try {
+                val linkProps = connectivity.getLinkProperties(network) ?: return
+                val ifaceName = linkProps.interfaceName ?: return
+                for (attempt in 0 until 10) {
+                    try {
+                        val index = java.net.NetworkInterface.getByName(ifaceName)?.index ?: continue
+                        listener.updateDefaultInterface(ifaceName, index, false, false)
+                        return
+                    } catch (e: Exception) {
+                        Thread.sleep(100)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "notifyInterfaceUpdate failed", e)
+            }
         }
 
         override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {

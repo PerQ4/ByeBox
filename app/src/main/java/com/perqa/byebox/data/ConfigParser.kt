@@ -62,6 +62,7 @@ object ConfigParser {
         var network: String? = null
         var wsPath: String? = null
         var wsHost: String? = null
+        var grpcServiceName: String? = null
         var description: String? = null
 
         if (queryStartIndex != -1) {
@@ -106,6 +107,7 @@ object ConfigParser {
             network = network,
             wsPath = wsPath,
             wsHost = wsHost,
+            grpcServiceName = grpcServiceName,
             countryFlag = flag
         )
     }
