@@ -93,7 +93,7 @@ private val ForestCyberDarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun HiddifyExpressiveTheme(
+fun ByeBoxTheme(
   appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
   darkTheme: Boolean = isSystemInDarkTheme(),
   content: @Composable () -> Unit,

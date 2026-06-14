@@ -1,13 +1,21 @@
 package com.perqa.byebox.ui.main
 
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.perqa.byebox.data.DataRepository
 import com.perqa.byebox.data.ProxyConfig
-import com.perqa.byebox.data.RegionProxyLists
 import com.perqa.byebox.data.SubscriptionSource
-import com.perqa.byebox.service.CoreRuntimeState
+import com.v2ray.ang.AppConfig
+import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.handler.MmkvManager
+import kotlinx.coroutines.isActive
+import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.dto.entities.SubscriptionCache
+import com.v2ray.ang.enums.EConfigType
+import com.v2ray.ang.util.MessageUtil
 import com.perqa.byebox.theme.AppTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -45,8 +53,7 @@ enum class ConnectionStatus {
 enum class RoutingProfile(val label: String) {
     BYPASS_LAN_CN_RU("Обход LAN, Китая и РФ"),
     PROXY_ALL("Проксировать всё"),
-    DIRECT("Прямое подключение"),
-    BLOCK_ADS("Блокировка рекламы + Прокси")
+    DIRECT("Прямое подключение")
 }
 
 enum class DnsServer(val label: String, val address: String) {
@@ -62,10 +69,9 @@ enum class AppRoutingMode(val label: String, val description: String) {
     BYPASS_SELECTED("Обход выбранных", "Приложения из списка идут напрямую, остальные через VPN")
 }
 
-enum class TunStack(val label: String, val description: String) {
-    MIXED("Mixed (рекомендуется)", "gVisor + system — баланс скорости и совместимости"),
-    GVISOR("gVisor", "Полная изоляция стека — максимальная совместимость, ниже скорость"),
-    SYSTEM("System", "Системный стек — максимальная скорость, ниже совместимость")
+enum class TunStack(val label: String, val description: String, val xrayValue: String) {
+    GVISOR("gVisor", "Изоляция стека — максимальная совместимость", "gvisor"),
+    SYSTEM("System", "Системный стек — максимальная скорость", "system")
 }
 
 data class MainUiState(
@@ -78,35 +84,41 @@ data class MainUiState(
     val appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
     val routingProfile: RoutingProfile = RoutingProfile.BYPASS_LAN_CN_RU,
     val dnsServer: DnsServer = DnsServer.SYSTEM,
-    val ipv6Enabled: Boolean = false,
     val lanBypassEnabled: Boolean = true,
-    val systemBypassEnabled: Boolean = false,
-    val meteredNetwork: Boolean = false,
-    val autostartEnabled: Boolean = false,
     val appRoutingMode: AppRoutingMode = AppRoutingMode.OFF,
     val appRoutingPackages: String = "",
     val installedApps: List<InstalledAppInfo> = emptyList(),
     val healthCheckUrl: String = "https://www.gstatic.com/generate_204",
-    val strictHealthCheck: Boolean = false,
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
     val toastMessage: String? = null,
-    val httpProxyEnabled: Boolean = false,
-    val region: RegionProxyLists.Region = RegionProxyLists.Region.OTHER,
-    val tunStack: TunStack = TunStack.MIXED
+    val tunStack: TunStack = TunStack.GVISOR,
+    val vpnModeEnabled: Boolean = true,
+    val socksPort: String = "10808",
+    val proxySharingEnabled: Boolean = false,
+    val muxEnabled: Boolean = false,
+    val fakeDnsEnabled: Boolean = false,
+    val fragmentEnabled: Boolean = false,
+    val ipv6Enabled: Boolean = false,
+    val startOnBootEnabled: Boolean = false,
+    val logLevel: String = "warning"
 )
 
 data class InstalledAppInfo(
     val label: String,
     val packageName: String,
-    val isSystem: Boolean
+    val isSystem: Boolean,
+    val icon: android.graphics.Bitmap? = null
 )
 
 class MainScreenViewModel(
-    private val dataRepository: DataRepository,
     private val appContext: Context? = null
 ) : ViewModel() {
     private val prefs = appContext?.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
+
+    private val _configs = MutableStateFlow<List<ProxyConfig>>(emptyList())
+    private val _subscriptionSources = MutableStateFlow<List<SubscriptionSource>>(emptyList())
+    private val _activeConfigId = MutableStateFlow<String?>(null)
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     private val _downloadSpeed = MutableStateFlow("0.0 KB/s")
@@ -114,19 +126,21 @@ class MainScreenViewModel(
     private val _appTheme = MutableStateFlow(readEnum(KEY_APP_THEME, AppTheme.SYSTEM_DYNAMIC))
     private val _routingProfile = MutableStateFlow(readEnum(KEY_ROUTING_PROFILE, RoutingProfile.BYPASS_LAN_CN_RU))
     private val _dnsServer = MutableStateFlow(readEnum(KEY_DNS_SERVER, DnsServer.SYSTEM))
-    private val _ipv6Enabled = MutableStateFlow(readBoolean(KEY_IPV6_ENABLED, false))
-    private val _lanBypassEnabled = MutableStateFlow(readBoolean(KEY_LAN_BYPASS_ENABLED, true))
-    private val _systemBypassEnabled = MutableStateFlow(readBoolean(KEY_SYSTEM_BYPASS_ENABLED, false))
-    private val _meteredNetwork = MutableStateFlow(readBoolean(KEY_METERED_NETWORK, false))
-    private val _autostartEnabled = MutableStateFlow(readBoolean(KEY_AUTOSTART_ENABLED, false))
+    private val _lanBypassEnabled = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2")
     private val _appRoutingMode = MutableStateFlow(readEnum(KEY_APP_ROUTING_MODE, AppRoutingMode.OFF))
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
-    private val _region = MutableStateFlow(readEnum(KEY_REGION, RegionProxyLists.Region.OTHER))
-    private val _httpProxyEnabled = MutableStateFlow(readBoolean(KEY_HTTP_PROXY_ENABLED, false))
-    private val _tunStack = MutableStateFlow(readEnum(KEY_TUN_STACK, TunStack.MIXED))
+    private val _tunStack = MutableStateFlow(readEnum(KEY_TUN_STACK, TunStack.GVISOR))
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
-    private val _healthCheckUrl = MutableStateFlow(readString(KEY_HEALTH_CHECK_URL, "https://www.gstatic.com/generate_204"))
-    private val _strictHealthCheck = MutableStateFlow(readBoolean(KEY_STRICT_HEALTH_CHECK, false))
+    private val _healthCheckUrl = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204")
+    private val _vpnModeEnabled = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN")
+    private val _socksPort = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808")
+    private val _proxySharingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING, false))
+    private val _muxEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false))
+    private val _fakeDnsEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED, false))
+    private val _fragmentEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false))
+    private val _ipv6Enabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false))
+    private val _startOnBootEnabled = MutableStateFlow(MmkvManager.decodeStartOnBoot())
+    private val _logLevel = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, "warning") ?: "warning")
     private val _logs = com.perqa.byebox.core.AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -134,32 +148,67 @@ class MainScreenViewModel(
     private var trafficJob: Job? = null
     private var lastToastAt: Long = 0L
 
+    private val mMsgReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent == null) return
+            val key = intent.getIntExtra("key", 0)
+            val content = intent.getStringExtra("content") ?: ""
+            when (key) {
+                AppConfig.MSG_STATE_RUNNING,
+                AppConfig.MSG_STATE_START_SUCCESS -> {
+                    _connectionStatus.value = ConnectionStatus.CONNECTED
+                    startTrafficUpdates()
+                    loadDataFromMmkv()
+                }
+                AppConfig.MSG_STATE_NOT_RUNNING,
+                AppConfig.MSG_STATE_STOP_SUCCESS -> {
+                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                    trafficJob?.cancel()
+                    _downloadSpeed.value = "0.0 KB/s"
+                    _uploadSpeed.value = "0.0 KB/s"
+                    loadDataFromMmkv()
+                }
+                AppConfig.MSG_STATE_START_FAILURE -> {
+                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                    trafficJob?.cancel()
+                    _downloadSpeed.value = "0.0 KB/s"
+                    _uploadSpeed.value = "0.0 KB/s"
+                    addLog("[ERROR] Сбой подключения: $content")
+                    showToast("Сбой подключения")
+                    loadDataFromMmkv()
+                }
+            }
+        }
+    }
+
     val uiState: StateFlow<MainUiState> = combine(
-        dataRepository.configs,
-        dataRepository.subscriptionSources,
-        dataRepository.activeConfigId,
+        _configs,
+        _subscriptionSources,
+        _activeConfigId,
         _connectionStatus,
         _downloadSpeed,
         _uploadSpeed,
         _appTheme,
         _routingProfile,
         _dnsServer,
-        _ipv6Enabled,
         _lanBypassEnabled,
-        _systemBypassEnabled,
-        _meteredNetwork,
-        _autostartEnabled,
         _appRoutingMode,
         _appRoutingPackages,
         _installedApps,
         _healthCheckUrl,
-        _strictHealthCheck,
         _logs,
         _isPinging,
         _toastMessage,
-        _httpProxyEnabled,
-        _region,
-        _tunStack
+        _tunStack,
+        _vpnModeEnabled,
+        _socksPort,
+        _proxySharingEnabled,
+        _muxEnabled,
+        _fakeDnsEnabled,
+        _fragmentEnabled,
+        _ipv6Enabled,
+        _startOnBootEnabled,
+        _logLevel
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         MainUiState(
@@ -172,22 +221,24 @@ class MainScreenViewModel(
             appTheme = flows[6] as AppTheme,
             routingProfile = flows[7] as RoutingProfile,
             dnsServer = flows[8] as DnsServer,
-            ipv6Enabled = flows[9] as Boolean,
-            lanBypassEnabled = flows[10] as Boolean,
-            systemBypassEnabled = flows[11] as Boolean,
-            meteredNetwork = flows[12] as Boolean,
-            autostartEnabled = flows[13] as Boolean,
-            appRoutingMode = flows[14] as AppRoutingMode,
-            appRoutingPackages = flows[15] as String,
-            installedApps = flows[16] as List<InstalledAppInfo>,
-            healthCheckUrl = flows[17] as String,
-            strictHealthCheck = flows[18] as Boolean,
-            logs = flows[19] as List<String>,
-            isPinging = flows[20] as Boolean,
-            toastMessage = flows[21] as String?,
-            httpProxyEnabled = flows[22] as Boolean,
-            region = flows[23] as RegionProxyLists.Region,
-            tunStack = flows[24] as TunStack
+            lanBypassEnabled = flows[9] as Boolean,
+            appRoutingMode = flows[10] as AppRoutingMode,
+            appRoutingPackages = flows[11] as String,
+            installedApps = flows[12] as List<InstalledAppInfo>,
+            healthCheckUrl = flows[13] as String,
+            logs = flows[14] as List<String>,
+            isPinging = flows[15] as Boolean,
+            toastMessage = flows[16] as String?,
+            tunStack = flows[17] as TunStack,
+            vpnModeEnabled = flows[18] as Boolean,
+            socksPort = flows[19] as String,
+            proxySharingEnabled = flows[20] as Boolean,
+            muxEnabled = flows[21] as Boolean,
+            fakeDnsEnabled = flows[22] as Boolean,
+            fragmentEnabled = flows[23] as Boolean,
+            ipv6Enabled = flows[24] as Boolean,
+            startOnBootEnabled = flows[25] as Boolean,
+            logLevel = flows[26] as String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -197,101 +248,59 @@ class MainScreenViewModel(
 
     init {
         loadInstalledApps()
+        loadDataFromMmkv()
 
-        _connectionStatus.value = if (com.perqa.byebox.service.HiddifyVpnService.isRunning) {
+        val context = appContext
+        if (context != null) {
+            val filter = android.content.IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY)
+            context.registerReceiver(mMsgReceiver, filter, Context.RECEIVER_EXPORTED)
+            MessageUtil.sendMsg2Service(context, AppConfig.MSG_REGISTER_CLIENT, "")
+        }
+
+        _connectionStatus.value = if (CoreServiceManager.isRunning()) {
             startTrafficUpdates()
             ConnectionStatus.CONNECTED
         } else {
             ConnectionStatus.DISCONNECTED
         }
-
-        viewModelScope.launch {
-            com.perqa.byebox.service.HiddifyVpnService.vpnState.collect { isRunning ->
-                if (isRunning) {
-                    if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
-                        _connectionStatus.value = ConnectionStatus.CONNECTED
-                        val activeConfig = getActiveConfig()
-                        addLog("[INFO] Запуск ядра sing-box v1.9.0-rc.3...")
-                        delay(200)
-                        addLog("[INFO] Загрузка конфигурации: ${activeConfig?.name ?: "Server"} (${activeConfig?.protocol ?: "VLESS"})")
-                        addLog("[INFO] DNS настроен на сервер: ${_dnsServer.value.label} (${_dnsServer.value.address})")
-                        addLog("[INFO] Маршрутизация: ${_routingProfile.value.label}")
-                        addLog("[INFO] Создание TUN интерфейса hiddify-tun0...")
-                        addLog("[INFO] sing-box успешно запущен. Трафик перенаправлен.")
-                        showToast("Подключено к ${activeConfig?.name ?: "Server"}")
-                        startTrafficUpdates()
-
-                        // Keep connection startup light: only refresh the active node latency.
-                        launch {
-                            delay(1500)
-                            com.perqa.byebox.core.AppLogger.info("SYSTEM", "Обновление задержки активного узла после подключения...")
-                            testActiveConfigPing()
-                        }
-                    }
-                } else {
-                    if (_connectionStatus.value != ConnectionStatus.DISCONNECTED) {
-                        trafficJob?.cancel()
-                        _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                        _downloadSpeed.value = "0.0 KB/s"
-                        _uploadSpeed.value = "0.0 KB/s"
-                        addLog("[INFO] Остановка ядра sing-box...")
-                        delay(200)
-                        addLog("[INFO] TUN интерфейс удален. Соединение разорвано.")
-                        showToast("Соединение разорвано")
-                    }
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            com.perqa.byebox.service.HiddifyVpnService.coreState.collect { coreState ->
-                val shouldDisconnect = when (coreState) {
-                    com.perqa.byebox.service.CoreRuntimeState.FAILED -> true
-                    com.perqa.byebox.service.CoreRuntimeState.STOPPED ->
-                        _connectionStatus.value != ConnectionStatus.DISCONNECTED &&
-                            !com.perqa.byebox.service.HiddifyVpnService.isRunning
-                    else -> false
-                }
-                if (coreState == com.perqa.byebox.service.CoreRuntimeState.RECONNECTING) {
-                    trafficJob?.cancel()
-                    _connectionStatus.value = ConnectionStatus.RECONNECTING
-                    _downloadSpeed.value = "0.0 KB/s"
-                    _uploadSpeed.value = "0.0 KB/s"
-                    return@collect
-                }
-                if (coreState == com.perqa.byebox.service.CoreRuntimeState.STARTING && _connectionStatus.value != ConnectionStatus.CONNECTED) {
-                    _connectionStatus.value = ConnectionStatus.CONNECTING
-                }
-                if (shouldDisconnect) {
-                    if (_connectionStatus.value != ConnectionStatus.DISCONNECTED) {
-                        trafficJob?.cancel()
-                        _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                        _downloadSpeed.value = "0.0 KB/s"
-                        _uploadSpeed.value = "0.0 KB/s"
-                        if (coreState == com.perqa.byebox.service.CoreRuntimeState.FAILED) {
-                            addLog("[ERROR] Сбой ядра sing-box при запуске. Проверьте логи.")
-                            showToast("Сбой подключения")
-                        } else {
-                            addLog("[INFO] Соединение остановлено.")
-                        }
-                    }
-                }
-            }
-        }
     }
 
     fun setConnectingState() {
         _connectionStatus.value = ConnectionStatus.CONNECTING
-        addLog("[INFO] Запуск ядра sing-box v1.9.0-rc.3...")
+        addLog("[INFO] Запуск ядра Xray...")
     }
 
     private fun startTrafficUpdates() {
         trafficJob?.cancel()
-        trafficJob = viewModelScope.launch {
-            com.perqa.byebox.service.HiddifyVpnService.trafficStats.collect { stats ->
-                if (_connectionStatus.value != ConnectionStatus.CONNECTED) return@collect
-                _downloadSpeed.value = formatBytesPerSec(stats.downSpeed)
-                _uploadSpeed.value = formatBytesPerSec(stats.upSpeed)
+        trafficJob = viewModelScope.launch(Dispatchers.IO) {
+            var lastQueryTime = System.currentTimeMillis()
+            while (isActive) {
+                delay(1000)
+                if (_connectionStatus.value != ConnectionStatus.CONNECTED) continue
+                
+                val queryTime = System.currentTimeMillis()
+                val sinceLastQuery = queryTime - lastQueryTime
+                if (sinceLastQuery <= 0) continue
+                val seconds = sinceLastQuery / 1000.0
+                
+                var proxyUplink = 0L
+                var proxyDownlink = 0L
+                
+                CoreServiceManager.queryAllOutboundTrafficStats().forEach { stat ->
+                    if (stat.tag.startsWith(AppConfig.TAG_PROXY)) {
+                        when (stat.direction) {
+                            AppConfig.UPLINK -> proxyUplink += stat.value
+                            AppConfig.DOWNLINK -> proxyDownlink += stat.value
+                        }
+                    }
+                }
+                
+                lastQueryTime = queryTime
+                
+                withContext(Dispatchers.Main) {
+                    _downloadSpeed.value = formatBytesPerSec((proxyDownlink / seconds).toLong())
+                    _uploadSpeed.value = formatBytesPerSec((proxyUplink / seconds).toLong())
+                }
             }
         }
     }
@@ -305,14 +314,15 @@ class MainScreenViewModel(
     }
 
     private fun getActiveConfig(): ProxyConfig? {
-        val configs = dataRepository.configs.value
-        val activeId = dataRepository.activeConfigId.value
+        val configs = _configs.value
+        val activeId = _activeConfigId.value
         return configs.find { it.id == activeId }
     }
 
     fun selectConfig(id: String) {
-        dataRepository.selectConfig(id)
-        val active = dataRepository.configs.value.find { it.id == id }
+        MmkvManager.setSelectServer(id)
+        _activeConfigId.value = id
+        val active = _configs.value.find { it.id == id }
         if (active != null) {
             addLog("[SYSTEM] Выбрана конфигурация: ${active.name}")
             showToast("Выбран сервер: ${active.name}")
@@ -320,20 +330,20 @@ class MainScreenViewModel(
     }
 
     fun selectBestConfig() {
-        val best = dataRepository.configs.value
+        val best = _configs.value
             .filter { it.ping != null && it.ping < 999 && it.failureCount < 3 }
             .minByOrNull { it.ping ?: Int.MAX_VALUE }
-            ?: dataRepository.configs.value
+            ?: _configs.value
                 .filter { it.failureCount < 3 }
                 .minByOrNull { it.ping ?: Int.MAX_VALUE }
-            ?: dataRepository.configs.value.firstOrNull()
+            ?: _configs.value.firstOrNull()
 
         if (best == null) {
             showToast("Нет доступных конфигураций")
             return
         }
 
-        dataRepository.selectConfig(best.id)
+        selectConfig(best.id)
         addLog("[SYSTEM] Выбран лучший сервер: ${best.name} (${best.ping?.let { "$it ms" } ?: "N/A"})")
         showToast("Лучший сервер: ${best.name}")
     }
@@ -342,32 +352,50 @@ class MainScreenViewModel(
         viewModelScope.launch {
             val trimmedUrl = url.trim()
             if (trimmedUrl.startsWith("http://", ignoreCase = true) || trimmedUrl.startsWith("https://", ignoreCase = true)) {
-                addLog("[INFO] Загрузка подписки по ссылке: $trimmedUrl")
-                showToast("Загрузка подписки...")
-                val result = fetchSubscription(trimmedUrl)
-                if (result != null) {
-                    val parsedConfigs = parseSubscriptionContent(result.body)
-                    if (parsedConfigs.isNotEmpty()) {
-                        val sourceName = subscriptionSourceName(trimmedUrl)
-                        val source = result.toSubscriptionSource(trimmedUrl, sourceName, parsedConfigs.size)
-                        dataRepository.upsertSubscriptionSource(source, parsedConfigs)
-                        addLog("[SYSTEM] Подписка обновлена: $sourceName (${parsedConfigs.size} серверов).")
-                        showToast("Импортировано серверов: ${parsedConfigs.size}")
-                    } else {
-                        addLog("[WARNING] Подписка загружена, но не найдено валидных конфигураций!")
-                        showToast("В подписке нет конфигураций!")
+                addLog("[INFO] Добавление подписки по ссылке: $trimmedUrl")
+                showToast("Добавление подписки...")
+                
+                val result = withContext(Dispatchers.IO) {
+                    val subscriptions = MmkvManager.decodeSubscriptions()
+                    var existingSub = subscriptions.find { it.subscription.url == trimmedUrl }
+                    val subId = existingSub?.guid ?: com.v2ray.ang.util.Utils.getUuid()
+                    
+                    if (existingSub == null) {
+                        val uri = try { java.net.URI(com.v2ray.ang.util.Utils.fixIllegalUrl(trimmedUrl)) } catch(e: Exception) { null }
+                        val host = uri?.host ?: "Подписка"
+                        val remarks = uri?.fragment ?: host
+                        
+                        val subItem = com.v2ray.ang.dto.entities.SubscriptionItem().apply {
+                            this.remarks = remarks
+                            this.url = trimmedUrl
+                            this.enabled = true
+                        }
+                        MmkvManager.encodeSubscription(subId, subItem)
+                        existingSub = com.v2ray.ang.dto.entities.SubscriptionCache(subId, subItem)
                     }
+                    
+                    AngConfigManager.updateConfigViaSub(existingSub)
+                }
+                
+                if (result.configCount > 0) {
+                    addLog("[SYSTEM] Подписка успешно обновлена. Импортировано узлов: ${result.configCount}")
+                    showToast("Импортировано серверов: ${result.configCount}")
+                    loadDataFromMmkv()
                 } else {
-                    addLog("[ERROR] Не удалось загрузить подписку! Проверьте подключение к сети.")
-                    showToast("Ошибка загрузки подписки!")
+                    addLog("[ERROR] Не удалось загрузить сервера из подписки.")
+                    showToast("Загружено 0 серверов")
+                    loadDataFromMmkv()
                 }
             } else {
-                val success = dataRepository.addConfigFromUrl(trimmedUrl)
-                if (success) {
+                val (configCount, _) = withContext(Dispatchers.IO) {
+                    AngConfigManager.importBatchConfig(trimmedUrl, "", true)
+                }
+                if (configCount > 0) {
                     addLog("[SYSTEM] Успешно добавлена новая конфигурация по ссылке.")
                     showToast("Сервер успешно добавлен!")
+                    loadDataFromMmkv()
                 } else {
-                    addLog("[ERROR] Не удалось распарсить ссылку! Поддерживаются VLESS, VMESS, Trojan и Shadowsocks.")
+                    addLog("[ERROR] Не удалось распарсить ссылку!")
                     showToast("Ошибка: Неподдерживаемый формат ссылки!")
                 }
             }
@@ -376,201 +404,87 @@ class MainScreenViewModel(
 
     fun refreshSubscriptions() {
         viewModelScope.launch {
-            val sources = dataRepository.subscriptionSources.value
-            if (sources.isEmpty()) {
-                showToast("Нет подписок для обновления")
-                return@launch
+            addLog("[SYSTEM] Обновление подписок...")
+            showToast("Обновление подписок...")
+            val result = withContext(Dispatchers.IO) {
+                AngConfigManager.updateConfigViaSubAll()
             }
-            addLog("[SYSTEM] Обновление подписок: ${sources.size}")
-            var updated = 0
-            sources.forEach { source ->
-                val result = fetchSubscription(source.url)
-                if (result == null) {
-                    addLog("[WARNING] Не удалось обновить подписку: ${source.name}")
-                    return@forEach
-                }
-                val parsedConfigs = parseSubscriptionContent(result.body)
-                if (parsedConfigs.isEmpty()) {
-                    addLog("[WARNING] Подписка без валидных узлов: ${source.name}")
-                    return@forEach
-                }
-                dataRepository.upsertSubscriptionSource(
-                    result.toSubscriptionSource(source.url, source.name, parsedConfigs.size),
-                    parsedConfigs
-                )
-                updated++
-            }
-            addLog("[SYSTEM] Обновлено подписок: $updated/${sources.size}")
-            showToast("Обновлено подписок: $updated")
+            addLog("[SYSTEM] Обновлено конфигураций: ${result.configCount}, Успешно: ${result.successCount}, Ошибок: ${result.failureCount}")
+            showToast("Обновлено серверов: ${result.configCount}")
+            loadDataFromMmkv()
         }
     }
 
     fun refreshSubscription(sourceId: String) {
         viewModelScope.launch {
-            val source = dataRepository.subscriptionSources.value.find { it.id == sourceId }
-            if (source == null) {
+            val sub = MmkvManager.decodeSubscription(sourceId)
+            if (sub == null) {
                 showToast("Источник не найден")
                 return@launch
             }
-            val result = fetchSubscription(source.url)
-            if (result == null) {
-                addLog("[WARNING] Не удалось обновить подписку: ${source.name}")
-                showToast("Не удалось обновить: ${source.name}")
-                return@launch
+            addLog("[SYSTEM] Обновление подписки: ${sub.remarks}...")
+            showToast("Обновление подписки...")
+            val result = withContext(Dispatchers.IO) {
+                val cache = SubscriptionCache(sourceId, sub)
+                AngConfigManager.updateConfigViaSub(cache)
             }
-            val parsedConfigs = parseSubscriptionContent(result.body)
-            if (parsedConfigs.isEmpty()) {
-                showToast("В подписке нет узлов")
-                return@launch
-            }
-            dataRepository.upsertSubscriptionSource(
-                result.toSubscriptionSource(source.url, source.name, parsedConfigs.size),
-                parsedConfigs
-            )
-            addLog("[SYSTEM] Источник обновлен: ${source.name} (${parsedConfigs.size} серверов).")
-            showToast("Обновлено: ${source.name}")
+            addLog("[SYSTEM] Обновлено конфигураций: ${result.configCount}, Ошибок: ${result.failureCount}")
+            showToast("Обновлено серверов: ${result.configCount}")
+            loadDataFromMmkv()
         }
     }
 
     fun renameSubscriptionSource(sourceId: String, newName: String) {
-        dataRepository.renameSubscriptionSource(sourceId, newName)
-        addLog("[SYSTEM] Источник переименован: $newName")
+        val cleanName = newName.trim()
+        if (cleanName.isBlank()) return
+        val sub = MmkvManager.decodeSubscription(sourceId) ?: return
+        sub.remarks = cleanName
+        MmkvManager.encodeSubscription(sourceId, sub)
+        loadDataFromMmkv()
+        addLog("[SYSTEM] Источник переименован: $cleanName")
         showToast("Источник переименован")
     }
 
     fun deleteSubscriptionSource(sourceId: String) {
-        val sourceName = dataRepository.subscriptionSources.value.find { it.id == sourceId }?.name ?: "Источник"
-        dataRepository.deleteSubscriptionSource(sourceId)
-        addLog("[SYSTEM] Удален источник подписки: $sourceName")
-        showToast("Удалено: $sourceName")
+        val sub = MmkvManager.decodeSubscription(sourceId)
+        val name = sub?.remarks ?: "Источник"
+        MmkvManager.removeSubscription(sourceId)
+        loadDataFromMmkv()
+        addLog("[SYSTEM] Удален источник подписки: $name")
+        showToast("Удалено: $name")
     }
-
-    private fun subscriptionSourceName(url: String): String {
-        return try {
-            URI(url).host?.removePrefix("www.") ?: "Подписка"
-        } catch (e: Exception) {
-            "Подписка"
-        }
-    }
-
-    private data class SubscriptionFetchResult(
-        val body: String,
-        val userInfo: String?,
-        val profileTitle: String?,
-        val profileWebPageUrl: String?
-    )
-
-    private suspend fun fetchSubscription(urlString: String): SubscriptionFetchResult? = withContext(Dispatchers.IO) {
-        try {
-            val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-            connection.setRequestProperty("User-Agent", "v2raytun/ByeBox")
-
-            val responseCode = connection.responseCode
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                val response = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    response.append(line).append("\n")
-                }
-                reader.close()
-                SubscriptionFetchResult(
-                    body = response.toString(),
-                    userInfo = connection.getHeaderField("subscription-userinfo"),
-                    profileTitle = connection.getHeaderField("profile-title")
-                        ?: connection.getHeaderField("profileTitle")
-                        ?: connection.getHeaderField("content-disposition")?.substringAfter("filename=", "")?.trim('"'),
-                    profileWebPageUrl = connection.getHeaderField("profile-web-page-url")
-                        ?: connection.getHeaderField("profile-web-page")
-                )
-            } else {
-                addLog("[ERROR] Сервер вернул код ответа: $responseCode")
-                null
-            }
-        } catch (e: Exception) {
-            addLog("[ERROR] Ошибка сети: ${e.message}")
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private fun SubscriptionFetchResult.toSubscriptionSource(
-        url: String,
-        name: String,
-        nodeCount: Int
-    ): SubscriptionSource {
-        val stats = parseSubscriptionUserInfo(userInfo)
-        return SubscriptionSource(
-            id = stableSourceId(url),
-            name = name,
-            url = url,
-            lastUpdatedAt = System.currentTimeMillis(),
-            nodeCount = nodeCount,
-            uploadBytes = stats["upload"],
-            downloadBytes = stats["download"],
-            totalBytes = stats["total"],
-            expireAt = stats["expire"],
-            description = subscriptionDescription()
-        )
-    }
-
-    private fun SubscriptionFetchResult.subscriptionDescription(): String? {
-        return listOfNotNull(
-            profileTitle?.takeIf { it.isNotBlank() },
-            profileWebPageUrl?.takeIf { it.isNotBlank() }
-        ).joinToString(" · ").takeIf { it.isNotBlank() }
-    }
-
-    private fun parseSubscriptionUserInfo(header: String?): Map<String, Long> {
-        if (header.isNullOrBlank()) return emptyMap()
-        return header
-            .split(";")
-            .mapNotNull { part ->
-                val pieces = part.trim().split("=", limit = 2)
-                val key = pieces.getOrNull(0)?.trim()?.lowercase() ?: return@mapNotNull null
-                val value = pieces.getOrNull(1)?.trim()?.toLongOrNull() ?: return@mapNotNull null
-                key to value
-            }
-            .toMap()
-    }
-
-    private fun stableSourceId(url: String): String {
-        return UUID.nameUUIDFromBytes(url.toByteArray()).toString()
-    }
-
-    private fun parseSubscriptionContent(content: String): List<ProxyConfig> {
-        val list = mutableListOf<ProxyConfig>()
-        val decodedContent = try {
-            val clean = content.trim().replace("\r", "").replace("\n", "")
-            val decodedBytes = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
-            String(decodedBytes, Charsets.UTF_8)
-        } catch (e: Exception) {
-            content
-        }
-
-        val lines = decodedContent.split("\n", "\r")
-        for (line in lines) {
-            val trimmedLine = line.trim()
-            if (trimmedLine.isNotEmpty()) {
-                val parsed = com.perqa.byebox.data.ConfigParser.parse(trimmedLine)
-                if (parsed != null) {
-                    list.add(parsed)
-                }
-            }
-        }
-        return list
-    }
-
 
     fun deleteConfig(id: String) {
-        val nodeName = dataRepository.configs.value.find { it.id == id }?.name ?: "Неизвестный"
-        dataRepository.deleteConfig(id)
+        val nodeName = _configs.value.find { it.id == id }?.name ?: "Неизвестный"
+        MmkvManager.removeServer(id)
+        loadDataFromMmkv()
         addLog("[SYSTEM] Удален сервер: $nodeName")
         showToast("Удалено: $nodeName")
+    }
+
+    fun updateConfig(updatedConfig: ProxyConfig) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val profile = MmkvManager.decodeServerConfig(updatedConfig.id) ?: return@withContext
+                profile.remarks = updatedConfig.name
+                profile.server = updatedConfig.address
+                profile.serverPort = updatedConfig.port.toString()
+                profile.password = updatedConfig.uuid
+                profile.sni = updatedConfig.sni
+                profile.publicKey = updatedConfig.pbk
+                profile.shortId = updatedConfig.sid
+                profile.flow = updatedConfig.flow
+                profile.security = updatedConfig.security
+                profile.network = updatedConfig.network
+                profile.path = updatedConfig.wsPath
+                profile.host = updatedConfig.wsHost
+                profile.serviceName = updatedConfig.grpcServiceName
+                
+                MmkvManager.encodeServerConfig(updatedConfig.id, profile)
+            }
+            loadDataFromMmkv()
+            showToast("Конфигурация обновлена")
+        }
     }
 
     fun testPings() {
@@ -579,9 +493,10 @@ class MainScreenViewModel(
             _isPinging.value = true
             try {
                 addLog("[SYSTEM] Запуск тестирования задержки серверов...")
-                val summary = probeConfigs(dataRepository.configs.value)
+                val summary = probeConfigs(_configs.value)
                 addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
                 showToast("Пинг обновлён: ${summary.ok}/${summary.total}")
+                loadDataFromMmkv()
             } finally {
                 _isPinging.value = false
             }
@@ -589,17 +504,18 @@ class MainScreenViewModel(
     }
 
     fun testActiveConfigPing() {
-        val activeId = dataRepository.activeConfigId.value ?: return
-        val activeConfig = dataRepository.configs.value.find { it.id == activeId } ?: return
+        val activeId = _activeConfigId.value ?: return
+        val activeConfig = _configs.value.find { it.id == activeId } ?: return
         viewModelScope.launch {
             if (_isPinging.value) return@launch
             _isPinging.value = true
             try {
                 addLog("[SYSTEM] Тестирование задержки активного сервера ${activeConfig.name}...")
                 val ping = probeTcpLatency(activeConfig) ?: 999
-                dataRepository.updatePing(activeId, ping)
+                MmkvManager.encodeServerTestDelayMillis(activeId, ping.toLong())
                 addLog("[PING] ${activeConfig.name} -> $ping ms")
                 showToast("Пинг: $ping ms")
+                loadDataFromMmkv()
             } finally {
                 _isPinging.value = false
             }
@@ -609,7 +525,7 @@ class MainScreenViewModel(
     fun testPingsForSource(sourceName: String) {
         viewModelScope.launch {
             if (_isPinging.value) return@launch
-            val configs = dataRepository.configs.value.filter { it.sourceName == sourceName }
+            val configs = _configs.value.filter { it.sourceName == sourceName }
             if (configs.isEmpty()) return@launch
             _isPinging.value = true
             try {
@@ -617,6 +533,7 @@ class MainScreenViewModel(
                 val summary = probeConfigs(configs)
                 addLog("[SYSTEM] Пинг источника завершён: $sourceName, ${summary.ok} ok, ${summary.failed} timeout")
                 showToast("Пинг источника: ${summary.ok}/${summary.total}")
+                loadDataFromMmkv()
             } finally {
                 _isPinging.value = false
             }
@@ -629,18 +546,18 @@ class MainScreenViewModel(
         var ok = 0
         var failed = 0
         val healthUrl = _healthCheckUrl.value.trim()
-        val strictHealthCheck = _strictHealthCheck.value && healthUrl.isNotBlank()
+        val strictHealthCheck = false
         configs.chunked(8).forEach { batch ->
             batch.map { config ->
                 async { config to probeConfigLatency(config, healthUrl, strictHealthCheck) }
             }.awaitAll().forEach { (config, ping) ->
                 if (ping != null) {
                     ok += 1
-                    dataRepository.updatePing(config.id, ping)
+                    MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
                     addLog("[PING] ${config.name} -> $ping ms")
                 } else {
                     failed += 1
-                    dataRepository.updatePing(config.id, 999)
+                    MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
                     addLog("[PING] ${config.name} -> timeout")
                 }
             }
@@ -707,60 +624,73 @@ class MainScreenViewModel(
     fun changeRoutingProfile(profile: RoutingProfile) {
         _routingProfile.value = profile
         writeString(KEY_ROUTING_PROFILE, profile.name)
+        
+        val index = when (profile) {
+            RoutingProfile.BYPASS_LAN_CN_RU -> 4 // WHITE_RUSSIA
+            RoutingProfile.PROXY_ALL -> 2 // GLOBAL
+            RoutingProfile.DIRECT -> 0 // WHITE
+        }
+        val context = appContext
+        if (context != null) {
+            SettingsManager.resetRoutingRulesetsFromPresets(context, index)
+        }
+        
         addLog("[SYSTEM] Профиль маршрутизации изменен: ${profile.label}")
         showToast("Маршрутизация: ${profile.label}")
-        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-            addLog("[INFO] Правила ядра sing-box обновлены на лету.")
-        }
     }
 
     fun changeDnsServer(dns: DnsServer) {
         _dnsServer.value = dns
         writeString(KEY_DNS_SERVER, dns.name)
+        
+        val dnsAddress = if (dns == DnsServer.SYSTEM) "1.1.1.1" else dns.address
+        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsAddress)
+        if (dns != DnsServer.SYSTEM) {
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, dns.address)
+        } else {
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, AppConfig.DNS_VPN)
+        }
+        
         addLog("[SYSTEM] Выбран DNS-сервер: ${dns.label} (${dns.address})")
         showToast("DNS: ${dns.label}")
-        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-            viewModelScope.launch {
-                addLog("[INFO] Перезапуск DNS-модуля sing-box...")
-                delay(300)
-                addLog("[INFO] DNS-серверы sing-box обновлены.")
-            }
-        }
-    }
-
-    fun changeIpv6Enabled(enabled: Boolean) {
-        _ipv6Enabled.value = enabled
-        writeBoolean(KEY_IPV6_ENABLED, enabled)
-        addLog("[SYSTEM] IPv6 в TUN: ${if (enabled) "включен" else "выключен"}")
-        showToast("IPv6: ${if (enabled) "включен" else "выключен"}")
     }
 
     fun changeLanBypassEnabled(enabled: Boolean) {
         _lanBypassEnabled.value = enabled
         writeBoolean(KEY_LAN_BYPASS_ENABLED, enabled)
+        
+        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (enabled) "1" else "2")
         addLog("[SYSTEM] Обход локальных сетей: ${if (enabled) "включен" else "выключен"}")
         showToast("LAN bypass: ${if (enabled) "включен" else "выключен"}")
     }
 
-    fun changeSystemBypassEnabled(enabled: Boolean) {
-        _systemBypassEnabled.value = enabled
-        writeBoolean(KEY_SYSTEM_BYPASS_ENABLED, enabled)
-        addLog("[SYSTEM] Android VPN bypass: ${if (enabled) "разрешен" else "запрещен"}")
-        showToast("Bypass: ${if (enabled) "разрешен" else "запрещен"}")
+    fun changeVpnModeEnabled(enabled: Boolean) {
+        _vpnModeEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_MODE, if (enabled) "VPN" else "PROXY")
+        addLog("[SYSTEM] Режим VPN: ${if (enabled) "включен" else "локальный прокси"}")
+        showToast(if (enabled) "Режим VPN" else "Режим локального прокси")
     }
 
-    fun changeMeteredNetwork(enabled: Boolean) {
-        _meteredNetwork.value = enabled
-        writeBoolean(KEY_METERED_NETWORK, enabled)
-        addLog("[SYSTEM] VPN как лимитная сеть: ${if (enabled) "да" else "нет"}")
-        showToast("Лимитная сеть: ${if (enabled) "да" else "нет"}")
+    fun changeSocksPort(port: String) {
+        val cleanPort = port.filter { it.isDigit() }
+        if (cleanPort.isNotEmpty()) {
+            _socksPort.value = cleanPort
+            MmkvManager.encodeSettings(AppConfig.PREF_SOCKS_PORT, cleanPort)
+        }
     }
 
-    fun changeAutostartEnabled(enabled: Boolean) {
-        _autostartEnabled.value = enabled
-        writeBoolean(KEY_AUTOSTART_ENABLED, enabled)
-        addLog("[SYSTEM] Автозапуск VPN после загрузки: ${if (enabled) "включен" else "выключен"}")
-        showToast("Автозапуск: ${if (enabled) "включен" else "выключен"}")
+    fun changeProxySharingEnabled(enabled: Boolean) {
+        _proxySharingEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_PROXY_SHARING, enabled)
+        addLog("[SYSTEM] LAN Sharing: ${if (enabled) "разрешен" else "запрещен"}")
+        showToast("LAN Sharing: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeMuxEnabled(enabled: Boolean) {
+        _muxEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_MUX_ENABLED, enabled)
+        addLog("[SYSTEM] Мультиплексирование (Mux): ${if (enabled) "включено" else "выключено"}")
+        showToast("Mux: ${if (enabled) "включен" else "выключен"}")
     }
 
     fun changeAppRoutingMode(mode: AppRoutingMode) {
@@ -769,6 +699,10 @@ class MainScreenViewModel(
         if (mode == AppRoutingMode.OFF) {
             _appRoutingPackages.value = ""
             writeString(KEY_APP_ROUTING_PACKAGES, "")
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, false)
+        } else {
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
+            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, mode == AppRoutingMode.BYPASS_SELECTED)
         }
         addLog("[SYSTEM] Профиль приложений VPN: ${mode.label}")
         showToast("Приложения: ${mode.label}")
@@ -778,6 +712,9 @@ class MainScreenViewModel(
         val normalized = normalizePackageText(value)
         _appRoutingPackages.value = normalized
         writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+        
+        val set = parsePackageText(normalized).toMutableSet()
+        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, set)
     }
 
     fun toggleAppRoutingPackage(packageName: String) {
@@ -788,71 +725,65 @@ class MainScreenViewModel(
         val normalized = packages.sorted().joinToString("\n")
         _appRoutingPackages.value = normalized
         writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+        
+        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, packages)
     }
 
     fun clearAppRoutingPackages() {
         _appRoutingPackages.value = ""
         writeString(KEY_APP_ROUTING_PACKAGES, "")
+        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, mutableSetOf())
         showToast("Список приложений очищен")
-    }
-
-    fun changeRegion(region: RegionProxyLists.Region) {
-        _region.value = region
-        writeString(KEY_REGION, region.name)
-        addLog("[SYSTEM] Регион: ${region.displayName}")
-        showToast("Регион: ${region.displayName}")
-    }
-
-    fun changeHttpProxyEnabled(enabled: Boolean) {
-        _httpProxyEnabled.value = enabled
-        writeBoolean(KEY_HTTP_PROXY_ENABLED, enabled)
-        addLog("[SYSTEM] HTTP-прокси: ${if (enabled) "включен" else "выключен"}")
-        showToast("HTTP-прокси: ${if (enabled) "включен" else "выключен"}")
     }
 
     fun changeTunStack(stack: TunStack) {
         _tunStack.value = stack
         writeString(KEY_TUN_STACK, stack.name)
+        MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, stack == TunStack.GVISOR)
         addLog("[SYSTEM] TUN стек: ${stack.label}")
         showToast("TUN стек: ${stack.label}")
-    }
-
-    /**
-     * Fetch GFW/China package lists from GitHub and apply to app routing.
-     * @param include true = proxy list (VPN only for listed apps), false = direct list (bypass for listed apps)
-     */
-    fun fetchRegionPackages(include: Boolean) {
-        val region = _region.value
-        val mode = if (include) RegionProxyLists.AppProxyMode.INCLUDE else RegionProxyLists.AppProxyMode.EXCLUDE
-        viewModelScope.launch {
-            addLog("[SYSTEM] Загрузка списка приложений для ${region.displayName}...")
-            val packages = RegionProxyLists.fetch(region, mode)
-            if (packages != null) {
-                val joined = packages.sorted().joinToString("\n")
-                _appRoutingPackages.value = joined
-                writeString(KEY_APP_ROUTING_PACKAGES, joined)
-                val appMode = if (include) AppRoutingMode.ONLY_SELECTED else AppRoutingMode.BYPASS_SELECTED
-                _appRoutingMode.value = appMode
-                writeString(KEY_APP_ROUTING_MODE, appMode.name)
-                addLog("[SYSTEM] Загружено ${packages.size} приложений для ${region.displayName}")
-                showToast("Загружено ${packages.size} приложений")
-            } else {
-                addLog("[SYSTEM] Ошибка загрузки списка для ${region.displayName}")
-                showToast("Ошибка загрузки списка")
-            }
-        }
     }
 
     fun changeHealthCheckUrl(value: String) {
         _healthCheckUrl.value = value
         writeString(KEY_HEALTH_CHECK_URL, value)
+        MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, value)
     }
 
-    fun changeStrictHealthCheck(enabled: Boolean) {
-        _strictHealthCheck.value = enabled
-        writeBoolean(KEY_STRICT_HEALTH_CHECK, enabled)
-        addLog("[SYSTEM] Фильтр проверки ресурса: ${if (enabled) "строгий" else "нестрогий"}")
-        showToast("Фильтр ресурса: ${if (enabled) "включен" else "выключен"}")
+    fun changeFakeDnsEnabled(enabled: Boolean) {
+        _fakeDnsEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_FAKE_DNS_ENABLED, enabled)
+        addLog("[SYSTEM] Fake DNS: ${if (enabled) "включен" else "выключен"}")
+        showToast("Fake DNS: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeFragmentEnabled(enabled: Boolean) {
+        _fragmentEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, enabled)
+        addLog("[SYSTEM] Фрагментация (Fragment): ${if (enabled) "включена" else "выключена"}")
+        showToast("Fragment: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeIpv6Enabled(enabled: Boolean) {
+        _ipv6Enabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_IPV6_ENABLED, enabled)
+        addLog("[SYSTEM] Поддержка IPv6: ${if (enabled) "включена" else "выключена"}")
+        showToast("IPv6: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeStartOnBootEnabled(enabled: Boolean) {
+        _startOnBootEnabled.value = enabled
+        MmkvManager.encodeStartOnBoot(enabled)
+        addLog("[SYSTEM] Автозапуск при загрузке: ${if (enabled) "включен" else "выключен"}")
+        showToast("Автозапуск: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeLogLevel(level: String) {
+        _logLevel.value = level
+        MmkvManager.encodeSettings(AppConfig.PREF_LOGLEVEL, level)
+        com.v2ray.ang.util.LogUtil.refreshLogLevel()
+        addLog("[SYSTEM] Уровень логов: $level")
+        showToast("Уровень логов: $level")
     }
 
     fun testHealthCheckUrl() {
@@ -946,26 +877,54 @@ class MainScreenViewModel(
     private fun loadInstalledApps() {
         val context = appContext ?: return
         viewModelScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                val pm = context.packageManager
-                val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                    addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-                }
-                pm.queryIntentActivities(launcherIntent, 0)
-                    .mapNotNull { resolveInfo ->
-                        val packageName = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
-                        if (packageName == context.packageName) return@mapNotNull null
-                        val appInfo = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
-                        InstalledAppInfo(
-                            label = resolveInfo.loadLabel(pm).toString().ifBlank { packageName },
-                            packageName = packageName,
-                            isSystem = appInfo?.flags?.and(android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-                        )
-                    }
-                    .distinctBy { it.packageName }
-                    .sortedWith(compareBy<InstalledAppInfo> { it.label.lowercase(Locale.getDefault()) }.thenBy { it.packageName })
+            val pm = context.packageManager
+            val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
             }
+            val resolveInfos = withContext(Dispatchers.IO) {
+                pm.queryIntentActivities(launcherIntent, 0)
+                    .filter { it.activityInfo?.packageName != context.packageName }
+                    .distinctBy { it.activityInfo?.packageName }
+            }
+            val apps = resolveInfos.map { ri ->
+                val packageName = ri.activityInfo?.packageName.orEmpty()
+                val label = ri.loadLabel(pm).toString().ifBlank { packageName }
+                val appInfo = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
+                val isSystem = appInfo?.flags?.and(android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                val icon = loadAppIcon(pm, packageName)
+                InstalledAppInfo(label = label, packageName = packageName, isSystem = isSystem, icon = icon)
+            }.sortedWith(
+                compareBy<InstalledAppInfo> { it.label.lowercase(Locale.getDefault()) }
+                    .thenBy { it.packageName }
+            )
             _installedApps.value = apps
+        }
+    }
+
+    private fun loadAppIcon(pm: android.content.pm.PackageManager, packageName: String): android.graphics.Bitmap? {
+        return try {
+            val appInfo = pm.getApplicationInfo(packageName, 0)
+            val drawable = appInfo.loadIcon(pm)
+            val size = 128
+            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+            val w = drawable.minimumWidth.coerceIn(1, size)
+            val h = drawable.minimumHeight.coerceIn(1, size)
+            val left = (size - w) / 2
+            val top = (size - h) / 2
+            drawable.mutate()
+            drawable.setBounds(left, top, left + w, top + h)
+            drawable.draw(canvas)
+            val pixel = bitmap.getPixel(size / 2, size / 2)
+            if (pixel == 0) {
+                drawable.setBounds(0, 0, size, size)
+                drawable.draw(canvas)
+            }
+            bitmap
+        } catch (e: Exception) {
+            android.util.Log.e("ByeBox", "loadAppIcon failed for $packageName", e)
+            null
         }
     }
 
@@ -990,23 +949,158 @@ class MainScreenViewModel(
         prefs?.edit()?.putBoolean(key, value)?.apply()
     }
 
+    fun loadDataFromMmkv() {
+        val serverGuids = MmkvManager.decodeAllServerList()
+        val proxyConfigs = serverGuids.mapNotNull { guid ->
+            MmkvManager.decodeServerConfig(guid)?.toProxyConfig(guid)
+        }
+        _configs.value = proxyConfigs
+
+        val subsList = MmkvManager.decodeSubscriptions()
+        _subscriptionSources.value = subsList.map { subCache ->
+            SubscriptionSource(
+                id = subCache.guid,
+                name = subCache.subscription.remarks,
+                url = subCache.subscription.url,
+                lastUpdatedAt = subCache.subscription.lastUpdated,
+                nodeCount = MmkvManager.decodeServerList(subCache.guid).size,
+                uploadBytes = subCache.subscription.uploadBytes,
+                downloadBytes = subCache.subscription.downloadBytes,
+                totalBytes = subCache.subscription.totalBytes,
+                expireAt = subCache.subscription.expireAt,
+                description = subCache.subscription.description
+            )
+        }
+
+        _activeConfigId.value = MmkvManager.getSelectServer()
+
+        _vpnModeEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN"
+        _socksPort.value = MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808"
+        _proxySharingEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING, false)
+        _muxEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
+        _fakeDnsEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED, false)
+        _fragmentEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false)
+        _ipv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false)
+        _startOnBootEnabled.value = MmkvManager.decodeStartOnBoot()
+        _lanBypassEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2"
+        _healthCheckUrl.value = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204"
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        appContext?.unregisterReceiver(mMsgReceiver)
+        trafficJob?.cancel()
+    }
+
     companion object {
         private const val KEY_APP_THEME = "app_theme"
         private const val KEY_ROUTING_PROFILE = "routing_profile"
         private const val KEY_DNS_SERVER = "dns_server"
-        private const val KEY_IPV6_ENABLED = "ipv6_enabled"
         private const val KEY_LAN_BYPASS_ENABLED = "lan_bypass_enabled"
         private const val KEY_SYSTEM_BYPASS_ENABLED = "system_bypass_enabled"
         private const val KEY_METERED_NETWORK = "metered_network"
-        private const val KEY_AUTOSTART_ENABLED = "autostart_enabled"
         private const val KEY_APP_ROUTING_MODE = "app_routing_mode"
         private const val KEY_APP_ROUTING_PACKAGES = "app_routing_packages"
         private const val KEY_HEALTH_CHECK_URL = "health_check_url"
         private const val KEY_STRICT_HEALTH_CHECK = "strict_health_check"
-        private const val KEY_REGION = "region"
-        private const val KEY_HTTP_PROXY_ENABLED = "http_proxy_enabled"
         private const val KEY_TUN_STACK = "tun_stack"
     }
+}
+
+private fun ProfileItem.toProxyConfig(guid: String): ProxyConfig {
+    val protocolStr = when (this.configType) {
+        EConfigType.VMESS -> "VMESS"
+        EConfigType.VLESS -> "VLESS"
+        EConfigType.TROJAN -> "Trojan"
+        EConfigType.SHADOWSOCKS -> "Shadowsocks"
+        else -> this.configType.name
+    }
+    
+    val subRemarks = this.subscriptionId.let { subId ->
+        MmkvManager.decodeSubscription(subId)?.remarks
+    }.orEmpty().ifBlank { "Локальные конфигурации" }
+    
+    val subUrl = this.subscriptionId.let { subId ->
+        MmkvManager.decodeSubscription(subId)?.url
+    }
+    
+    val pingVal = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis?.toInt()
+    val pingResult = if (pingVal != null && pingVal > 0) pingVal else null
+
+    return ProxyConfig(
+        id = guid,
+        name = this.remarks,
+        description = this.description,
+        protocol = protocolStr,
+        address = this.server.orEmpty(),
+        port = this.serverPort?.toIntOrNull() ?: 0,
+        uuid = this.password.orEmpty(),
+        flow = this.flow,
+        security = this.security,
+        sni = this.sni,
+        pbk = this.publicKey,
+        sid = this.shortId,
+        network = this.network,
+        wsPath = this.path,
+        wsHost = this.host,
+        grpcServiceName = this.serviceName,
+        ping = pingResult,
+        failureCount = 0,
+        lastFailureAt = null,
+        sourceName = subRemarks,
+        sourceUrl = subUrl,
+        countryFlag = inferCountryFlag(this.server.orEmpty(), this.remarks)
+    )
+}
+
+private fun countryCodeToFlag(code: String): String? {
+    if (code.length != 2) return null
+    val uppercased = code.uppercase()
+    val firstChar = uppercased[0].code
+    val secondChar = uppercased[1].code
+    if (firstChar !in 'A'.code..'Z'.code || secondChar !in 'A'.code..'Z'.code) return null
+    val flagCodepoints = intArrayOf(0x1F1E6 - 'A'.code + firstChar, 0x1F1E6 - 'A'.code + secondChar)
+    return String(flagCodepoints, 0, 2)
+}
+
+private val tldToCountryCode = mapOf(
+    "jp" to "JP", "ru" to "RU", "de" to "DE", "fr" to "FR",
+    "uk" to "GB", "us" to "US", "sg" to "SG", "hk" to "HK",
+    "tw" to "TW", "kr" to "KR", "au" to "AU", "ca" to "CA",
+    "br" to "BR", "in" to "IN", "it" to "IT", "es" to "ES",
+    "nl" to "NL", "se" to "SE", "no" to "NO", "fi" to "FI",
+    "dk" to "DK", "pl" to "PL", "cz" to "CZ", "at" to "AT",
+    "ch" to "CH", "be" to "BE", "ie" to "IE", "nz" to "NZ",
+    "za" to "ZA", "mx" to "MX", "ar" to "AR", "cl" to "CL",
+    "co" to "CO", "pe" to "PE", "vn" to "VN", "th" to "TH",
+    "my" to "MY", "ph" to "PH", "id" to "ID", "tr" to "TR",
+    "ae" to "AE", "sa" to "SA", "il" to "IL", "cn" to "CN",
+    "mo" to "MO", "ro" to "RO", "bg" to "BG", "hu" to "HU",
+    "gr" to "GR", "pt" to "PT", "ua" to "UA", "kz" to "KZ",
+    "ir" to "IR", "pk" to "PK", "vn" to "VN", "eg" to "EG"
+)
+
+private fun inferCountryFlag(address: String, remarks: String): String {
+    val flagRegex = Regex("[\\uD83C\\uDDE6-\\uD83C\\uDDFF]{2}")
+    val existingFlag = flagRegex.find(remarks)
+    if (existingFlag != null) return existingFlag.value
+
+    val ccRegex = Regex("""(?:^|\s|\[|\()([A-Za-z]{2})(?:\s|]|\)|_|-)""")
+    ccRegex.findAll(remarks).forEach { match ->
+        val code = match.groupValues[1].uppercase()
+        countryCodeToFlag(code)?.let { return it }
+    }
+
+    val tld = address.trimEnd('.').substringAfterLast('.').lowercase()
+    if (tld.length == 2 || tld.length == 3) {
+        val mapped = tldToCountryCode[tld]
+        if (mapped != null) {
+            countryCodeToFlag(mapped)?.let { return it }
+        }
+        countryCodeToFlag(tld.uppercase())?.let { return it }
+    }
+
+    return "🏳️"
 }
 
 
