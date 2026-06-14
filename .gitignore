@@ -18,5 +18,5 @@
 local.properties
 *.apk
 *.aab
-sing-box-build/
+xray-build/
 reference/hiddify-app/

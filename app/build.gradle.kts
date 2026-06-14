@@ -4,27 +4,6 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
-tasks.register("checkSingBox") {
-    group = "byebox"
-    description = "Report legacy sing-box binaries bundled in assets"
-    notCompatibleWithConfigurationCache("uses project.file() at execution time")
-    doLast {
-        val assetsDir = file("src/main/assets/sing-box")
-        val abis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        val missing = abis.filter { !file("$assetsDir/$it/sing-box").exists() }
-        if (missing.isNotEmpty()) {
-            println("Legacy asset sing-box binaries are not bundled for ABIs: $missing")
-            println("This is expected when the app uses libbox.aar as the VPN runtime.")
-        } else {
-            println("WARNING: legacy asset sing-box binaries are bundled and increase APK size.")
-        }
-    }
-}
-
-tasks.named("preBuild") {
-    dependsOn("checkSingBox")
-}
-
 android {
     namespace = "com.perqa.byebox"
     compileSdk = 36
@@ -32,8 +11,9 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.3.5-alpha"
+        versionCode = 9
+        versionName = "0.4.1-alpha"
+        multiDexEnabled = true
         ndk {
             abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
         }
@@ -60,8 +40,9 @@ android {
     }
     buildFeatures {
       compose = true
+      viewBinding = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
@@ -124,8 +105,21 @@ dependencies {
   // Material Icons Core
   implementation("androidx.compose.material:material-icons-core")
 
-  // sing-box shared library (gomobile-generated)
-  implementation(files("libs/libbox.aar"))
-}
+  // Xray shared library (gomobile-generated)
+  implementation(files("libs/libv2ray.aar"))
 
+  // v2rayNG dependencies
+  implementation(libs.mmkv.static)
+  implementation(libs.gson)
+  implementation(libs.okhttp)
+  implementation(libs.preference.ktx)
+  implementation(libs.work.runtime.ktx)
+  implementation(libs.work.multiprocess)
+  implementation(libs.multidex)
+  implementation(libs.zxing.core)
+  implementation(libs.androidx.camera.camera2)
+  implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.androidx.camera.view)
+  implementation(libs.mlkit.barcode.scanning)
+}
 

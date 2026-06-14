@@ -67,16 +67,16 @@ object AppLogger {
 
     fun core(message: String) {
         log("[CORE] $message")
-        Log.i("sing-box-core", message)
+        Log.i("xray-core", message)
     }
 
     /**
      * Called from Go JNI goroutine threads — MUST be safe to call from any thread.
      * Only uses Android Log (thread-safe), delegates actual logging to log() which is thread-safe.
      */
-    fun singbox(message: String) {
-        Log.d("sing-box", message)
-        log("[sing-box] $message")
+    fun xray(message: String) {
+        Log.d("xray", message)
+        log("[xray] $message")
     }
 
     fun clearLogs() {

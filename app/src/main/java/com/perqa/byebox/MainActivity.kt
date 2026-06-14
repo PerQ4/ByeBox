@@ -20,21 +20,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
-import com.perqa.byebox.data.DefaultDataRepository
-import com.perqa.byebox.service.HiddifyVpnService
-import com.perqa.byebox.theme.HiddifyExpressiveTheme
+import com.perqa.byebox.theme.ByeBoxTheme
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.MainScreenViewModel
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-    private val dataRepository by lazy { DefaultDataRepository(applicationContext) }
     private val viewModel by viewModels<MainScreenViewModel> {
         object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                return MainScreenViewModel(dataRepository, applicationContext) as T
+                return MainScreenViewModel(applicationContext) as T
             }
         }
     }
@@ -73,18 +71,14 @@ class MainActivity : ComponentActivity() {
             viewModel.uiState.collect { state ->
                 val activeConfig = state.configs.find { it.id == state.activeConfigId }
                 if (activeConfig != null) {
-                    if (HiddifyVpnService.isRunning) {
+                    if (com.v2ray.ang.core.CoreServiceManager.isRunning()) {
                         val runtimeSignature = state.runtimeSignature()
-                        val serviceConfigJson = getSharedPreferences(HiddifyVpnService.PREFS_NAME, Context.MODE_PRIVATE)
-                            .getString(HiddifyVpnService.PREF_CONFIG_JSON, null)
-                        val activeConfigJson = activeConfig.toJson().toString()
                         if (lastRuntimeSignature == null) {
                             lastRuntimeSignature = runtimeSignature
-                            if (serviceConfigJson != null && serviceConfigJson != activeConfigJson) {
-                                requestStartVpn()
-                            }
                         } else if (lastRuntimeSignature != runtimeSignature) {
                             lastRuntimeSignature = runtimeSignature
+                            com.v2ray.ang.core.CoreServiceManager.stopVService(this@MainActivity)
+                            delay(500)
                             requestStartVpn()
                         }
                     } else {
@@ -102,7 +96,7 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
         setContent {
-            HiddifyExpressiveTheme {
+            ByeBoxTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -125,8 +119,7 @@ class MainActivity : ComponentActivity() {
         val uri = intent?.data ?: return
         val scheme = uri.scheme?.lowercase() ?: return
         val supportedSchemes = setOf(
-            "vless", "vmess", "trojan", "ss", "tuic",
-            "hysteria2", "hy2", "wg", "hiddify", "sing-box"
+            "vless", "vmess", "trojan", "ss", "hiddify", "sing-box"
         )
         if (scheme !in supportedSchemes) return
         val url = uri.toString()
@@ -200,8 +193,6 @@ class MainActivity : ComponentActivity() {
     private fun startVpnServiceInternal() {
         val state = viewModel.uiState.value
         val activeConfig = state.configs.find { it.id == state.activeConfigId }
-        val dnsAddress = state.dnsServer.address
-        val routingProfile = state.routingProfile.name
 
         if (activeConfig == null || activeConfig.address.isBlank() || activeConfig.port <= 0) {
             viewModel.showToast("Нет выбранной рабочей конфигурации")
@@ -210,39 +201,17 @@ class MainActivity : ComponentActivity() {
 
         lastRuntimeSignature = state.runtimeSignature()
 
-        val configJson = activeConfig.toJson().toString()
-
-        val intent = Intent(this, HiddifyVpnService::class.java).apply {
-            action = HiddifyVpnService.ACTION_CONNECT
-            putExtra(HiddifyVpnService.EXTRA_CONFIG_JSON, configJson)
-            putExtra(HiddifyVpnService.EXTRA_DNS_ADDRESS, dnsAddress)
-            putExtra(HiddifyVpnService.EXTRA_ROUTING_PROFILE, routingProfile)
-            putExtra(HiddifyVpnService.EXTRA_IPV6_ENABLED, state.ipv6Enabled)
-            putExtra(HiddifyVpnService.EXTRA_LAN_BYPASS_ENABLED, state.lanBypassEnabled)
-            putExtra(HiddifyVpnService.EXTRA_SYSTEM_BYPASS_ENABLED, state.systemBypassEnabled)
-            putExtra(HiddifyVpnService.EXTRA_METERED_NETWORK, state.meteredNetwork)
-                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_MODE, state.appRoutingMode.name)
-                putExtra(HiddifyVpnService.EXTRA_APP_ROUTING_PACKAGES, state.appRoutingPackages)
-                putExtra(HiddifyVpnService.EXTRA_TUN_STACK, state.tunStack.name.lowercase())
-                putExtra(HiddifyVpnService.EXTRA_HTTP_PROXY_ENABLED, state.httpProxyEnabled)
-        }
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
+            com.v2ray.ang.core.CoreServiceManager.startVService(this, activeConfig.id)
         } catch (e: Exception) {
             e.printStackTrace()
+            viewModel.showToast("Ошибка запуска VPN: ${e.message}")
         }
     }
 
     private fun stopVpnServiceInternal() {
-        val intent = Intent(this, HiddifyVpnService::class.java).apply {
-            action = HiddifyVpnService.ACTION_DISCONNECT
-        }
         try {
-            startService(intent)
+            com.v2ray.ang.core.CoreServiceManager.stopVService(this)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -254,12 +223,18 @@ private fun com.perqa.byebox.ui.main.MainUiState.runtimeSignature(): String {
         activeConfigId.orEmpty(),
         dnsServer.name,
         routingProfile.name,
-        ipv6Enabled,
         lanBypassEnabled,
-        systemBypassEnabled,
-        meteredNetwork,
         appRoutingMode.name,
-        appRoutingPackages
+        appRoutingPackages,
+        tunStack.name,
+        vpnModeEnabled,
+        socksPort,
+        proxySharingEnabled,
+        muxEnabled,
+        fakeDnsEnabled,
+        fragmentEnabled,
+        ipv6Enabled,
+        startOnBootEnabled
     ).joinToString("|")
 }
 
