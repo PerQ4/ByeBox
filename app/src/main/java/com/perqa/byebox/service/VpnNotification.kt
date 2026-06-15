@@ -46,7 +46,7 @@ object VpnNotification {
         )
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification_on)
             .setContentTitle(title)
             .setContentText(content)
             .apply { if (subText != null) setSubText(subText) }
@@ -57,7 +57,7 @@ object VpnNotification {
             .setContentIntent(clickPendingIntent)
             .apply {
                 if (disconnectPendingIntent != null) {
-                    addAction(R.drawable.ic_notification, "Отключить", disconnectPendingIntent)
+                    addAction(R.drawable.ic_notification_on, "Отключить", disconnectPendingIntent)
                 }
             }
             .build()

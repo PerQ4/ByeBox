@@ -88,7 +88,7 @@ class ByeBoxTileService : TileService() {
         tile.label = "ByeBox"
 
         tile.icon = if (active) {
-            Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification)
+            Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_on)
         } else {
             Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_off)
         }

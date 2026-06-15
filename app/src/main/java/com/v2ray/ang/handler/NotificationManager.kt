@@ -89,7 +89,7 @@ object NotificationManager {
         val serverName = currentConfig?.remarks ?: CoreServiceManager.getRunningServerName().ifBlank { "ByeBox VPN" }
 
         mBuilder = NotificationCompat.Builder(service, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification_on)
             .setContentTitle(serverName)
             .setContentText("Туннель запущен и защищает ваше соединение")
             .setPriority(NotificationCompat.PRIORITY_MIN)

@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
             statusBarManager.requestAddTileService(
                 componentName,
                 getString(com.perqa.byebox.R.string.app_name),
-                Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification),
+                Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_on),
                 mainExecutor
             ) { result ->
                 val message = when (result) {
