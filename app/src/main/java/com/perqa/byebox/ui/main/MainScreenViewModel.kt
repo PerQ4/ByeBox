@@ -101,7 +101,17 @@ data class MainUiState(
     val fragmentEnabled: Boolean = false,
     val ipv6Enabled: Boolean = false,
     val startOnBootEnabled: Boolean = false,
-    val logLevel: String = "warning"
+    val logLevel: String = "warning",
+    val blockingEnabled: Boolean = false,
+    val sniffingEnabled: Boolean = true,
+    val confirmRemoveEnabled: Boolean = true,
+    val preferIpv6Enabled: Boolean = false,
+    val tapImpactScale: Float = 0.90f,
+    val cornerRoundness: String = "expressive",
+    val pulseEnabled: Boolean = true,
+    val glassmorphicBar: Boolean = true,
+    val maxBlurEnabled: Boolean = true,
+    val language: String = "ru"
 )
 
 data class InstalledAppInfo(
@@ -141,6 +151,16 @@ class MainScreenViewModel(
     private val _ipv6Enabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false))
     private val _startOnBootEnabled = MutableStateFlow(MmkvManager.decodeStartOnBoot())
     private val _logLevel = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, "warning") ?: "warning")
+    private val _blockingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool("pref_blocking", false))
+    private val _sniffingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true))
+    private val _confirmRemoveEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_CONFIRM_REMOVE, true))
+    private val _preferIpv6Enabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6, false))
+    private val _tapImpactScale = MutableStateFlow(0.90f)
+    private val _cornerRoundness = MutableStateFlow("expressive")
+    private val _pulseEnabled = MutableStateFlow(true)
+    private val _glassmorphicBar = MutableStateFlow(true)
+    private val _maxBlurEnabled = MutableStateFlow(true)
+    private val _language = MutableStateFlow("ru")
     private val _logs = com.perqa.byebox.core.AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -208,7 +228,17 @@ class MainScreenViewModel(
         _fragmentEnabled,
         _ipv6Enabled,
         _startOnBootEnabled,
-        _logLevel
+        _logLevel,
+        _blockingEnabled,
+        _sniffingEnabled,
+        _confirmRemoveEnabled,
+        _preferIpv6Enabled,
+        _tapImpactScale,
+        _cornerRoundness,
+        _pulseEnabled,
+        _glassmorphicBar,
+        _maxBlurEnabled,
+        _language
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         MainUiState(
@@ -238,7 +268,17 @@ class MainScreenViewModel(
             fragmentEnabled = flows[23] as Boolean,
             ipv6Enabled = flows[24] as Boolean,
             startOnBootEnabled = flows[25] as Boolean,
-            logLevel = flows[26] as String
+            logLevel = flows[26] as String,
+            blockingEnabled = flows[27] as Boolean,
+            sniffingEnabled = flows[28] as Boolean,
+            confirmRemoveEnabled = flows[29] as Boolean,
+            preferIpv6Enabled = flows[30] as Boolean,
+            tapImpactScale = flows[31] as Float,
+            cornerRoundness = flows[32] as String,
+            pulseEnabled = flows[33] as Boolean,
+            glassmorphicBar = flows[34] as Boolean,
+            maxBlurEnabled = flows[35] as Boolean,
+            language = flows[36] as String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -265,9 +305,18 @@ class MainScreenViewModel(
         }
     }
 
-    fun setConnectingState() {
+    fun setConnectingState(): Boolean {
+        val active = getActiveConfig()
+        if (active == null || active.address.isBlank() || active.port <= 0) {
+            return false
+        }
         _connectionStatus.value = ConnectionStatus.CONNECTING
         addLog("[INFO] Запуск ядра Xray...")
+        return true
+    }
+
+    fun resetConnectionState() {
+        _connectionStatus.value = ConnectionStatus.DISCONNECTED
     }
 
     private fun startTrafficUpdates() {
@@ -778,6 +827,62 @@ class MainScreenViewModel(
         showToast("Автозапуск: ${if (enabled) "включен" else "выключен"}")
     }
 
+    fun changeBlockingEnabled(enabled: Boolean) {
+        _blockingEnabled.value = enabled
+        MmkvManager.encodeSettings("pref_blocking", enabled)
+        addLog("[SYSTEM] Блокировка без VPN (Kill Switch): ${if (enabled) "включена" else "выключена"}")
+        showToast("Kill Switch: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeSniffingEnabled(enabled: Boolean) {
+        _sniffingEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_SNIFFING_ENABLED, enabled)
+        addLog("[SYSTEM] Сниффинг трафика: ${if (enabled) "включен" else "выключен"}")
+        showToast("Сниффинг: ${if (enabled) "включен" else "выключен"}")
+    }
+
+    fun changeConfirmRemoveEnabled(enabled: Boolean) {
+        _confirmRemoveEnabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_CONFIRM_REMOVE, enabled)
+    }
+
+    fun changePreferIpv6Enabled(enabled: Boolean) {
+        _preferIpv6Enabled.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_PREFER_IPV6, enabled)
+        addLog("[SYSTEM] Предпочитать IPv6: ${if (enabled) "включено" else "выключено"}")
+        showToast("Предпочитать IPv6: ${if (enabled) "включено" else "выключено"}")
+    }
+
+    fun changeTapImpactScale(scale: Float) {
+        _tapImpactScale.value = scale
+        prefs?.edit()?.putFloat("pref_tap_impact_scale", scale)?.apply()
+    }
+
+    fun changeCornerRoundness(roundness: String) {
+        _cornerRoundness.value = roundness
+        prefs?.edit()?.putString("pref_corner_roundness", roundness)?.apply()
+    }
+
+    fun changePulseEnabled(enabled: Boolean) {
+        _pulseEnabled.value = enabled
+        prefs?.edit()?.putBoolean("pref_pulse_enabled", enabled)?.apply()
+    }
+
+    fun changeGlassmorphicBar(enabled: Boolean) {
+        _glassmorphicBar.value = enabled
+        prefs?.edit()?.putBoolean("pref_glassmorphic_bar", enabled)?.apply()
+    }
+
+    fun changeMaxBlurEnabled(enabled: Boolean) {
+        _maxBlurEnabled.value = enabled
+        prefs?.edit()?.putBoolean("pref_max_blur", enabled)?.apply()
+    }
+
+    fun changeLanguage(lang: String) {
+        _language.value = lang
+        prefs?.edit()?.putString("pref_language", lang)?.apply()
+    }
+
     fun changeLogLevel(level: String) {
         _logLevel.value = level
         MmkvManager.encodeSettings(AppConfig.PREF_LOGLEVEL, level)
@@ -984,6 +1089,16 @@ class MainScreenViewModel(
         _startOnBootEnabled.value = MmkvManager.decodeStartOnBoot()
         _lanBypassEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2"
         _healthCheckUrl.value = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204"
+        _blockingEnabled.value = MmkvManager.decodeSettingsBool("pref_blocking", false)
+        _sniffingEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true)
+        _confirmRemoveEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_CONFIRM_REMOVE, true)
+        _preferIpv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6, false)
+        _tapImpactScale.value = prefs?.getFloat("pref_tap_impact_scale", 0.90f) ?: 0.90f
+        _cornerRoundness.value = prefs?.getString("pref_corner_roundness", "expressive") ?: "expressive"
+        _pulseEnabled.value = prefs?.getBoolean("pref_pulse_enabled", true) ?: true
+        _glassmorphicBar.value = prefs?.getBoolean("pref_glassmorphic_bar", true) ?: true
+        _maxBlurEnabled.value = prefs?.getBoolean("pref_max_blur", true) ?: true
+        _language.value = prefs?.getString("pref_language", "ru") ?: "ru"
     }
 
     override fun onCleared() {
