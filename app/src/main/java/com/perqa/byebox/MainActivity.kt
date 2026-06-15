@@ -71,7 +71,9 @@ class MainActivity : ComponentActivity() {
             viewModel.uiState.collect { state ->
                 val activeConfig = state.configs.find { it.id == state.activeConfigId }
                 if (activeConfig != null) {
-                    if (com.v2ray.ang.core.CoreServiceManager.isRunning()) {
+                    val isServiceRunning = state.connectionStatus == ConnectionStatus.CONNECTED ||
+                            com.v2ray.ang.handler.MmkvManager.decodeSettingsBool(com.v2ray.ang.AppConfig.PREF_TILE_VPN_RUNNING, false)
+                    if (isServiceRunning) {
                         val runtimeSignature = state.runtimeSignature()
                         if (lastRuntimeSignature == null) {
                             lastRuntimeSignature = runtimeSignature
@@ -196,6 +198,7 @@ class MainActivity : ComponentActivity() {
 
         if (activeConfig == null || activeConfig.address.isBlank() || activeConfig.port <= 0) {
             viewModel.showToast("Нет выбранной рабочей конфигурации")
+            viewModel.resetConnectionState()
             return
         }
 
@@ -234,7 +237,11 @@ private fun com.perqa.byebox.ui.main.MainUiState.runtimeSignature(): String {
         fakeDnsEnabled,
         fragmentEnabled,
         ipv6Enabled,
-        startOnBootEnabled
+        startOnBootEnabled,
+        sniffingEnabled,
+        preferIpv6Enabled,
+        logLevel,
+        blockingEnabled
     ).joinToString("|")
 }
 

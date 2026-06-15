@@ -23,8 +23,7 @@ class ByeBoxTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        val running = CoreServiceManager.isRunning() ||
-            MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
+        val running = isVpnServiceRunning(applicationContext)
         updateTileState(active = running)
 
         mMsgReceive = ReceiveMessageHandler(this)
@@ -66,8 +65,7 @@ class ByeBoxTileService : TileService() {
                     return
                 }
                 updateTileState(connecting = true)
-                val started = CoreServiceManager.startVServiceFromToggle(context)
-                updateTileState(active = started)
+                CoreServiceManager.startVServiceFromToggle(context)
             }
         }
     }
@@ -97,7 +95,9 @@ class ByeBoxTileService : TileService() {
             tile.subtitle = when {
                 connecting -> "Подключение…"
                 active -> {
-                    val serverName = CoreServiceManager.getRunningServerName()
+                    val guid = MmkvManager.getSelectServer()
+                    val config = guid?.let { MmkvManager.decodeServerConfig(it) }
+                    val serverName = config?.remarks.orEmpty()
                     serverName.ifBlank { "Подключено" }
                 }
                 else -> "Отключено"
@@ -119,6 +119,19 @@ class ByeBoxTileService : TileService() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivityAndCollapse(launchIntent)
+    }
+
+    private fun isVpnServiceRunning(context: Context): Boolean {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return false
+        @Suppress("DEPRECATION")
+        val runningServices = manager.getRunningServices(Integer.MAX_VALUE) ?: return false
+        for (service in runningServices) {
+            if (service.service.className == "com.v2ray.ang.service.CoreVpnService" ||
+                service.service.className == "com.v2ray.ang.service.CoreProxyOnlyService") {
+                return true
+            }
+        }
+        return false
     }
 
     private class ReceiveMessageHandler(service: ByeBoxTileService) : BroadcastReceiver() {

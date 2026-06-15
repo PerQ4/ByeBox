@@ -71,6 +71,14 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -117,6 +125,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
@@ -154,6 +169,113 @@ enum class NodeSortMode(val label: String) {
     SOURCE("Источник"),
     PING("Пинг"),
     NAME("Имя")
+}
+
+enum class SettingsSubMenu {
+    CONNECTION,
+    ROUTING,
+    APPEARANCE,
+    SYSTEM
+}
+
+@Composable
+fun SettingsCategoryCard(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    
+    val isExpressive = cornerRoundness == "expressive"
+    val baseRadius = if (isExpressive) 24.dp else 12.dp
+    val targetRadius = if (isPressed) baseRadius + 6.dp else baseRadius
+    val cornerRadius by animateDpAsState(targetValue = targetRadius, label = "categoryCardCornerRadius")
+    val shape = RoundedCornerShape(cornerRadius)
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) scaleFactor else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "categoryCardScale"
+    )
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                onClick = onClick
+            ),
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .size(24.dp)
+                    .rotate(90f)
+            )
+        }
+    }
 }
 
 @Composable
@@ -229,6 +351,14 @@ fun MainScreen(
         ) {
             var selectedTab by remember { mutableIntStateOf(0) }
             var showImportDialog by remember { mutableStateOf(false) }
+            var speedDialExpanded by remember { mutableStateOf(false) }
+
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val configuration = LocalConfiguration.current
+            val screenWidthDp = configuration.screenWidthDp.dp
+            var fabRightOffsetFromEndDp by remember { mutableStateOf(0.dp) }
+            val hazeState = remember { HazeState() }
+
             val qrLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult()
             ) { result ->
@@ -239,7 +369,11 @@ fun MainScreen(
                 }
             }
 
-            BackHandler(enabled = selectedTab != 0) {
+            BackHandler(enabled = speedDialExpanded) {
+                speedDialExpanded = false
+            }
+
+            BackHandler(enabled = !speedDialExpanded && selectedTab != 0) {
                 selectedTab = 0
             }
 
@@ -249,16 +383,12 @@ fun MainScreen(
                     onImport = { url ->
                         viewModel.addConfigFromUrl(url)
                     },
-                    onScanQr = {
-                        showImportDialog = false
-                        qrLauncher.launch(
-                            Intent(context, QrScanActivity::class.java)
-                        )
-                    }
+                    language = state.language
                 )
             }
 
-            Box(modifier = modifier.fillMaxSize()) {
+            Box(modifier = modifier.fillMaxSize().haze(hazeState)) {
+                // 1. Main Content Tab Container
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -299,10 +429,85 @@ fun MainScreen(
                     }
                 }
 
+                // 2. Bottom Fade
                 BottomEdgeFade(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
 
+                // 3. Scrim overlay and bubbles for Speed Dial (transparent dismiss-on-tap detector)
+                AnimatedVisibility(
+                    visible = speedDialExpanded && selectedTab == 1,
+                    enter = androidx.compose.animation.fadeIn(animationSpec = tween(200)),
+                    exit = androidx.compose.animation.fadeOut(animationSpec = tween(200)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                speedDialExpanded = false
+                            }
+                    ) {
+                        val clipboardManager = LocalClipboardManager.current
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .navigationBarsPadding()
+                                .padding(bottom = 86.dp, end = fabRightOffsetFromEndDp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            ImportBubble(
+                                label = Loc.get("import_link", state.language),
+                                icon = Icons.Default.Share,
+                                index = 0,
+                                scaleFactor = state.tapImpactScale,
+                                glassmorphic = state.glassmorphicBar,
+                                maxBlurEnabled = state.maxBlurEnabled,
+                                onClick = {
+                                    speedDialExpanded = false
+                                    showImportDialog = true
+                                }
+                            )
+                            ImportBubble(
+                                label = Loc.get("import_qr", state.language),
+                                icon = Icons.Default.Search,
+                                index = 1,
+                                scaleFactor = state.tapImpactScale,
+                                glassmorphic = state.glassmorphicBar,
+                                maxBlurEnabled = state.maxBlurEnabled,
+                                onClick = {
+                                    speedDialExpanded = false
+                                    qrLauncher.launch(
+                                        Intent(context, QrScanActivity::class.java)
+                                    )
+                                }
+                            )
+                            ImportBubble(
+                                label = Loc.get("import_clipboard", state.language),
+                                icon = Icons.Default.List,
+                                index = 2,
+                                scaleFactor = state.tapImpactScale,
+                                glassmorphic = state.glassmorphicBar,
+                                maxBlurEnabled = state.maxBlurEnabled,
+                                onClick = {
+                                    speedDialExpanded = false
+                                    val clip = clipboardManager.getText()?.toString()?.trim()
+                                    if (!clip.isNullOrBlank()) {
+                                        viewModel.addConfigFromUrl(clip)
+                                    } else {
+                                        Toast.makeText(context, Loc.get("clipboard_empty", state.language), Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // 4. Bottom Row containing TabBar and FAB
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -314,20 +519,32 @@ fun MainScreen(
                 ) {
                     MainTabBar(
                         selectedTab = selectedTab,
-                        onTabSelected = { selectedTab = it }
+                        onTabSelected = { selectedTab = it },
+                        scaleFactor = state.tapImpactScale,
+                        glassmorphic = state.glassmorphicBar,
+                        maxBlurEnabled = state.maxBlurEnabled,
+                        hazeState = hazeState,
+                        language = state.language
                     )
 
                     Spacer(modifier = Modifier.width(10.dp))
 
                     FloatingContextAction(
                         selectedTab = selectedTab,
+                        scaleFactor = state.tapImpactScale,
+                        cornerRoundness = state.cornerRoundness,
                         onClick = {
                             when (selectedTab) {
                                 0 -> viewModel.selectBestConfig()
-                                1 -> showImportDialog = true
+                                1 -> speedDialExpanded = !speedDialExpanded
                                 2 -> (context.findActivity() as? MainActivity)?.openSystemVpnSettings()
                                 3 -> viewModel.exportLogs(context)
                             }
+                        },
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            val rightX = coordinates.positionInRoot().x + coordinates.size.width
+                            val rightXDp = with(density) { rightX.toDp() }
+                            fabRightOffsetFromEndDp = screenWidthDp - rightXDp
                         }
                     )
                 }
@@ -360,18 +577,24 @@ fun DashboardTab(
             status = state.connectionStatus,
             activeConfig = activeConfig,
             routingProfile = state.routingProfile,
-            dnsServer = state.dnsServer
+            dnsServer = state.dnsServer,
+            language = state.language
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         ConnectionButton(
             status = state.connectionStatus,
+            pulseEnabled = state.pulseEnabled,
             onClick = {
                 if (activity != null) {
                     val shouldConnect = state.connectionStatus == ConnectionStatus.DISCONNECTED
                     if (shouldConnect) {
-                        viewModel.setConnectingState()
+                        val transitioned = viewModel.setConnectingState()
+                        if (!transitioned) {
+                            viewModel.showToast(Loc.get("no_active_config", state.language))
+                            return@ConnectionButton
+                        }
                     }
                     activity.handleVpnToggle(shouldConnect)
                 }
@@ -388,14 +611,14 @@ fun DashboardTab(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SpeedCard(
-                label = "Скачивание",
+                label = Loc.get("download", state.language),
                 value = state.downloadSpeed,
                 iconColor = MaterialTheme.colorScheme.primary,
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f),
                 modifier = Modifier.weight(1f)
             )
             SpeedCard(
-                label = "Загрузка",
+                label = Loc.get("upload", state.language),
                 value = state.uploadSpeed,
                 iconColor = MaterialTheme.colorScheme.secondary,
                 containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.46f),
@@ -409,7 +632,8 @@ fun DashboardTab(
             onBestServer = { viewModel.selectBestConfig() },
             onShare = { activity?.shareActiveConfig() },
             onVpnSettings = { activity?.openSystemVpnSettings() },
-            onAddTile = { activity?.requestQuickSettingsTile() }
+            onAddTile = { activity?.requestQuickSettingsTile() },
+            language = state.language
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -533,7 +757,8 @@ fun StatusOverviewCard(
     status: ConnectionStatus,
     activeConfig: ProxyConfig?,
     routingProfile: RoutingProfile,
-    dnsServer: DnsServer
+    dnsServer: DnsServer,
+    language: String = "ru"
 ) {
     val containerColor by animateColorAsState(
         targetValue = when (status) {
@@ -556,10 +781,10 @@ fun StatusOverviewCard(
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
                 text = when (status) {
-                    ConnectionStatus.CONNECTED -> "VPN защищает трафик"
-                    ConnectionStatus.CONNECTING -> "Поднимаем VPN-туннель"
-                    ConnectionStatus.RECONNECTING -> "Связь потеряна, переподключаемся"
-                    ConnectionStatus.DISCONNECTED -> "VPN отключен"
+                    ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
+                    ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
+                    ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
+                    ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
                 },
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Black,
@@ -568,7 +793,7 @@ fun StatusOverviewCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = activeConfig?.name ?: "Сервер не выбран",
+                text = activeConfig?.name ?: Loc.get("status_no_server", language),
                 style = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                     fontWeight = FontWeight.Bold
@@ -594,13 +819,14 @@ fun InfoChip(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -613,7 +839,8 @@ fun QuickActionsCard(
     onBestServer: () -> Unit,
     onShare: () -> Unit,
     onVpnSettings: () -> Unit,
-    onAddTile: () -> Unit
+    onAddTile: () -> Unit,
+    language: String = "ru"
 ) {
     Card(
         modifier = Modifier
@@ -626,12 +853,12 @@ fun QuickActionsCard(
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickActionButton("Лучший", Icons.Default.Search, onBestServer, Modifier.weight(1f))
-                QuickActionButton("Поделиться", Icons.Default.Add, onShare, Modifier.weight(1f))
+                QuickActionButton(Loc.get("quick_best", language), Icons.Default.Search, onBestServer, Modifier.weight(1f))
+                QuickActionButton(Loc.get("quick_share", language), Icons.Default.Add, onShare, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickActionButton("VPN Android", Icons.Default.Settings, onVpnSettings, Modifier.weight(1f))
-                QuickActionButton("Плитка", Icons.Default.Info, onAddTile, Modifier.weight(1f))
+                QuickActionButton(Loc.get("quick_vpn_settings", language), Icons.Default.Settings, onVpnSettings, Modifier.weight(1f))
+                QuickActionButton(Loc.get("quick_tile", language), Icons.Default.Info, onAddTile, Modifier.weight(1f))
             }
         }
     }
@@ -680,6 +907,7 @@ fun QuickActionButton(
 @Composable
 fun ConnectionButton(
     status: ConnectionStatus,
+    pulseEnabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val tactileFeedback = rememberTactileFeedback()
@@ -714,6 +942,10 @@ fun ConnectionButton(
     )
 
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    
+    // Performance optimization: cache path allocations to prevent object churn in drawing frames
+    val path1 = remember { androidx.compose.ui.graphics.Path() }
+    val path2 = remember { androidx.compose.ui.graphics.Path() }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -728,7 +960,7 @@ fun ConnectionButton(
             
             if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING) {
                 // Wave 1: 5 crests, rotating forward
-                val path1 = androidx.compose.ui.graphics.Path()
+                path1.reset()
                 val steps = 100
                 for (i in 0..steps) {
                     val angle = (i.toFloat() / steps) * 2f * Math.PI.toFloat()
@@ -745,7 +977,7 @@ fun ConnectionButton(
                 )
 
                 // Wave 2: 7 crests, rotating backward, slightly smaller amplitude
-                val path2 = androidx.compose.ui.graphics.Path()
+                path2.reset()
                 for (i in 0..steps) {
                     val angle = (i.toFloat() / steps) * 2f * Math.PI.toFloat()
                     val r = baseRadius + 4.dp.toPx() * kotlin.math.sin(7 * angle + wavePhase + 1.2f)
@@ -760,18 +992,27 @@ fun ConnectionButton(
                     style = Stroke(width = 2.dp.toPx())
                 )
             } else if (status == ConnectionStatus.CONNECTED) {
-                // Breathing pulse when connected
-                val pulseScale = 1f + 0.04f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                drawCircle(
-                    color = buttonBgColor.copy(alpha = 0.16f),
-                    radius = baseRadius * pulseScale,
-                    style = Stroke(width = 3.dp.toPx())
-                )
-                drawCircle(
-                    color = buttonBgColor.copy(alpha = 0.08f),
-                    radius = baseRadius * (pulseScale + 0.06f),
-                    style = Stroke(width = 1.5.dp.toPx())
-                )
+                if (pulseEnabled) {
+                    // Breathing pulse when connected
+                    val pulseScale = 1f + 0.04f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
+                    drawCircle(
+                        color = buttonBgColor.copy(alpha = 0.16f),
+                        radius = baseRadius * pulseScale,
+                        style = Stroke(width = 3.dp.toPx())
+                    )
+                    drawCircle(
+                        color = buttonBgColor.copy(alpha = 0.08f),
+                        radius = baseRadius * (pulseScale + 0.06f),
+                        style = Stroke(width = 1.5.dp.toPx())
+                    )
+                } else {
+                    // Static neat ring when connected but pulse is disabled
+                    drawCircle(
+                        color = buttonBgColor.copy(alpha = 0.16f),
+                        radius = baseRadius,
+                        style = Stroke(width = 3.dp.toPx())
+                    )
+                }
             } else {
                 // Static neat ring when disconnected
                 drawCircle(
@@ -1874,7 +2115,7 @@ fun <T> SegmentedSelector(
 fun ImportConfigDialog(
     onDismiss: () -> Unit,
     onImport: (String) -> Unit,
-    onScanQr: () -> Unit = {}
+    language: String = "ru"
 ) {
     var text by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
@@ -1900,21 +2141,17 @@ fun ImportConfigDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Добавить конфигурацию",
+                text = Loc.get("import_config", language),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SuggestionChip(
-                        onClick = onScanQr,
-                        label = { Text("QR-сканер") }
-                    )
                     if (clipboardUrl != null) {
                         SuggestionChip(
                             onClick = { text = clipboardUrl!! },
-                            label = { Text("Из буфера") }
+                            label = { Text(Loc.get("clipboard_chip", language)) }
                         )
                     }
                 }
@@ -1925,7 +2162,7 @@ fun ImportConfigDialog(
                         text = it
                         isError = false
                     },
-                    placeholder = { Text("vless://... или http://...") },
+                    placeholder = { Text("vless://... " + Loc.get("unknown_format", language).lowercase() + " http://...") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     singleLine = true,
@@ -1933,7 +2170,7 @@ fun ImportConfigDialog(
                     trailingIcon = {
                         if (text.isNotEmpty()) {
                             IconButton(onClick = { text = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                                Icon(Icons.Default.Clear, contentDescription = Loc.get("clear", language))
                             }
                         }
                     },
@@ -1943,20 +2180,20 @@ fun ImportConfigDialog(
                             text.startsWith("ss://") || text.startsWith("trojan://") ||
                             text.startsWith("hysteria2://") || text.startsWith("hysteria://") ||
                             text.startsWith("socks://") || text.startsWith("tuic://") ->
-                                "Прямая ссылка на сервер"
+                                Loc.get("direct_link", language)
                             text.startsWith("http://") || text.startsWith("https://") ->
-                                "Ссылка на подписку"
-                            text.isNotEmpty() -> "Неизвестный формат"
+                                Loc.get("sub_link", language)
+                            text.isNotEmpty() -> Loc.get("unknown_format", language)
                             else -> null
                         }
                         if (hint != null) {
                             Text(
                                 hint,
-                                color = if (hint == "Неизвестный формат") MaterialTheme.colorScheme.error
+                                color = if (hint == Loc.get("unknown_format", language)) MaterialTheme.colorScheme.error
                                        else MaterialTheme.colorScheme.primary
                             )
                         } else if (isError) {
-                            Text("Введите ссылку")
+                            Text(Loc.get("unknown_format", language))
                         } else null
                     }
                 )
@@ -1975,7 +2212,7 @@ fun ImportConfigDialog(
                 },
                 shape = RoundedCornerShape(20.dp)
             ) {
-                Text("Импортировать")
+                Text(Loc.get("import_link", language))
             }
         },
         dismissButton = {
@@ -1983,7 +2220,7 @@ fun ImportConfigDialog(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(20.dp)
             ) {
-                Text("Отмена")
+                Text(Loc.get("back", language))
             }
         },
         shape = RoundedCornerShape(28.dp),
@@ -2870,14 +3107,6 @@ fun SettingsTab(
     state: MainUiState,
     viewModel: MainScreenViewModel
 ) {
-    SettingsTabV2(state = state, viewModel = viewModel)
-}
-
-@Composable
-fun SettingsTabV2(
-    state: MainUiState,
-    viewModel: MainScreenViewModel
-) {
     var showAppPicker by remember { mutableStateOf(false) }
     val selectedAppPackages = remember(state.appRoutingPackages) {
         state.appRoutingPackages
@@ -2888,6 +3117,12 @@ fun SettingsTabV2(
     }
     val scrollState = rememberScrollState()
     val tactileFeedback = rememberTactileFeedback()
+
+    var selectedSubMenu by remember { mutableStateOf<SettingsSubMenu?>(null) }
+    
+    BackHandler(enabled = selectedSubMenu != null) {
+        selectedSubMenu = null
+    }
 
     if (showAppPicker) {
         AppPickerSheet(
@@ -2905,200 +3140,772 @@ fun SettingsTabV2(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
             .padding(horizontal = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        SettingsGroup(title = "Внешний вид") {
-            SettingsThemeGrid(state = state, viewModel = viewModel)
-        }
-
-        SettingsGroup(title = "Маршрутизация") {
-            RoutingProfile.values().forEachIndexed { index, profile ->
-                SettingsChoiceRow(
-                    title = profile.label,
-                    subtitle = when (profile) {
-                        RoutingProfile.BYPASS_LAN_CN_RU -> "Локальные сети и популярные региональные диапазоны идут напрямую"
-                        RoutingProfile.PROXY_ALL -> "Весь трафик устройства проходит через выбранный узел"
-                        RoutingProfile.DIRECT -> "Туннель не забирает трафик, удобно для диагностики"
-                    },
-                    selected = state.routingProfile == profile,
-                    top = index == 0,
-                    bottom = index == RoutingProfile.values().lastIndex,
-                    onClick = {
-                        tactileFeedback()
-                        viewModel.changeRoutingProfile(profile)
-                    }
-                )
-            }
-        }
-
-        SettingsGroup(title = "DNS") {
-            DnsServer.values().forEachIndexed { index, dns ->
-                SettingsChoiceRow(
-                    title = dns.label,
-                    subtitle = dns.address,
-                    selected = state.dnsServer == dns,
-                    top = index == 0,
-                    bottom = index == DnsServer.values().lastIndex,
-                    onClick = {
-                        tactileFeedback()
-                        viewModel.changeDnsServer(dns)
-                    }
-                )
-            }
-        }
-
-        SettingsGroup(title = "Логирование") {
-            val logLevels = listOf("debug" to "Debug", "info" to "Info", "warning" to "Warning", "error" to "Error")
-            logLevels.forEachIndexed { index, (value, label) ->
-                SettingsChoiceRow(
-                    title = label,
-                    subtitle = when (value) {
-                        "debug" -> "Все события, включая детали подключений"
-                        "info" -> "Основные события и изменения состояния"
-                        "warning" -> "Только предупреждения и ошибки"
-                        else -> "Только критические ошибки"
-                    },
-                    selected = state.logLevel == value,
-                    top = index == 0,
-                    bottom = index == logLevels.lastIndex,
-                    onClick = {
-                        tactileFeedback()
-                        viewModel.changeLogLevel(value)
-                    }
-                )
-            }
-        }
-
-        SettingsGroup(title = "Android VPN") {
-            SettingsSwitchRow(
-                title = "IPv6 в туннеле",
-                subtitle = "Включить IPv6-маршрутизацию в виртуальном интерфейсе",
-                checked = state.ipv6Enabled,
-                top = true,
-                onCheckedChange = viewModel::changeIpv6Enabled
-            )
-            SettingsSwitchRow(
-                title = "Обход локальных сетей",
-                subtitle = "LAN, loopback и link-local сети не попадают в VPN",
-                checked = state.lanBypassEnabled,
-                onCheckedChange = viewModel::changeLanBypassEnabled
-            )
-            SettingsSwitchRow(
-                title = "Автозапуск при старте",
-                subtitle = "Автоматически поднимать VPN после перезагрузки устройства",
-                checked = state.startOnBootEnabled,
-                bottom = true,
-                onCheckedChange = viewModel::changeStartOnBootEnabled
-            )
-        }
-
-        SettingsGroup(title = "TUN стек") {
-            TunStack.values().forEachIndexed { index, stack ->
-                SettingsChoiceRow(
-                    title = stack.label,
-                    subtitle = stack.description,
-                    selected = state.tunStack == stack,
-                    onClick = { viewModel.changeTunStack(stack) }
-                )
-            }
-        }
-
-        SettingsGroup(title = "Профиль приложений") {
-            AppRoutingMode.values().forEachIndexed { index, mode ->
-                SettingsChoiceRow(
-                    title = mode.label,
-                    subtitle = mode.description,
-                    selected = state.appRoutingMode == mode,
-                    top = index == 0,
-                    bottom = false,
-                    onClick = {
-                        tactileFeedback()
-                        viewModel.changeAppRoutingMode(mode)
-                    }
-                )
-            }
-            SettingsActionRow(
-                title = "Выбранные приложения",
-                subtitle = "${selectedAppPackages.size} пакетов",
-                button = "Выбрать",
-                enabled = state.appRoutingMode != AppRoutingMode.OFF,
-                onClick = {
-                    tactileFeedback()
-                    showAppPicker = true
-                },
-                bottom = true
-            )
-        }
-
-        SettingsGroup(title = "Ядро Xray и Прокси") {
-            SettingsSwitchRow(
-                title = "Режим VPN",
-                subtitle = "VPN перехватывает весь трафик устройства, иначе работает локальный прокси",
-                checked = state.vpnModeEnabled,
-                top = true,
-                onCheckedChange = viewModel::changeVpnModeEnabled
-            )
-            SettingsSwitchRow(
-                title = "Доступ из LAN",
-                subtitle = "Разрешить устройствам в локальной сети использовать ваш прокси",
-                checked = state.proxySharingEnabled,
-                onCheckedChange = viewModel::changeProxySharingEnabled
-            )
-            SettingsSwitchRow(
-                title = "Фрагментация (Fragment)",
-                subtitle = "Разбивать TLS-пакеты для обхода ТСПУ/DPI систем фильтрации",
-                checked = state.fragmentEnabled,
-                onCheckedChange = viewModel::changeFragmentEnabled
-            )
-            SettingsSwitchRow(
-                title = "Мультиплексирование (Mux)",
-                subtitle = "Объединять несколько соединений в одно для снижения накладных расходов",
-                checked = state.muxEnabled,
-                onCheckedChange = viewModel::changeMuxEnabled
-            )
-            SettingsSwitchRow(
-                title = "Fake DNS",
-                subtitle = "Кэшировать DNS-запросы на устройстве для ускорения загрузки",
-                checked = state.fakeDnsEnabled,
-                onCheckedChange = viewModel::changeFakeDnsEnabled
-            )
-            SettingsRowSurface(bottom = true) {
+        if (selectedSubMenu == null) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                
                 Text(
-                    text = "Локальный SOCKS порт",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.weight(1f)
+                    text = Loc.get("title_settings", state.language),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
-                OutlinedTextField(
-                    value = state.socksPort,
-                    onValueChange = viewModel::changeSocksPort,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(90.dp),
-                    shape = RoundedCornerShape(14.dp)
+                
+                SettingsHeroCard(
+                    status = state.connectionStatus,
+                    routingProfile = state.routingProfile,
+                    dnsServer = state.dnsServer,
+                    appRoutingMode = state.appRoutingMode
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                SettingsCategoryCard(
+                    title = Loc.get("submenu_connection", state.language),
+                    description = Loc.get("conn_params", state.language),
+                    icon = Icons.Default.Build,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.CONNECTION
+                    }
+                )
+                
+                SettingsCategoryCard(
+                    title = Loc.get("submenu_rules", state.language),
+                    description = Loc.get("rules_params", state.language),
+                    icon = Icons.Default.List,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.ROUTING
+                    }
+                )
+                
+                SettingsCategoryCard(
+                    title = Loc.get("submenu_appearance", state.language),
+                    description = Loc.get("appearance_params", state.language),
+                    icon = Icons.Default.Star,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.APPEARANCE
+                    }
+                )
+                
+                SettingsCategoryCard(
+                    title = Loc.get("submenu_system", state.language),
+                    description = Loc.get("system_params", state.language),
+                    icon = Icons.Default.Settings,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.SYSTEM
+                    }
+                )
+                
+                Spacer(
+                    modifier = Modifier
+                        .height(120.dp)
+                        .navigationBarsPadding()
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { selectedSubMenu = null },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = Loc.get("back", state.language),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .rotate(-90f)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = when (selectedSubMenu) {
+                        SettingsSubMenu.CONNECTION -> Loc.get("submenu_connection", state.language)
+                        SettingsSubMenu.ROUTING -> Loc.get("submenu_rules", state.language)
+                        SettingsSubMenu.APPEARANCE -> Loc.get("submenu_appearance", state.language)
+                        SettingsSubMenu.SYSTEM -> Loc.get("submenu_system", state.language)
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+            }
+            
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                when (selectedSubMenu) {
+                    SettingsSubMenu.CONNECTION -> {
+                        SettingsGroup(title = "Параметры VPN") {
+                            SettingsSwitchRow(
+                                title = "IPv6 в туннеле",
+                                subtitle = "Включить IPv6-маршрутизацию в виртуальном интерфейсе",
+                                checked = state.ipv6Enabled,
+                                icon = Icons.Default.Build,
+                                top = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeIpv6Enabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Предпочитать IPv6",
+                                subtitle = "Запрашивать IPv6-адреса (AAAA) при резолве доменов",
+                                checked = state.preferIpv6Enabled,
+                                icon = Icons.Default.Build,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changePreferIpv6Enabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Обход локальных сетей",
+                                subtitle = "LAN, loopback и link-local сети не попадают в VPN",
+                                checked = state.lanBypassEnabled,
+                                icon = Icons.Default.Home,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeLanBypassEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Блокировка трафика без VPN",
+                                subtitle = "Kill Switch — блокировать интернет-соединение, если VPN отключен или разорван",
+                                checked = state.blockingEnabled,
+                                icon = Icons.Default.Lock,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeBlockingEnabled
+                            )
+                        }
+
+                        SettingsGroup(title = "DNS Сервера") {
+                            DnsServer.values().forEachIndexed { index, dns ->
+                                SettingsChoiceRow(
+                                    title = dns.label,
+                                    subtitle = dns.address,
+                                    selected = state.dnsServer == dns,
+                                    top = index == 0,
+                                    bottom = index == DnsServer.values().lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.changeDnsServer(dns)
+                                    }
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = "Локальный прокси") {
+                            SettingsSwitchRow(
+                                title = "Режим VPN",
+                                subtitle = "VPN перехватывает весь трафик устройства, иначе работает локальный прокси",
+                                checked = state.vpnModeEnabled,
+                                icon = Icons.Default.Lock,
+                                top = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeVpnModeEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Доступ из LAN",
+                                subtitle = "Разрешить устройствам в локальной сети использовать ваш прокси",
+                                checked = state.proxySharingEnabled,
+                                icon = Icons.Default.Share,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeProxySharingEnabled
+                            )
+                            SettingsRowSurface(
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness
+                            ) {
+                                Text(
+                                    text = "Локальный SOCKS порт",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = state.socksPort,
+                                    onValueChange = viewModel::changeSocksPort,
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.width(90.dp),
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = "TUN Стек") {
+                            TunStack.values().forEachIndexed { index, stack ->
+                                SettingsChoiceRow(
+                                    title = stack.label,
+                                    subtitle = stack.description,
+                                    selected = state.tunStack == stack,
+                                    top = index == 0,
+                                    bottom = index == TunStack.values().lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.changeTunStack(stack) }
+                                )
+                            }
+                        }
+                    }
+
+                    SettingsSubMenu.ROUTING -> {
+                        SettingsGroup(title = "Правила маршрутизации") {
+                            RoutingProfile.values().forEachIndexed { index, profile ->
+                                SettingsChoiceRow(
+                                    title = profile.label,
+                                    subtitle = when (profile) {
+                                        RoutingProfile.BYPASS_LAN_CN_RU -> "Локальные сети и популярные региональные диапазоны идут напрямую"
+                                        RoutingProfile.PROXY_ALL -> "Весь трафик устройства проходит через выбранный узел"
+                                        RoutingProfile.DIRECT -> "Туннель не забирает трафик, удобно для диагностики"
+                                    },
+                                    selected = state.routingProfile == profile,
+                                    top = index == 0,
+                                    bottom = index == RoutingProfile.values().lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.changeRoutingProfile(profile)
+                                    }
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = "Профиль приложений") {
+                            AppRoutingMode.values().forEachIndexed { index, mode ->
+                                SettingsChoiceRow(
+                                    title = mode.label,
+                                    subtitle = mode.description,
+                                    selected = state.appRoutingMode == mode,
+                                    top = index == 0,
+                                    bottom = false,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.changeAppRoutingMode(mode)
+                                    }
+                                )
+                            }
+                            SettingsActionRow(
+                                title = "Выбранные приложения",
+                                subtitle = "${selectedAppPackages.size} пакетов",
+                                button = "Выбрать",
+                                enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onClick = {
+                                    tactileFeedback()
+                                    showAppPicker = true
+                                },
+                                bottom = true
+                            )
+                        }
+
+                        SettingsGroup(title = "Функции ядра Xray") {
+                            SettingsSwitchRow(
+                                title = "Сниффинг трафика",
+                                subtitle = "Сниффить HTTP/TLS запросы для извлечения доменного имени",
+                                checked = state.sniffingEnabled,
+                                icon = Icons.Default.Search,
+                                top = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeSniffingEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Фрагментация (Fragment)",
+                                subtitle = "Разбивать TLS-пакеты для обхода DPI/ТСПУ систем фильтрации",
+                                checked = state.fragmentEnabled,
+                                icon = Icons.Default.Build,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeFragmentEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Мультиплексирование (Mux)",
+                                subtitle = "Объединять соединения в одно для снижения накладных расходов",
+                                checked = state.muxEnabled,
+                                icon = Icons.Default.Settings,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeMuxEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Fake DNS",
+                                subtitle = "Кэшировать DNS-запросы на устройстве для ускорения загрузки",
+                                checked = state.fakeDnsEnabled,
+                                icon = Icons.Default.Settings,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeFakeDnsEnabled
+                            )
+                        }
+                    }
+
+                    SettingsSubMenu.APPEARANCE -> {
+                        SettingsGroup(title = "Тема оформления") {
+                            SettingsThemeGrid(state = state, viewModel = viewModel)
+                        }
+                        
+                        SettingsGroup(title = "Степень отклика") {
+                            val options = listOf(
+                                1.00f to "Без сжатия (1.00)",
+                                0.95f to "Легкий отклик (0.95)",
+                                0.90f to "Средний (0.90)",
+                                0.85f to "Глубокий отклик (0.85)"
+                            )
+                            options.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = "Физическое сжатие интерфейса при нажатии",
+                                    selected = state.tapImpactScale == value,
+                                    top = index == 0,
+                                    bottom = index == options.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.changeTapImpactScale(value) }
+                                )
+                            }
+                        }
+                        
+                        SettingsGroup(title = "Стиль скруглений") {
+                            val roundnessOptions = listOf(
+                                "standard" to "Стандартный (M3)",
+                                "expressive" to "Выразительный (M3 Expressive)"
+                            )
+                            roundnessOptions.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = if (value == "expressive") "Крупные скругления углов и выразительная форма элементов" else "Стандартный строгий дизайн Material Design",
+                                    selected = state.cornerRoundness == value,
+                                    top = index == 0,
+                                    bottom = index == roundnessOptions.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.changeCornerRoundness(value) }
+                                )
+                            }
+                        }
+                        
+                        SettingsGroup(title = "Эффекты и анимация") {
+                            SettingsSwitchRow(
+                                title = "Пульсация кнопки",
+                                subtitle = "Анимированная пульсация центральной кнопки при активном подключении",
+                                checked = state.pulseEnabled,
+                                icon = Icons.Default.Star,
+                                top = true,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changePulseEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = "Стеклянный эффект",
+                                subtitle = "Эффект полупрозрачности (Glassmorphism) для нижней панели вкладок",
+                                checked = state.glassmorphicBar,
+                                icon = Icons.Default.Share,
+                                top = false,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeGlassmorphicBar
+                            )
+                            SettingsSwitchRow(
+                                title = "Максимальное размытие",
+                                subtitle = "Плотный матовый эффект без обводки (стиль Android 17, по умолчанию включен)",
+                                checked = state.maxBlurEnabled,
+                                icon = Icons.Default.Lock,
+                                top = false,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeMaxBlurEnabled
+                            )
+                        }
+                    }
+
+                    SettingsSubMenu.SYSTEM -> {
+                        SettingsGroup(title = Loc.get("language", state.language)) {
+                            val languages = listOf(
+                                "ru" to Loc.get("lang_ru", state.language),
+                                "en" to Loc.get("lang_en", state.language),
+                                "zh" to Loc.get("lang_zh", state.language)
+                            )
+                            languages.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = if (value == "ru") "Русский интерфейс" else if (value == "en") "English interface" else "中文界面",
+                                    selected = state.language == value,
+                                    top = index == 0,
+                                    bottom = index == languages.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.changeLanguage(value)
+                                    }
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = Loc.get("logging", state.language)) {
+                            val logLevels = listOf("debug" to "Debug", "info" to "Info", "warning" to "Warning", "error" to "Error")
+                            logLevels.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = when (value) {
+                                        "debug" -> Loc.get("log_debug_desc", state.language)
+                                        "info" -> Loc.get("log_info_desc", state.language)
+                                        "warning" -> Loc.get("log_warn_desc", state.language)
+                                        else -> Loc.get("log_err_desc", state.language)
+                                    },
+                                    selected = state.logLevel == value,
+                                    top = index == 0,
+                                    bottom = index == logLevels.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.changeLogLevel(value)
+                                    }
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = Loc.get("sys_settings", state.language)) {
+                            SettingsSwitchRow(
+                                title = Loc.get("start_on_boot", state.language),
+                                subtitle = Loc.get("start_on_boot_sub", state.language),
+                                checked = state.startOnBootEnabled,
+                                icon = Icons.Default.PlayArrow,
+                                top = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeStartOnBootEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("confirm_remove", state.language),
+                                subtitle = Loc.get("confirm_remove_sub", state.language),
+                                checked = state.confirmRemoveEnabled,
+                                icon = Icons.Default.Delete,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeConfirmRemoveEnabled
+                            )
+                        }
+
+                        SettingsGroup(title = Loc.get("check_servers", state.language)) {
+                            SettingsHealthRow(
+                                value = state.healthCheckUrl,
+                                onValueChange = viewModel::changeHealthCheckUrl,
+                                onTest = viewModel::testHealthCheckUrl,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                top = true,
+                                bottom = true
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+                
+                Spacer(
+                    modifier = Modifier
+                        .height(190.dp)
+                        .navigationBarsPadding()
                 )
             }
         }
+    }
+}
 
-        SettingsGroup(title = "Проверка узлов") {
-            SettingsHealthRow(
-                value = state.healthCheckUrl,
-                onValueChange = viewModel::changeHealthCheckUrl,
-                onTest = viewModel::testHealthCheckUrl,
-                top = true,
-                bottom = true
-            )
+@Composable
+private fun SettingsChoiceRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    top: Boolean = false,
+    bottom: Boolean = false,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    onClick: () -> Unit
+) {
+    SettingsRowSurface(top = top, bottom = bottom, selected = selected, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness, onClick = onClick) {
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val radius = size.minDimension / 2
+            if (selected) {
+                drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius)
+                drawCircle(color = Color.Black.copy(alpha = 0.28f), radius = radius / 2.6f)
+            } else {
+                drawCircle(color = Color.White.copy(alpha = 0.38f), radius = radius - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
+            }
         }
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f))
+    }
+}
 
-        Spacer(
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Settings,
+    enabled: Boolean = true,
+    top: Boolean = false,
+    bottom: Boolean = false,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val tactileFeedback = rememberTactileFeedback()
+    SettingsRowSurface(
+        top = top,
+        bottom = bottom,
+        selected = checked && enabled,
+        enabled = enabled,
+        scaleFactor = scaleFactor,
+        cornerRoundness = cornerRoundness,
+        onClick = {
+            tactileFeedback()
+            onCheckedChange(!checked)
+        }
+    ) {
+        Box(
             modifier = Modifier
-                .height(190.dp)
-                .navigationBarsPadding()
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = if (checked && enabled) 0.42f else 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    subtitle: String,
+    button: String,
+    enabled: Boolean,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    onClick: () -> Unit,
+    bottom: Boolean = false
+) {
+    SettingsRowSurface(onClick = onClick, enabled = enabled, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            shape = RoundedCornerShape(18.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(button, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun SettingsInputRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    bottom: Boolean
+) {
+    SettingsRowSurface(bottom = bottom, enabled = enabled, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder) },
+            enabled = enabled,
+            minLines = 2,
+            maxLines = 4,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp)
         )
     }
 }
 
+@Composable
+private fun SettingsHealthRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onTest: () -> Unit,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    top: Boolean = false,
+    bottom: Boolean = false
+) {
+    SettingsRowSurface(top = top, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text("URL ресурса") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(20.dp)
+        )
+        IconButton(onClick = onTest) {
+            Icon(Icons.Default.Search, contentDescription = "Проверить")
+        }
+    }
+}
+
+@Composable
+private fun SettingsRowSurface(
+    top: Boolean = false,
+    bottom: Boolean = false,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    
+    val isExpressive = cornerRoundness == "expressive"
+    val largeRadius = if (isExpressive) 28.dp else 14.dp
+    val smallRadius = if (isExpressive) 10.dp else 4.dp
+    
+    val targetTop = if (top) {
+        if (isPressed && enabled && onClick != null) (largeRadius + 4.dp) else largeRadius
+    } else {
+        if (isPressed && enabled && onClick != null) (smallRadius + 4.dp) else smallRadius
+    }
+    val targetBottom = if (bottom) {
+        if (isPressed && enabled && onClick != null) (largeRadius + 4.dp) else largeRadius
+    } else {
+        if (isPressed && enabled && onClick != null) (smallRadius + 4.dp) else smallRadius
+    }
+    
+    val animatedTop by animateDpAsState(targetValue = targetTop, label = "settingsRowTopCorner")
+    val animatedBottom by animateDpAsState(targetValue = targetBottom, label = "settingsRowBottomCorner")
+    
+    val shape = RoundedCornerShape(
+        topStart = animatedTop,
+        topEnd = animatedTop,
+        bottomStart = animatedBottom,
+        bottomEnd = animatedBottom
+    )
+    
+    val targetColor = when {
+        selected -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    val color by animateColorAsState(targetValue = targetColor, label = "settingsRowColor")
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled && onClick != null) scaleFactor else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "settingsRowScale"
+    )
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .background(color.copy(alpha = if (enabled) 1f else 0.52f))
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = androidx.compose.foundation.LocalIndication.current,
+                        enabled = enabled,
+                        onClick = onClick
+                    )
+                } else Modifier
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
+private fun SettingsRowText(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.48f),
+                fontWeight = FontWeight.Bold
+            )
+        )
+        Text(
+            text = subtitle,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.62f else 0.36f)
+            )
+        )
+    }
+}
 
 @Composable
 private fun SettingsHeroCard(
@@ -3183,599 +3990,6 @@ private fun SettingsThemeGrid(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SettingsChoiceRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    top: Boolean = false,
-    bottom: Boolean = false,
-    onClick: () -> Unit
-) {
-    SettingsRowSurface(top = top, bottom = bottom, selected = selected, onClick = onClick) {
-        Canvas(modifier = Modifier.size(22.dp)) {
-            val radius = size.minDimension / 2
-            if (selected) {
-                drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius)
-                drawCircle(color = Color.Black.copy(alpha = 0.28f), radius = radius / 2.6f)
-            } else {
-                drawCircle(color = Color.White.copy(alpha = 0.38f), radius = radius - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
-            }
-        }
-        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun SettingsSwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    top: Boolean = false,
-    bottom: Boolean = false,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val tactileFeedback = rememberTactileFeedback()
-    SettingsRowSurface(
-        top = top,
-        bottom = bottom,
-        selected = checked && enabled,
-        enabled = enabled,
-        onClick = {
-            tactileFeedback()
-            onCheckedChange(!checked)
-        }
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = if (checked && enabled) 0.42f else 0.18f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp))
-        }
-        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-    }
-}
-
-@Composable
-private fun SettingsActionRow(
-    title: String,
-    subtitle: String,
-    button: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    bottom: Boolean = false
-) {
-    SettingsRowSurface(onClick = onClick, enabled = enabled, bottom = bottom) {
-        SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            shape = RoundedCornerShape(18.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            Text(button, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun SettingsInputRow(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    enabled: Boolean,
-    bottom: Boolean
-) {
-    SettingsRowSurface(bottom = bottom, enabled = enabled) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = { Text(placeholder) },
-            enabled = enabled,
-            minLines = 2,
-            maxLines = 4,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
-}
-
-@Composable
-private fun SettingsHealthRow(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onTest: () -> Unit,
-    top: Boolean = false,
-    bottom: Boolean = false
-) {
-    SettingsRowSurface(top = top, bottom = bottom) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text("URL ресурса") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(20.dp)
-        )
-        IconButton(onClick = onTest) {
-            Icon(Icons.Default.Search, contentDescription = "Проверить")
-        }
-    }
-}
-
-@Composable
-private fun SettingsRowSurface(
-    top: Boolean = false,
-    bottom: Boolean = false,
-    selected: Boolean = false,
-    enabled: Boolean = true,
-    onClick: (() -> Unit)? = null,
-    content: @Composable RowScope.() -> Unit
-) {
-    val shape = when {
-        top && bottom -> RoundedCornerShape(28.dp)
-        top -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 10.dp, bottomEnd = 10.dp)
-        bottom -> RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 28.dp, bottomEnd = 28.dp)
-        else -> RoundedCornerShape(10.dp)
-    }
-    val targetColor = when {
-        selected -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val color by animateColorAsState(targetValue = targetColor, label = "settingsRowColor")
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(color.copy(alpha = if (enabled) 1f else 0.52f))
-            .then(if (onClick != null) Modifier.clickable(enabled = enabled) { onClick() } else Modifier)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
-}
-
-@Composable
-private fun SettingsRowText(
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    Column(modifier = modifier) {
-        Text(
-            text = title,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.48f),
-                fontWeight = FontWeight.Bold
-            )
-        )
-        Text(
-            text = subtitle,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall.copy(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.62f else 0.36f)
-            )
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AppPickerSheet(
-    apps: List<InstalledAppInfo>,
-    selectedPackages: Set<String>,
-    onSave: (Set<String>) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    val tactileFeedback = rememberTactileFeedback()
-    var query by remember { mutableStateOf("") }
-    var hideSystem by remember { mutableStateOf(true) }
-    var localSelected by remember { mutableStateOf(selectedPackages) }
-    var showExitDialog by remember { mutableStateOf(false) }
-    val hasChanges by remember {
-        derivedStateOf { localSelected != selectedPackages }
-    }
-
-    val filteredApps = remember(apps, query, hideSystem) {
-        val cleanQuery = query.trim()
-        apps.filter { app ->
-            val matchesQuery = cleanQuery.isBlank() ||
-                app.label.contains(cleanQuery, ignoreCase = true) ||
-                app.packageName.contains(cleanQuery, ignoreCase = true)
-            val matchesSystem = !hideSystem || !app.isSystem
-            matchesQuery && matchesSystem
-        }
-    }
-
-    fun attemptDismiss() {
-        if (showExitDialog) return
-        if (hasChanges) {
-            showExitDialog = true
-        } else {
-            onDismiss()
-        }
-    }
-
-    BackHandler(enabled = !showExitDialog) { attemptDismiss() }
-
-    if (showExitDialog) {
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            title = {
-                Text(
-                    text = "Несохраненные изменения",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-                )
-            },
-            text = {
-                Text("У вас есть несохраненные изменения. Выйти без сохранения?")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showExitDialog = false
-                    onDismiss()
-                }) {
-                    Text("Выйти", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("Остаться")
-                }
-            },
-            shape = RoundedCornerShape(28.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = { attemptDismiss() },
-        sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = true,
-            confirmValueChange = { newValue ->
-                if (newValue == SheetValue.Hidden && hasChanges) {
-                    showExitDialog = true
-                    false
-                } else {
-                    true
-                }
-            }
-        ),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = { PlainDragHandle() }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = "Выбор приложений",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${localSelected.size} выбрано · ${filteredApps.size} найдено",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Скрыть системные",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Switch(
-                        checked = hideSystem,
-                        onCheckedChange = { hideSystem = it }
-                    )
-                }
-            }
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Поиск приложения или package") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp)
-            )
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(420.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(
-                    items = filteredApps,
-                    key = { it.packageName },
-                    contentType = { "app" }
-                ) { app ->
-                    val checked = app.packageName in localSelected
-                    val iconPainter = remember(app.icon) {
-                        app.icon?.let { BitmapPainter(it.asImageBitmap()) }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
-                            )
-                            .clickable {
-                                tactileFeedback()
-                                localSelected = if (checked) {
-                                    localSelected - app.packageName
-                                } else {
-                                    localSelected + app.packageName
-                                }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (iconPainter != null) {
-                                Image(
-                                    painter = iconPainter,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = app.label.take(1).uppercase(),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Black,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = app.label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            )
-                            Text(
-                                text = app.packageName,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                )
-                            )
-                        }
-                        if (app.isSystem) {
-                            Text(
-                                text = "SYS",
-                                modifier = Modifier.padding(end = 6.dp),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                        }
-                        Checkbox(
-                            checked = checked,
-                            onCheckedChange = {
-                                tactileFeedback()
-                                localSelected = if (checked) {
-                                    localSelected - app.packageName
-                                } else {
-                                    localSelected + app.packageName
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
-            Button(
-                onClick = { onSave(localSelected) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(20.dp),
-                enabled = hasChanges
-            ) {
-                Text("Сохранить", fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-    }
-}
-
-@Composable
-fun ToggleSettingCard(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp)
-) {
-    val tactileFeedback = rememberTactileFeedback()
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .clickable(enabled = enabled) {
-                tactileFeedback()
-                onCheckedChange(!checked)
-            },
-        shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (checked && enabled) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = if (checked && enabled) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        },
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.52f)
-                        )
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.48f else 0.36f)
-                        )
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Switch(
-                checked = checked,
-                onCheckedChange = {
-                    tactileFeedback()
-                    onCheckedChange(it)
-                },
-                enabled = enabled
-            )
-        }
-    }
-}
-
-@Composable
-fun SettingsSectionCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconContainerColor: Color,
-    iconContentColor: Color,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    content: @Composable () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(iconContainerColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconContentColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            content()
         }
     }
 }
@@ -3989,6 +4203,8 @@ fun BottomEdgeFade(modifier: Modifier = Modifier) {
 @Composable
 fun FloatingContextAction(
     selectedTab: Int,
+    scaleFactor: Float = 0.90f,
+    cornerRoundness: String = "expressive",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -4014,11 +4230,31 @@ fun FloatingContextAction(
         2 -> MaterialTheme.colorScheme.onSecondaryContainer
         else -> MaterialTheme.colorScheme.onErrorContainer
     }
-    val buttonShape = RoundedCornerShape(16.dp)
+    val isExpressive = cornerRoundness == "expressive"
+    val baseRadius = if (isExpressive) 20.dp else 12.dp
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    
+    val targetRadius = if (isPressed) baseRadius + 4.dp else baseRadius
+    val cornerRadius by animateDpAsState(targetValue = targetRadius, label = "fabCornerRadius")
+    val buttonShape = RoundedCornerShape(cornerRadius)
+    
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) scaleFactor else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "fabScale"
+    )
 
     Surface(
         modifier = modifier
             .size(54.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .shadow(
                 elevation = 12.dp,
                 shape = buttonShape,
@@ -4027,7 +4263,10 @@ fun FloatingContextAction(
                 spotColor = Color.Black.copy(alpha = 0.24f)
             )
             .clip(buttonShape)
-            .clickable {
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current
+            ) {
                 tactileFeedback()
                 onClick()
             },
@@ -4047,29 +4286,413 @@ fun FloatingContextAction(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppPickerSheet(
+    apps: List<InstalledAppInfo>,
+    selectedPackages: Set<String>,
+    onSave: (Set<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val tactileFeedback = rememberTactileFeedback()
+    var query by remember { mutableStateOf("") }
+    var hideSystem by remember { mutableStateOf(true) }
+    var localSelected by remember { mutableStateOf(selectedPackages) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    val hasChanges by remember {
+        derivedStateOf { localSelected != selectedPackages }
+    }
+
+    val filteredApps = remember(apps, query, hideSystem) {
+        val cleanQuery = query.trim()
+        apps.filter { app ->
+            val matchesQuery = cleanQuery.isBlank() ||
+                app.label.contains(cleanQuery, ignoreCase = true) ||
+                app.packageName.contains(cleanQuery, ignoreCase = true)
+            val matchesSystem = !hideSystem || !app.isSystem
+            matchesQuery && matchesSystem
+        }
+    }
+
+    fun attemptDismiss() {
+        if (showExitDialog) return
+        if (hasChanges) {
+            showExitDialog = true
+        } else {
+            onDismiss()
+        }
+    }
+
+    BackHandler(enabled = !showExitDialog) { attemptDismiss() }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = {
+                Text(
+                    text = "Несохраненные изменения",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+            },
+            text = {
+                Text("У вас есть несохраненные изменения. Выйти без сохранения?")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitDialog = false
+                    onDismiss()
+                }) {
+                    Text("Выйти", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Остаться")
+                }
+            },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { attemptDismiss() },
+        sheetState = rememberModalBottomSheetState(
+            skipPartiallyExpanded = true,
+            confirmValueChange = { newValue ->
+                if (newValue == SheetValue.Hidden && hasChanges) {
+                    showExitDialog = true
+                    false
+                } else {
+                    true
+                }
+            }
+        ),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { PlainDragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Выбор приложений",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "${localSelected.size} выбрано",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Text(
+                            text = "Найдено: ${filteredApps.size}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Скрыть системные",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Switch(
+                            checked = hideSystem,
+                            onCheckedChange = { hideSystem = it }
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Поиск по имени или пакету...") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Очистить",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            )
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(
+                    items = filteredApps,
+                    key = { it.packageName },
+                    contentType = { "app" }
+                ) { app ->
+                    val checked = app.packageName in localSelected
+                    val iconPainter = remember(app.icon) {
+                        app.icon?.let { BitmapPainter(it.asImageBitmap()) }
+                    }
+
+                    val itemCornerRadius by animateDpAsState(
+                        targetValue = if (checked) 24.dp else 12.dp,
+                        label = "appItemCornerRadius"
+                    )
+                    val itemBgColor by animateColorAsState(
+                        targetValue = if (checked) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f)
+                        },
+                        label = "appItemBgColor"
+                    )
+                    val itemContentColor by animateColorAsState(
+                        targetValue = if (checked) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        label = "appItemContentColor"
+                    )
+                    val itemShape = RoundedCornerShape(itemCornerRadius)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(itemShape)
+                            .background(itemBgColor)
+                            .clickable {
+                                tactileFeedback()
+                                localSelected = if (checked) {
+                                    localSelected - app.packageName
+                                } else {
+                                    localSelected + app.packageName
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (iconPainter != null) {
+                                Image(
+                                    painter = iconPainter,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = app.label.take(1).uppercase(),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Black,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = itemContentColor
+                                )
+                            )
+                            Text(
+                                text = app.packageName,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = itemContentColor.copy(alpha = 0.65f)
+                                )
+                            )
+                        }
+                        if (app.isSystem) {
+                            Text(
+                                text = "SYS",
+                                modifier = Modifier.padding(end = 6.dp),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = itemContentColor.copy(alpha = 0.5f),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = {
+                                tactileFeedback()
+                                localSelected = if (checked) {
+                                    localSelected - app.packageName
+                                } else {
+                                    localSelected + app.packageName
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = { onSave(localSelected) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(25.dp),
+                enabled = hasChanges,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            ) {
+                Text("Сохранить изменения", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
 @Composable
 fun MainTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
+    scaleFactor: Float = 0.90f,
+    glassmorphic: Boolean = true,
+    maxBlurEnabled: Boolean = true,
+    hazeState: dev.chrisbanes.haze.HazeState? = null,
+    language: String = "ru",
     modifier: Modifier = Modifier
 ) {
     val tactileFeedback = rememberTactileFeedback()
+    val containerColor = if (glassmorphic) {
+        val alpha = if (maxBlurEnabled) 0.48f else 0.86f
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
 
-    Surface(
+    val containerShape = RoundedCornerShape(30.dp)
+
+    Box(
         modifier = modifier
             .width(240.dp)
-            .shadow(
-                elevation = 14.dp,
-                shape = RoundedCornerShape(30.dp),
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.18f),
-                spotColor = Color.Black.copy(alpha = 0.28f)
-            ),
-        shape = RoundedCornerShape(30.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+            .then(
+                if (glassmorphic && maxBlurEnabled) {
+                    Modifier
+                } else {
+                    Modifier.shadow(
+                        elevation = if (glassmorphic) 6.dp else 14.dp,
+                        shape = containerShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.18f),
+                        spotColor = Color.Black.copy(alpha = 0.28f)
+                    )
+                }
+            )
     ) {
+        // Blurred background layer
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(containerShape)
+                .background(containerColor)
+                .then(
+                    if (glassmorphic && maxBlurEnabled && hazeState != null) {
+                        Modifier.hazeChild(
+                            state = hazeState,
+                            shape = containerShape,
+                            style = HazeDefaults.style(
+                                backgroundColor = Color.Transparent,
+                                blurRadius = 32.dp,
+                                noiseFactor = 0.05f
+                            )
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
+                    if (glassmorphic && !maxBlurEnabled) {
+                        Modifier.border(
+                            BorderStroke(
+                                1.dp,
+                                Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
+                                    )
+                                )
+                            ),
+                            containerShape
+                        )
+                    } else Modifier
+                )
+        )
+
+        // Foreground content layer
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -4078,10 +4701,10 @@ fun MainTabBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val tabs = listOf(
-                Pair("Главная", Icons.Default.Refresh),
-                Pair("Прокси", Icons.Default.List),
-                Pair("Настройки", Icons.Default.Settings),
-                Pair("Логи", Icons.Default.Info)
+                Pair(Loc.get("title_main", language), Icons.Default.Refresh),
+                Pair(Loc.get("title_proxies", language), Icons.Default.List),
+                Pair(Loc.get("title_settings", language), Icons.Default.Settings),
+                Pair(Loc.get("title_logs", language), Icons.Default.Info)
             )
 
             tabs.forEachIndexed { index, tab ->
@@ -4109,6 +4732,11 @@ fun MainTabBar(
                 val activeContentColor by animateColorAsState(
                     targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
                     label = "tabContent"
+                )
+                
+                val tabRadius by animateDpAsState(
+                    targetValue = if (active) 21.dp else 10.dp,
+                    label = "tabCornerRadius"
                 )
 
                 Box(
@@ -4178,6 +4806,356 @@ fun CopyIcon(modifier: Modifier = Modifier, tint: Color = MaterialTheme.colorSch
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
             style = Stroke(width = strokePx)
         )
+    }
+}
+
+@Composable
+fun ImportBubble(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    index: Int,
+    scaleFactor: Float = 0.90f,
+    glassmorphic: Boolean = true,
+    maxBlurEnabled: Boolean = true
+) {
+    val tactileFeedback = rememberTactileFeedback()
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val delayTime = when (index) {
+            2 -> 0L
+            1 -> 200L
+            else -> 250L
+        }
+        delay(delayTime)
+        visible = true
+    }
+
+    val animatedOffsetY by animateDpAsState(
+        targetValue = if (visible) 0.dp else {
+            when (index) {
+                2 -> 64.dp
+                1 -> 50.dp
+                else -> 100.dp
+            }
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "bubbleOffsetY"
+    )
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "bubbleScale"
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scalePressed by animateFloatAsState(
+        targetValue = if (isPressed) scaleFactor else 1f,
+        label = "bubbleScalePressed"
+    )
+
+    val containerColor = if (glassmorphic) {
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    val bubbleShape = RoundedCornerShape(20.dp)
+
+    val finalModifier = Modifier
+        .scale(animatedScale * scalePressed)
+        .offset(y = animatedOffsetY)
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = {
+                tactileFeedback()
+                onClick()
+            }
+        )
+
+    Surface(
+        modifier = finalModifier,
+        shape = bubbleShape,
+        color = containerColor,
+        border = if (glassmorphic && !maxBlurEnabled) {
+            BorderStroke(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
+                    )
+                )
+            )
+        } else null,
+        tonalElevation = if (glassmorphic && !maxBlurEnabled) 4.dp else 0.dp,
+        shadowElevation = if (glassmorphic && !maxBlurEnabled) 4.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+}
+
+object Loc {
+    private val ru = mapOf(
+        "title_main" to "Главная",
+        "title_proxies" to "Прокси",
+        "title_settings" to "Настройки",
+        "title_logs" to "Логи",
+        "status_connected" to "VPN защищает трафик",
+        "status_connecting" to "Поднимаем VPN-туннель",
+        "status_reconnecting" to "Связь потеряна, переподключаемся",
+        "status_disconnected" to "VPN отключен",
+        "status_no_server" to "Сервер не выбран",
+        "download" to "Скачивание",
+        "upload" to "Загрузка",
+        "quick_best" to "Лучший",
+        "quick_share" to "Поделиться",
+        "quick_vpn_settings" to "VPN Android",
+        "quick_tile" to "Плитка",
+        "no_active_config" to "Нет выбранной рабочей конфигурации",
+        "conn_params" to "VPN параметры, DNS сервера, TUN стек, локальный прокси",
+        "rules_params" to "Маршрутизация, профиль приложений, функции ядра Xray",
+        "appearance_params" to "Тема оформления, степень отклика, стиль скруглений, анимация",
+        "system_params" to "Логирование, автозапуск, проверка серверов, сброс настроек",
+        "submenu_connection" to "Соединение",
+        "submenu_rules" to "Правила",
+        "submenu_appearance" to "Внешний вид",
+        "submenu_system" to "Система",
+        "back" to "Назад",
+        "language" to "Язык",
+        "lang_ru" to "Русский",
+        "lang_en" to "English",
+        "lang_zh" to "简体中文",
+        "theme" to "Тема оформления",
+        "tap_impact" to "Степень отклика",
+        "tap_impact_none" to "Без сжатия (1.00)",
+        "tap_impact_light" to "Легкий отклик (0.95)",
+        "tap_impact_medium" to "Средний (0.90)",
+        "tap_impact_deep" to "Глубокий отклик (0.85)",
+        "tap_impact_sub" to "Физическое сжатие интерфейса при нажатии",
+        "corner_roundness" to "Стиль скруглений",
+        "corner_std" to "Стандартный (M3)",
+        "corner_expr" to "Выразительный (M3 Expressive)",
+        "corner_std_sub" to "Стандартный строгий дизайн Material Design",
+        "corner_expr_sub" to "Крупные скругления углов и выразительная форма элементов",
+        "effects_anim" to "Эффекты и анимация",
+        "pulse_btn" to "Пульсация кнопки",
+        "pulse_btn_sub" to "Анимированная пульсация центральной кнопки при активном подключении",
+        "glass_bar" to "Стеклянный эффект",
+        "glass_bar_sub" to "Эффект полупрозрачности (Glassmorphism) для нижней панели вкладок",
+        "max_blur" to "Максимальное размытие",
+        "max_blur_sub" to "Плотный матовый эффект без обводки (стиль Android 17, по умолчанию включен)",
+        "logging" to "Логирование",
+        "log_debug_desc" to "Все события, включая детали подключений",
+        "log_info_desc" to "Основные события и изменения состояния",
+        "log_warn_desc" to "Только предупреждения и ошибки",
+        "log_err_desc" to "Только критические ошибки",
+        "sys_settings" to "Системные настройки",
+        "start_on_boot" to "Автозапуск при старте",
+        "start_on_boot_sub" to "Автоматически поднимать VPN после перезагрузки устройства",
+        "confirm_remove" to "Подтверждение удаления",
+        "confirm_remove_sub" to "Спрашивать подтверждение перед удалением сервера из списка",
+        "check_servers" to "Проверка серверов",
+        "check_resource" to "Проверка ресурса",
+        "resource_ok" to "Ресурс доступен",
+        "resource_fail" to "Ресурс недоступен",
+        "import_config" to "Добавить конфигурацию",
+        "import_link" to "Ссылка",
+        "import_qr" to "QR-код",
+        "import_clipboard" to "Буфер обмена",
+        "clipboard_empty" to "Буфер обмена пуст!",
+        "clipboard_chip" to "Из буфера",
+        "clear" to "Очистить",
+        "unknown_format" to "Неизвестный формат",
+        "direct_link" to "Прямая ссылка на сервер",
+        "sub_link" to "Ссылка на подписку"
+    )
+
+    private val en = mapOf(
+        "title_main" to "Main",
+        "title_proxies" to "Proxies",
+        "title_settings" to "Settings",
+        "title_logs" to "Logs",
+        "status_connected" to "VPN is protecting traffic",
+        "status_connecting" to "Establishing VPN tunnel",
+        "status_reconnecting" to "Connection lost, reconnecting",
+        "status_disconnected" to "VPN disconnected",
+        "status_no_server" to "No server selected",
+        "download" to "Download",
+        "upload" to "Upload",
+        "quick_best" to "Best Server",
+        "quick_share" to "Share Config",
+        "quick_vpn_settings" to "VPN Android",
+        "quick_tile" to "Add Tile",
+        "no_active_config" to "No working configuration selected",
+        "conn_params" to "VPN settings, DNS servers, TUN stack, local proxy",
+        "rules_params" to "Routing, app routing, Xray core features",
+        "appearance_params" to "Theme, click feedback, corner roundness, animations",
+        "system_params" to "Logging, auto start, health check, reset",
+        "submenu_connection" to "Connection",
+        "submenu_rules" to "Rules",
+        "submenu_appearance" to "Appearance",
+        "submenu_system" to "System",
+        "back" to "Back",
+        "language" to "Language",
+        "lang_ru" to "Русский",
+        "lang_en" to "English",
+        "lang_zh" to "简体中文",
+        "theme" to "Theme",
+        "tap_impact" to "Click Haptics",
+        "tap_impact_none" to "No Haptics (1.00)",
+        "tap_impact_light" to "Light (0.95)",
+        "tap_impact_medium" to "Medium (0.90)",
+        "tap_impact_deep" to "Deep (0.85)",
+        "tap_impact_sub" to "UI scale squeeze on press",
+        "corner_roundness" to "Corner Style",
+        "corner_std" to "Standard (M3)",
+        "corner_expr" to "Expressive (M3 Expressive)",
+        "corner_std_sub" to "Standard strict Material Design",
+        "corner_expr_sub" to "Larger corner radiuses and expressive shapes",
+        "effects_anim" to "Effects & Animations",
+        "pulse_btn" to "Pulse Button",
+        "pulse_btn_sub" to "Pulse animation on central button when connected",
+        "glass_bar" to "Glassmorphism",
+        "glass_bar_sub" to "Translucent glass effect for bottom tab bar",
+        "max_blur" to "Maximum Blur",
+        "max_blur_sub" to "Dense matte background without outline (Android 17 style)",
+        "logging" to "Logging",
+        "log_debug_desc" to "All events, including connection details",
+        "log_info_desc" to "Major events and state changes",
+        "log_warn_desc" to "Warnings and errors only",
+        "log_err_desc" to "Critical errors only",
+        "sys_settings" to "System Settings",
+        "start_on_boot" to "Start on Boot",
+        "start_on_boot_sub" to "Automatically start VPN on device boot",
+        "confirm_remove" to "Confirm Delete",
+        "confirm_remove_sub" to "Show confirmation before deleting a server",
+        "check_servers" to "Health Check",
+        "check_resource" to "Test Resource",
+        "resource_ok" to "Resource is reachable",
+        "resource_fail" to "Resource is unreachable",
+        "import_config" to "Add Configuration",
+        "import_link" to "Link",
+        "import_qr" to "QR Code",
+        "import_clipboard" to "Clipboard",
+        "clipboard_empty" to "Clipboard is empty!",
+        "clipboard_chip" to "From clipboard",
+        "clear" to "Clear",
+        "unknown_format" to "Unknown format",
+        "direct_link" to "Direct link to server",
+        "sub_link" to "Subscription link"
+    )
+
+    private val zh = mapOf(
+        "title_main" to "主页",
+        "title_proxies" to "代理",
+        "title_settings" to "设置",
+        "title_logs" to "日志",
+        "status_connected" to "VPN 正在保护流量",
+        "status_connecting" to "正在建立 VPN 隧道",
+        "status_reconnecting" to "连接已断开，正在重新连接",
+        "status_disconnected" to "VPN 已断开",
+        "status_no_server" to "未选择服务器",
+        "download" to "下载",
+        "upload" to "上传",
+        "quick_best" to "最佳服务器",
+        "quick_share" to "分享配置",
+        "quick_vpn_settings" to "系统 VPN",
+        "quick_tile" to "添加瓷贴",
+        "no_active_config" to "未选择有效的配置",
+        "conn_params" to "VPN 参数、DNS 服务器、TUN 栈、本地代理",
+        "rules_params" to "路由、应用代理、Xray 内核功能",
+        "appearance_params" to "主题风格、触觉反馈、圆角样式、动画",
+        "system_params" to "日志记录、开机自启、服务器检查、重置设置",
+        "submenu_connection" to "连接",
+        "submenu_rules" to "规则",
+        "submenu_appearance" to "外观",
+        "submenu_system" to "系统",
+        "back" to "返回",
+        "language" to "语言",
+        "lang_ru" to "Русский",
+        "lang_en" to "English",
+        "lang_zh" to "简体中文",
+        "theme" to "主题",
+        "tap_impact" to "按压触觉反馈",
+        "tap_impact_none" to "无缩放 (1.00)",
+        "tap_impact_light" to "轻微 (0.95)",
+        "tap_impact_medium" to "中等 (0.90)",
+        "tap_impact_deep" to "强烈 (0.85)",
+        "tap_impact_sub" to "按压时界面物理缩放挤压效果",
+        "corner_roundness" to "圆角风格",
+        "corner_std" to "标准 (M3)",
+        "corner_expr" to "丰富 (M3 Expressive)",
+        "corner_std_sub" to "标准的 Material Design 严谨设计",
+        "corner_expr_sub" to "更大的圆角和更具表现力的形状",
+        "effects_anim" to "特效与动画",
+        "pulse_btn" to "按钮呼吸灯",
+        "pulse_btn_sub" to "连接成功时中心按钮的呼吸动画效果",
+        "glass_bar" to "毛玻璃效果",
+        "glass_bar_sub" to "底部导航栏的半透明毛玻璃效果",
+        "max_blur" to "最大模糊",
+        "max_blur_sub" to "无描边的紧密磨砂效果（Android 17 风格，默认开启）",
+        "logging" to "日志记录",
+        "log_debug_desc" to "所有事件，包括连接的详细信息",
+        "log_info_desc" to "主要事件和状态更改",
+        "log_warn_desc" to "仅限警告和错误",
+        "log_err_desc" to "仅限严重错误",
+        "sys_settings" to "系统设置",
+        "start_on_boot" to "开机自启",
+        "start_on_boot_sub" to "设备开机后自动启动 VPN 连接",
+        "confirm_remove" to "删除确认",
+        "confirm_remove_sub" to "从列表中删除服务器前询问确认",
+        "check_servers" to "服务器连接性检查",
+        "check_resource" to "测试资源地址",
+        "resource_ok" to "测试成功，资源可达",
+        "resource_fail" to "测试失败，资源不可达",
+        "import_config" to "添加配置",
+        "import_link" to "链接导入",
+        "import_qr" to "扫码导入",
+        "import_clipboard" to "从剪贴板导入",
+        "clipboard_empty" to "剪贴板为空！",
+        "clipboard_chip" to "剪贴板",
+        "clear" to "清除",
+        "unknown_format" to "未知格式",
+        "direct_link" to "服务器直连配置链接",
+        "sub_link" to "订阅链接"
+    )
+
+    fun get(key: String, lang: String): String {
+        val dict = when (lang) {
+            "en" -> en
+            "zh" -> zh
+            else -> ru
+        }
+        return dict[key] ?: ru[key] ?: key
     }
 }
 

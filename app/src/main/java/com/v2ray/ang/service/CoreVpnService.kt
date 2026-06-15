@@ -282,11 +282,14 @@ class CoreVpnService : VpnService(), ServiceControl {
             }
         }
 
-        // Android Q (API 29) and above: Configure metering and HTTP proxy
+        // Android Q (API 29) and above: Configure metering, HTTP proxy, and blocking
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
             if (MmkvManager.decodeSettingsBool(AppConfig.PREF_APPEND_HTTP_PROXY)) {
                 builder.setHttpProxy(ProxyInfo.buildDirectProxy(LOOPBACK, SettingsManager.getHttpPort()))
+            }
+            if (MmkvManager.decodeSettingsBool("pref_blocking", false)) {
+                builder.setBlocking(true)
             }
         }
     }

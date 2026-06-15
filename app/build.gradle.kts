@@ -11,8 +11,8 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.4.1-alpha"
+        versionCode = 10
+        versionName = "0.5.0-alpha"
         multiDexEnabled = true
         ndk {
             abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
@@ -122,5 +122,6 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.mlkit.barcode.scanning)
+  implementation("dev.chrisbanes.haze:haze:0.7.3")
 }
 
