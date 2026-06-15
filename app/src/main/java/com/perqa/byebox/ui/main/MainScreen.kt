@@ -17,6 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -133,6 +134,7 @@ import dev.chrisbanes.haze.hazeChild
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeDefaults
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.rotate
@@ -387,122 +389,124 @@ fun MainScreen(
                 )
             }
 
-            Box(modifier = modifier.fillMaxSize().haze(hazeState)) {
-                // 1. Main Content Tab Container
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Box(
+            Box(modifier = modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+                    // 1. Main Content Tab Container
+                    Column(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Crossfade(
-                            targetState = selectedTab,
-                            label = "mainTabCrossfade"
-                        ) { tab ->
-                            when (tab) {
-                                0 -> DashboardTab(
-                                    state = state,
-                                    viewModel = viewModel
-                                )
-                                1 -> ProxyTab(
-                                    state = state,
-                                    viewModel = viewModel
-                                )
-                                2 -> SettingsTab(
-                                    state = state,
-                                    viewModel = viewModel
-                                )
-                                3 -> LogsTab(
-                                    state = state,
-                                    viewModel = viewModel
-                                )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            Crossfade(
+                                targetState = selectedTab,
+                                label = "mainTabCrossfade"
+                            ) { tab ->
+                                when (tab) {
+                                    0 -> DashboardTab(
+                                        state = state,
+                                        viewModel = viewModel
+                                    )
+                                    1 -> ProxyTab(
+                                        state = state,
+                                        viewModel = viewModel
+                                    )
+                                    2 -> SettingsTab(
+                                        state = state,
+                                        viewModel = viewModel
+                                    )
+                                    3 -> LogsTab(
+                                        state = state,
+                                        viewModel = viewModel
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                // 2. Bottom Fade
-                BottomEdgeFade(
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+                    // 2. Bottom Fade
+                    BottomEdgeFade(
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
 
-                // 3. Scrim overlay and bubbles for Speed Dial (transparent dismiss-on-tap detector)
-                AnimatedVisibility(
-                    visible = speedDialExpanded && selectedTab == 1,
-                    enter = androidx.compose.animation.fadeIn(animationSpec = tween(200)),
-                    exit = androidx.compose.animation.fadeOut(animationSpec = tween(200)),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                speedDialExpanded = false
-                            }
+                    // 3. Scrim overlay and bubbles for Speed Dial (transparent dismiss-on-tap detector)
+                    AnimatedVisibility(
+                        visible = speedDialExpanded && selectedTab == 1,
+                        enter = androidx.compose.animation.fadeIn(animationSpec = tween(200)),
+                        exit = androidx.compose.animation.fadeOut(animationSpec = tween(200)),
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        val clipboardManager = LocalClipboardManager.current
-                        Column(
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .navigationBarsPadding()
-                                .padding(bottom = 86.dp, end = fabRightOffsetFromEndDp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalAlignment = Alignment.End
+                                .fillMaxSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    speedDialExpanded = false
+                                }
                         ) {
-                            ImportBubble(
-                                label = Loc.get("import_link", state.language),
-                                icon = Icons.Default.Share,
-                                index = 0,
-                                scaleFactor = state.tapImpactScale,
-                                glassmorphic = state.glassmorphicBar,
-                                maxBlurEnabled = state.maxBlurEnabled,
-                                onClick = {
-                                    speedDialExpanded = false
-                                    showImportDialog = true
-                                }
-                            )
-                            ImportBubble(
-                                label = Loc.get("import_qr", state.language),
-                                icon = Icons.Default.Search,
-                                index = 1,
-                                scaleFactor = state.tapImpactScale,
-                                glassmorphic = state.glassmorphicBar,
-                                maxBlurEnabled = state.maxBlurEnabled,
-                                onClick = {
-                                    speedDialExpanded = false
-                                    qrLauncher.launch(
-                                        Intent(context, QrScanActivity::class.java)
-                                    )
-                                }
-                            )
-                            ImportBubble(
-                                label = Loc.get("import_clipboard", state.language),
-                                icon = Icons.Default.List,
-                                index = 2,
-                                scaleFactor = state.tapImpactScale,
-                                glassmorphic = state.glassmorphicBar,
-                                maxBlurEnabled = state.maxBlurEnabled,
-                                onClick = {
-                                    speedDialExpanded = false
-                                    val clip = clipboardManager.getText()?.toString()?.trim()
-                                    if (!clip.isNullOrBlank()) {
-                                        viewModel.addConfigFromUrl(clip)
-                                    } else {
-                                        Toast.makeText(context, Loc.get("clipboard_empty", state.language), Toast.LENGTH_SHORT).show()
+                            val clipboardManager = LocalClipboardManager.current
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .navigationBarsPadding()
+                                    .padding(bottom = 86.dp, end = fabRightOffsetFromEndDp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                ImportBubble(
+                                    label = Loc.get("import_link", state.language),
+                                    icon = Icons.Default.Share,
+                                    index = 0,
+                                    scaleFactor = state.tapImpactScale,
+                                    glassmorphic = state.glassmorphicBar,
+                                    maxBlurEnabled = state.maxBlurEnabled,
+                                    onClick = {
+                                        speedDialExpanded = false
+                                        showImportDialog = true
                                     }
-                                }
-                            )
+                                )
+                                ImportBubble(
+                                    label = Loc.get("import_qr", state.language),
+                                    icon = Icons.Default.Search,
+                                    index = 1,
+                                    scaleFactor = state.tapImpactScale,
+                                    glassmorphic = state.glassmorphicBar,
+                                    maxBlurEnabled = state.maxBlurEnabled,
+                                    onClick = {
+                                        speedDialExpanded = false
+                                        qrLauncher.launch(
+                                            Intent(context, QrScanActivity::class.java)
+                                        )
+                                    }
+                                )
+                                ImportBubble(
+                                    label = Loc.get("import_clipboard", state.language),
+                                    icon = Icons.Default.List,
+                                    index = 2,
+                                    scaleFactor = state.tapImpactScale,
+                                    glassmorphic = state.glassmorphicBar,
+                                    maxBlurEnabled = state.maxBlurEnabled,
+                                    onClick = {
+                                        speedDialExpanded = false
+                                        val clip = clipboardManager.getText()?.toString()?.trim()
+                                        if (!clip.isNullOrBlank()) {
+                                            viewModel.addConfigFromUrl(clip)
+                                        } else {
+                                            Toast.makeText(context, Loc.get("clipboard_empty", state.language), Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -2140,21 +2144,36 @@ fun ImportConfigDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = Loc.get("import_config", language),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = Loc.get("import_config", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold)
+                )
+            }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (clipboardUrl != null) {
-                        SuggestionChip(
-                            onClick = { text = clipboardUrl!! },
-                            label = { Text(Loc.get("clipboard_chip", language)) }
-                        )
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                val description = if (language == "ru") {
+                    "Введите ссылку на прокси-сервер (vless, vmess, ss, trojan) или ссылку на подписку (http/https):"
+                } else if (language == "zh") {
+                    "请输入代理服务器链接 (vless, vmess, ss, trojan) 或订阅链接 (http/https)："
+                } else {
+                    "Enter proxy server link (vless, vmess, ss, trojan) or subscription URL (http/https):"
                 }
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 OutlinedTextField(
                     value = text,
@@ -2162,10 +2181,12 @@ fun ImportConfigDialog(
                         text = it
                         isError = false
                     },
-                    placeholder = { Text("vless://... " + Loc.get("unknown_format", language).lowercase() + " http://...") },
+                    label = { Text(Loc.get("config_url_label", language)) },
+                    placeholder = { Text("vless://..., vmess://..., http://...") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    singleLine = false,
+                    maxLines = 4,
                     isError = isError,
                     trailingIcon = {
                         if (text.isNotEmpty()) {
@@ -2190,13 +2211,29 @@ fun ImportConfigDialog(
                             Text(
                                 hint,
                                 color = if (hint == Loc.get("unknown_format", language)) MaterialTheme.colorScheme.error
-                                       else MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
                             )
                         } else if (isError) {
-                            Text(Loc.get("unknown_format", language))
-                        } else null
+                            Text(Loc.get("unknown_format", language), color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 )
+
+                if (clipboardUrl != null && text != clipboardUrl) {
+                    SuggestionChip(
+                        onClick = { text = clipboardUrl!! },
+                        label = { Text(Loc.get("clipboard_chip", language)) },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.List,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
             }
         },
         confirmButton = {
@@ -2210,9 +2247,13 @@ fun ImportConfigDialog(
                         isError = true
                     }
                 },
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
-                Text(Loc.get("import_link", language))
+                Text(Loc.get("import_link", language), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -2220,7 +2261,7 @@ fun ImportConfigDialog(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(20.dp)
             ) {
-                Text(Loc.get("back", language))
+                Text(Loc.get("back", language), fontWeight = FontWeight.SemiBold)
             }
         },
         shape = RoundedCornerShape(28.dp),
@@ -4824,8 +4865,8 @@ fun ImportBubble(
     LaunchedEffect(Unit) {
         val delayTime = when (index) {
             2 -> 0L
-            1 -> 200L
-            else -> 250L
+            1 -> 30L
+            else -> 60L
         }
         delay(delayTime)
         visible = true
@@ -4834,25 +4875,25 @@ fun ImportBubble(
     val animatedOffsetY by animateDpAsState(
         targetValue = if (visible) 0.dp else {
             when (index) {
-                2 -> 64.dp
-                1 -> 50.dp
-                else -> 100.dp
+                2 -> 40.dp
+                1 -> 48.dp
+                else -> 96.dp
             }
         },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
+        animationSpec = tween(
+            durationMillis = 220,
+            easing = FastOutSlowInEasing
         ),
         label = "bubbleOffsetY"
     )
 
-    val animatedScale by animateFloatAsState(
+    val animatedAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
+        animationSpec = tween(
+            durationMillis = 180,
+            easing = LinearEasing
         ),
-        label = "bubbleScale"
+        label = "bubbleAlpha"
     )
 
     val interactionSource = remember { MutableInteractionSource() }
@@ -4862,18 +4903,19 @@ fun ImportBubble(
         label = "bubbleScalePressed"
     )
 
-    val containerColor = if (glassmorphic) {
-        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    }
+    // Solid opaque container color
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     
     val contentColor = MaterialTheme.colorScheme.onSurface
     val bubbleShape = RoundedCornerShape(20.dp)
 
     val finalModifier = Modifier
-        .scale(animatedScale * scalePressed)
+        .alpha(animatedAlpha)
         .offset(y = animatedOffsetY)
+        .graphicsLayer {
+            scaleX = scalePressed
+            scaleY = scalePressed
+        }
         .clickable(
             interactionSource = interactionSource,
             indication = null,
@@ -4996,7 +5038,8 @@ object Loc {
         "clear" to "Очистить",
         "unknown_format" to "Неизвестный формат",
         "direct_link" to "Прямая ссылка на сервер",
-        "sub_link" to "Ссылка на подписку"
+        "sub_link" to "Ссылка на подписку",
+        "config_url_label" to "Ссылка или URL подписки"
     )
 
     private val en = mapOf(
@@ -5071,7 +5114,8 @@ object Loc {
         "clear" to "Clear",
         "unknown_format" to "Unknown format",
         "direct_link" to "Direct link to server",
-        "sub_link" to "Subscription link"
+        "sub_link" to "Subscription link",
+        "config_url_label" to "Link or subscription URL"
     )
 
     private val zh = mapOf(
@@ -5146,7 +5190,8 @@ object Loc {
         "clear" to "清除",
         "unknown_format" to "未知格式",
         "direct_link" to "服务器直连配置链接",
-        "sub_link" to "订阅链接"
+        "sub_link" to "订阅链接",
+        "config_url_label" to "链接或订阅 URL"
     )
 
     fun get(key: String, lang: String): String {
