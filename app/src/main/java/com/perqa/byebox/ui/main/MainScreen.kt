@@ -17,7 +17,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -134,7 +133,7 @@ import dev.chrisbanes.haze.hazeChild
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeDefaults
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.rotate
@@ -4880,18 +4879,18 @@ fun ImportBubble(
                 else -> 96.dp
             }
         },
-        animationSpec = tween(
-            durationMillis = 220,
-            easing = FastOutSlowInEasing
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
         ),
         label = "bubbleOffsetY"
     )
 
     val animatedAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 180,
-            easing = LinearEasing
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
         ),
         label = "bubbleAlpha"
     )
@@ -4903,16 +4902,15 @@ fun ImportBubble(
         label = "bubbleScalePressed"
     )
 
-    // Solid opaque container color
+    val density = LocalDensity.current
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-    
     val contentColor = MaterialTheme.colorScheme.onSurface
     val bubbleShape = RoundedCornerShape(20.dp)
 
     val finalModifier = Modifier
-        .alpha(animatedAlpha)
-        .offset(y = animatedOffsetY)
         .graphicsLayer {
+            alpha = animatedAlpha
+            translationY = with(density) { animatedOffsetY.toPx() }
             scaleX = scalePressed
             scaleY = scalePressed
         }
