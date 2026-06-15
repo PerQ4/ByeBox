@@ -19,4 +19,4 @@ local.properties
 *.apk
 *.aab
 xray-build/
-reference/hiddify-app/
+reference/
