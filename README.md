@@ -50,7 +50,12 @@ ByeBox is a modern, high-performance Android VPN client built with Jetpack Compo
 - `scripts/` - Automated setup and management scripts.
 - `reference/` - Local references and external modules (ignored by git).
 
+### Acknowledgements 🤝
+
+- This project is based on [v2rayNG](https://github.com/2dust/v2rayNG) for its underlying connection management and protocol parsing, while featuring a fully custom Material You UI and evolving custom core integrations.
+
 ### License 📄
+
 This project is licensed under the Apache License 2.0. See the LICENSE files for details.
 
 ---
@@ -101,5 +106,10 @@ ByeBox - это современный и высокопроизводитель
 - `scripts/` - автоматизированные скрипты для настройки и управления.
 - `reference/` - локальные ссылки и внешние модули (игнорируются git).
 
+### Благодарности 🤝
+
+- Этот проект основан на [v2rayNG](https://github.com/2dust/v2rayNG) в части управления соединениями и разбора протоколов, при этом он предлагает полностью переработанный интерфейс Material You и развивается в сторону интеграции собственного ядра.
+
 ### Лицензия 📄
+
 Проект распространяется под лицензией Apache License 2.0. Подробности смотрите в файле LICENSE.
