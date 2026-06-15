@@ -132,7 +132,7 @@
         <service
             android:name=".service.ByeBoxTileService"
             android:label="ByeBox VPN"
-            android:icon="@drawable/ic_notification"
+            android:icon="@drawable/ic_launcher_monochrome"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
             <intent-filter>
