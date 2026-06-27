@@ -91,7 +91,8 @@ object NotificationManager {
         mBuilder = NotificationCompat.Builder(service, channelId)
             .setSmallIcon(R.drawable.ic_notification_on)
             .setContentTitle(serverName)
-            .setContentText("Туннель запущен и защищает ваше соединение")
+            .setContentText("Туннель активен, трафик защищён")
+            .setColor(Color.parseColor("#006494"))
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .setShowWhen(false)
@@ -149,7 +150,7 @@ object NotificationManager {
             channelId,
             channelName, NotificationManager.IMPORTANCE_HIGH
         )
-        chan.lightColor = Color.DKGRAY
+        chan.lightColor = Color.parseColor("#006494")
         chan.importance = NotificationManager.IMPORTANCE_NONE
         chan.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         getNotificationManager()?.createNotificationChannel(chan)
@@ -210,11 +211,25 @@ object NotificationManager {
         val uplinkSpeed = (proxyUplink / sinceLastQueryInSeconds).toLong()
         val downlinkSpeed = (proxyDownlink / sinceLastQueryInSeconds).toLong()
 
-        val speedText = "Входящий: ${downlinkSpeed.toSpeedString()}  ·  Исходящий: ${uplinkSpeed.toSpeedString()}"
+        val uplinkStr = formatSpeed(uplinkSpeed)
+        val downlinkStr = formatSpeed(downlinkSpeed)
+        val speedText = "↑ $uplinkStr   ↓ $downlinkStr"
         updateNotification(speedText)
 
         lastQueryTime = queryTime
         return proxyUplink + proxyDownlink == 0L
+    }
+
+    /**
+     * Formats a speed in bytes/sec to a compact human-readable string.
+     * Examples: "2.4 MB/s", "12 KB/s", "512 B/s"
+     */
+    private fun formatSpeed(bytesPerSec: Long): String {
+        return when {
+            bytesPerSec >= 1_048_576 -> String.format("%.1f MB/s", bytesPerSec / 1_048_576.0)
+            bytesPerSec >= 1_024 -> String.format("%.0f KB/s", bytesPerSec / 1_024.0)
+            else -> "$bytesPerSec B/s"
+        }
     }
 
     /**

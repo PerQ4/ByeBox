@@ -13,6 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 
 object AppLogger {
     private const val TAG = "AppLogger"
@@ -25,6 +26,7 @@ object AppLogger {
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val logExecutor = Executors.newSingleThreadExecutor()
 
     private var appContext: Context? = null
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
@@ -82,16 +84,20 @@ object AppLogger {
     fun clearLogs() {
         logBuffer.clear()
         mainHandler.post { _logs.value = listOf("[SYSTEM] Логи очищены.") }
-        runCatching {
-            appContext?.let { ctx ->
-                val internalFile = File(ctx.filesDir, "box_log.txt")
-                if (internalFile.exists()) internalFile.delete()
-                internalFile.createNewFile()
+        logExecutor.execute {
+            synchronized(fileLock) {
+                runCatching {
+                    appContext?.let { ctx ->
+                        val internalFile = File(ctx.filesDir, "box_log.txt")
+                        if (internalFile.exists()) internalFile.delete()
+                        internalFile.createNewFile()
 
-                ctx.getExternalFilesDir(null)?.let { externalDir ->
-                    val externalFile = File(externalDir, "box_log.txt")
-                    if (externalFile.exists()) externalFile.delete()
-                    externalFile.createNewFile()
+                        ctx.getExternalFilesDir(null)?.let { externalDir ->
+                            val externalFile = File(externalDir, "box_log.txt")
+                            if (externalFile.exists()) externalFile.delete()
+                            externalFile.createNewFile()
+                        }
+                    }
                 }
             }
         }
@@ -123,16 +129,18 @@ object AppLogger {
             _logs.value = logBuffer.toList().takeLast(500)
         }
 
-        // Write to files — synchronized on a plain lock (no JVM coroutine dependencies)
-        synchronized(fileLock) {
-            runCatching {
-                appContext?.let { ctx ->
-                    val internalFile = File(ctx.filesDir, "box_log.txt")
-                    FileWriter(internalFile, true).use { it.write(logLine + "\n") }
+        // Write to files asynchronously — synchronized on a plain lock
+        logExecutor.execute {
+            synchronized(fileLock) {
+                runCatching {
+                    appContext?.let { ctx ->
+                        val internalFile = File(ctx.filesDir, "box_log.txt")
+                        FileWriter(internalFile, true).use { it.write(logLine + "\n") }
 
-                    ctx.getExternalFilesDir(null)?.let { externalDir ->
-                        val externalFile = File(externalDir, "box_log.txt")
-                        FileWriter(externalFile, true).use { it.write(logLine + "\n") }
+                        ctx.getExternalFilesDir(null)?.let { externalDir ->
+                            val externalFile = File(externalDir, "box_log.txt")
+                            FileWriter(externalFile, true).use { it.write(logLine + "\n") }
+                        }
                     }
                 }
             }
