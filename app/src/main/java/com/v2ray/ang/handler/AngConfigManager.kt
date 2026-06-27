@@ -688,10 +688,7 @@ object AngConfigManager {
                         it.subscription.expireAt = userinfo.expire
                     }
                     if (key == "profile-title") {
-                        var newTitle = decodeRfc2047(valStr).trim()
-                        if (newTitle.isBlank()) {
-                            newTitle = valStr.trim()
-                        }
+                        val newTitle = decodeHeaderValue(valStr)
                         if (newTitle.isNotBlank() && (it.subscription.remarks == "import sub" || it.subscription.remarks.startsWith("http") || it.subscription.remarks == "Подписка")) {
                             it.subscription.remarks = newTitle
                         }
@@ -703,11 +700,41 @@ object AngConfigManager {
                         }
                     }
                     if (key == "profile-description" || key == "subscription-description") {
-                        val desc = decodeRfc2047(valStr).trim()
+                        val desc = decodeHeaderValue(valStr)
                         if (desc.isNotBlank()) {
                             it.subscription.description = desc
-                        } else if (valStr.trim().isNotBlank()) {
-                            it.subscription.description = valStr.trim()
+                        }
+                    }
+                }
+
+                // 2. Parse from body comments as fallback/enrichment
+                runCatching {
+                    configText.lines().take(15).forEach { line ->
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("#") || trimmed.startsWith("//")) {
+                            val commentContent = trimmed.substring(if (trimmed.startsWith("#")) 1 else 2).trim()
+                            val colonIndex = commentContent.indexOf(':')
+                            if (colonIndex > 0) {
+                                val commentKey = commentContent.substring(0, colonIndex).trim().lowercase()
+                                val commentVal = commentContent.substring(colonIndex + 1).trim()
+                                if (commentVal.isNotBlank()) {
+                                    val decodedVal = try {
+                                        java.net.URLDecoder.decode(decodeRfc2047(commentVal), "UTF-8").trim()
+                                    } catch (_: Exception) {
+                                        decodeRfc2047(commentVal).trim()
+                                    }
+                                    if (commentKey == "profile-title" || commentKey == "subscription-title") {
+                                        if (it.subscription.remarks == "import sub" || it.subscription.remarks.startsWith("http") || it.subscription.remarks == "Подписка") {
+                                            it.subscription.remarks = decodedVal
+                                        }
+                                    }
+                                    if (commentKey == "profile-description" || commentKey == "subscription-description") {
+                                        if (it.subscription.description.isNullOrBlank()) {
+                                            it.subscription.description = decodedVal
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -774,6 +801,15 @@ object AngConfigManager {
         subItem.url = url
         MmkvManager.encodeSubscription("", subItem)
         return 1
+    }
+
+    private fun decodeHeaderValue(value: String): String {
+        val decodedRfc = decodeRfc2047(value)
+        return try {
+            java.net.URLDecoder.decode(decodedRfc, "UTF-8").trim()
+        } catch (_: Exception) {
+            decodedRfc.trim()
+        }
     }
 
     /** Generates a description for the profile.

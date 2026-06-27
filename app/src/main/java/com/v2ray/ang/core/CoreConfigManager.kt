@@ -888,6 +888,60 @@ object CoreConfigManager {
         rulesetItems?.forEach { key ->
             appendRoutingUserRule(configContext, key, v2rayConfig, policyGroupBalancerTags)
         }
+
+        // Custom DIRECT rules override
+        val directRulesStr = MmkvManager.decodeSettingsString("pref_custom_direct_rules", "") ?: ""
+        if (directRulesStr.isNotBlank()) {
+            val domains = ArrayList<String>()
+            val ips = ArrayList<String>()
+            directRulesStr.split(',', '\n', '\r', ';', ' ', '\t')
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { rule ->
+                    if (rule.firstOrNull()?.isDigit() == true || rule.contains(':')) {
+                        ips.add(rule)
+                    } else {
+                        domains.add(rule)
+                    }
+                }
+            if (domains.isNotEmpty() || ips.isNotEmpty()) {
+                v2rayConfig.routing.rules.add(
+                    0, V2rayConfig.RoutingBean.RulesBean(
+                        outboundTag = AppConfig.TAG_DIRECT,
+                        domain = if (domains.isNotEmpty()) domains else null,
+                        ip = if (ips.isNotEmpty()) ips else null
+                    )
+                )
+            }
+        }
+
+        // Custom PROXY rules override
+        val proxyRulesStr = MmkvManager.decodeSettingsString("pref_custom_proxy_rules", "") ?: ""
+        if (proxyRulesStr.isNotBlank()) {
+            val domains = ArrayList<String>()
+            val ips = ArrayList<String>()
+            proxyRulesStr.split(',', '\n', '\r', ';', ' ', '\t')
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { rule ->
+                    if (rule.firstOrNull()?.isDigit() == true || rule.contains(':')) {
+                        ips.add(rule)
+                    } else {
+                        domains.add(rule)
+                    }
+                }
+            val proxyTag = policyGroupBalancerTags[AppConfig.TAG_PROXY]
+            if (domains.isNotEmpty() || ips.isNotEmpty()) {
+                v2rayConfig.routing.rules.add(
+                    0, V2rayConfig.RoutingBean.RulesBean(
+                        outboundTag = if (proxyTag != null) null else AppConfig.TAG_PROXY,
+                        balancerTag = proxyTag,
+                        domain = if (domains.isNotEmpty()) domains else null,
+                        ip = if (ips.isNotEmpty()) ips else null
+                    )
+                )
+            }
+        }
     }
 
     /**

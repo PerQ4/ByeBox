@@ -17,6 +17,9 @@ import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.util.MessageUtil
 import com.perqa.byebox.theme.AppTheme
+import com.perqa.byebox.theme.DarkThemeStyle
+import com.perqa.byebox.data.SettingsProfileData
+import com.perqa.byebox.data.ProfilePresetManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -60,7 +63,8 @@ enum class DnsServer(val label: String, val address: String) {
     SYSTEM("Системный DNS", "System Default"),
     CLOUDFLARE("Cloudflare DNS", "1.1.1.1"),
     GOOGLE("Google DNS", "8.8.8.8"),
-    ADGUARD("AdGuard DNS (фильтр)", "94.140.14.14")
+    ADGUARD("AdGuard DNS (фильтр)", "94.140.14.14"),
+    CUSTOM("Свой DNS", "custom")
 }
 
 enum class AppRoutingMode(val label: String, val description: String) {
@@ -111,7 +115,17 @@ data class MainUiState(
     val pulseEnabled: Boolean = true,
     val glassmorphicBar: Boolean = true,
     val maxBlurEnabled: Boolean = true,
-    val language: String = "ru"
+    val language: String = "system",
+    val darkThemeStyle: DarkThemeStyle = DarkThemeStyle.STANDARD,
+    val profiles: List<SettingsProfileData> = emptyList(),
+    val activeProfileId: String = "",
+    val compactLayoutEnabled: Boolean = false,
+    val showFlagsEnabled: Boolean = true,
+    val customDnsServer: String = "",
+    val customDirectRules: String = "",
+    val customProxyRules: String = "",
+    val routingDomainStrategy: String = "AsIs",
+    val outboundDomainResolveMethod: String = "0"
 )
 
 data class InstalledAppInfo(
@@ -160,7 +174,18 @@ class MainScreenViewModel(
     private val _pulseEnabled = MutableStateFlow(true)
     private val _glassmorphicBar = MutableStateFlow(true)
     private val _maxBlurEnabled = MutableStateFlow(true)
-    private val _language = MutableStateFlow("ru")
+    private val _language = MutableStateFlow("system")
+    private val _darkThemeStyle = MutableStateFlow(DarkThemeStyle.STANDARD)
+    private val _profiles = MutableStateFlow<List<SettingsProfileData>>(emptyList())
+    private val _activeProfileId = MutableStateFlow("")
+    private var isApplyingProfilePreset = false
+    private val _compactLayoutEnabled = MutableStateFlow(false)
+    private val _showFlagsEnabled = MutableStateFlow(true)
+    private val _customDnsServer = MutableStateFlow("")
+    private val _customDirectRules = MutableStateFlow("")
+    private val _customProxyRules = MutableStateFlow("")
+    private val _routingDomainStrategy = MutableStateFlow("AsIs")
+    private val _outboundDomainResolveMethod = MutableStateFlow("0")
     private val _logs = com.perqa.byebox.core.AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -179,6 +204,7 @@ class MainScreenViewModel(
                     _connectionStatus.value = ConnectionStatus.CONNECTED
                     startTrafficUpdates()
                     loadDataFromMmkv()
+                    triggerHaptic(HapticType.SUCCESS)
                 }
                 AppConfig.MSG_STATE_NOT_RUNNING,
                 AppConfig.MSG_STATE_STOP_SUCCESS -> {
@@ -187,6 +213,7 @@ class MainScreenViewModel(
                     _downloadSpeed.value = "0.0 KB/s"
                     _uploadSpeed.value = "0.0 KB/s"
                     loadDataFromMmkv()
+                    triggerHaptic(HapticType.MEDIUM)
                 }
                 AppConfig.MSG_STATE_START_FAILURE -> {
                     _connectionStatus.value = ConnectionStatus.DISCONNECTED
@@ -196,6 +223,7 @@ class MainScreenViewModel(
                     addLog("[ERROR] Сбой подключения: $content")
                     showToast("Сбой подключения")
                     loadDataFromMmkv()
+                    triggerHaptic(HapticType.ERROR)
                 }
             }
         }
@@ -238,7 +266,17 @@ class MainScreenViewModel(
         _pulseEnabled,
         _glassmorphicBar,
         _maxBlurEnabled,
-        _language
+        _language,
+        _darkThemeStyle,
+        _profiles,
+        _activeProfileId,
+        _compactLayoutEnabled,
+        _showFlagsEnabled,
+        _customDnsServer,
+        _customDirectRules,
+        _customProxyRules,
+        _routingDomainStrategy,
+        _outboundDomainResolveMethod
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         MainUiState(
@@ -278,7 +316,17 @@ class MainScreenViewModel(
             pulseEnabled = flows[33] as Boolean,
             glassmorphicBar = flows[34] as Boolean,
             maxBlurEnabled = flows[35] as Boolean,
-            language = flows[36] as String
+            language = flows[36] as String,
+            darkThemeStyle = flows[37] as DarkThemeStyle,
+            profiles = flows[38] as List<SettingsProfileData>,
+            activeProfileId = flows[39] as String,
+            compactLayoutEnabled = flows[40] as Boolean,
+            showFlagsEnabled = flows[41] as Boolean,
+            customDnsServer = flows[42] as String,
+            customDirectRules = flows[43] as String,
+            customProxyRules = flows[44] as String,
+            routingDomainStrategy = flows[45] as String,
+            outboundDomainResolveMethod = flows[46] as String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -286,7 +334,16 @@ class MainScreenViewModel(
         initialValue = MainUiState()
     )
 
+    private val prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "pref_dynamic_profiles" || key == "pref_active_profile_id" || key == KEY_DARK_THEME_STYLE ||
+            key?.startsWith("base_") == true) {
+            loadDataFromMmkv()
+        }
+    }
+
     init {
+        migrateBaseSettingsIfNeeded()
+        prefs?.registerOnSharedPreferenceChangeListener(prefsListener)
         loadInstalledApps()
         loadDataFromMmkv()
 
@@ -371,6 +428,15 @@ class MainScreenViewModel(
     fun selectConfig(id: String) {
         MmkvManager.setSelectServer(id)
         _activeConfigId.value = id
+        
+        // Autosave the selected server for the active profile preset
+        val context = appContext
+        if (context != null) {
+            val activeId = ProfilePresetManager.getActiveProfileId(context)
+            val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
+            prefs.edit().putString("last_selected_server_profile_$activeId", id).apply()
+        }
+
         val active = _configs.value.find { it.id == id }
         if (active != null) {
             addLog("[SYSTEM] Выбрана конфигурация: ${active.name}")
@@ -546,6 +612,7 @@ class MainScreenViewModel(
                 addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
                 showToast("Пинг обновлён: ${summary.ok}/${summary.total}")
                 loadDataFromMmkv()
+                triggerHaptic(HapticType.SUCCESS)
             } finally {
                 _isPinging.value = false
             }
@@ -565,6 +632,7 @@ class MainScreenViewModel(
                 addLog("[PING] ${activeConfig.name} -> $ping ms")
                 showToast("Пинг: $ping ms")
                 loadDataFromMmkv()
+                triggerHaptic(if (ping < 999) HapticType.SUCCESS else HapticType.ERROR)
             } finally {
                 _isPinging.value = false
             }
@@ -583,6 +651,7 @@ class MainScreenViewModel(
                 addLog("[SYSTEM] Пинг источника завершён: $sourceName, ${summary.ok} ok, ${summary.failed} timeout")
                 showToast("Пинг источника: ${summary.ok}/${summary.total}")
                 loadDataFromMmkv()
+                triggerHaptic(HapticType.SUCCESS)
             } finally {
                 _isPinging.value = false
             }
@@ -671,40 +740,25 @@ class MainScreenViewModel(
     }
 
     fun changeRoutingProfile(profile: RoutingProfile) {
+        resetProfileToCustom()
         _routingProfile.value = profile
-        writeString(KEY_ROUTING_PROFILE, profile.name)
-        
-        val index = when (profile) {
-            RoutingProfile.BYPASS_LAN_CN_RU -> 4 // WHITE_RUSSIA
-            RoutingProfile.PROXY_ALL -> 2 // GLOBAL
-            RoutingProfile.DIRECT -> 0 // WHITE
-        }
-        val context = appContext
-        if (context != null) {
-            SettingsManager.resetRoutingRulesetsFromPresets(context, index)
-        }
-        
+        writeString("base_routing_profile", profile.name)
+        propagateActiveProfile()
         addLog("[SYSTEM] Профиль маршрутизации изменен: ${profile.label}")
         showToast("Маршрутизация: ${profile.label}")
     }
 
     fun changeDnsServer(dns: DnsServer) {
+        resetProfileToCustom()
         _dnsServer.value = dns
-        writeString(KEY_DNS_SERVER, dns.name)
-        
-        val dnsAddress = if (dns == DnsServer.SYSTEM) "1.1.1.1" else dns.address
-        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsAddress)
-        if (dns != DnsServer.SYSTEM) {
-            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, dns.address)
-        } else {
-            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, AppConfig.DNS_VPN)
-        }
-        
-        addLog("[SYSTEM] Выбран DNS-сервер: ${dns.label} (${dns.address})")
+        writeString("base_dns_server", dns.name)
+        propagateActiveProfile()
+        addLog("[SYSTEM] Выбран DNS-сервер: ${dns.label}")
         showToast("DNS: ${dns.label}")
     }
 
     fun changeLanBypassEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _lanBypassEnabled.value = enabled
         writeBoolean(KEY_LAN_BYPASS_ENABLED, enabled)
         
@@ -714,6 +768,7 @@ class MainScreenViewModel(
     }
 
     fun changeVpnModeEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _vpnModeEnabled.value = enabled
         MmkvManager.encodeSettings(AppConfig.PREF_MODE, if (enabled) "VPN" else "PROXY")
         addLog("[SYSTEM] Режим VPN: ${if (enabled) "включен" else "локальный прокси"}")
@@ -729,6 +784,7 @@ class MainScreenViewModel(
     }
 
     fun changeProxySharingEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _proxySharingEnabled.value = enabled
         MmkvManager.encodeSettings(AppConfig.PREF_PROXY_SHARING, enabled)
         addLog("[SYSTEM] LAN Sharing: ${if (enabled) "разрешен" else "запрещен"}")
@@ -736,23 +792,19 @@ class MainScreenViewModel(
     }
 
     fun changeMuxEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _muxEnabled.value = enabled
-        MmkvManager.encodeSettings(AppConfig.PREF_MUX_ENABLED, enabled)
+        writeBoolean("base_mux_enabled", enabled)
+        propagateActiveProfile()
         addLog("[SYSTEM] Мультиплексирование (Mux): ${if (enabled) "включено" else "выключено"}")
         showToast("Mux: ${if (enabled) "включен" else "выключен"}")
     }
 
     fun changeAppRoutingMode(mode: AppRoutingMode) {
+        resetProfileToCustom()
         _appRoutingMode.value = mode
-        writeString(KEY_APP_ROUTING_MODE, mode.name)
-        if (mode == AppRoutingMode.OFF) {
-            _appRoutingPackages.value = ""
-            writeString(KEY_APP_ROUTING_PACKAGES, "")
-            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, false)
-        } else {
-            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
-            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, mode == AppRoutingMode.BYPASS_SELECTED)
-        }
+        writeString("base_app_routing_mode", mode.name)
+        propagateActiveProfile()
         addLog("[SYSTEM] Профиль приложений VPN: ${mode.label}")
         showToast("Приложения: ${mode.label}")
     }
@@ -760,10 +812,11 @@ class MainScreenViewModel(
     fun changeAppRoutingPackages(value: String) {
         val normalized = normalizePackageText(value)
         _appRoutingPackages.value = normalized
-        writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+        writeString("base_app_routing_packages_str", normalized)
         
-        val set = parsePackageText(normalized).toMutableSet()
-        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, set)
+        val set = parsePackageText(normalized).toSet()
+        prefs?.edit()?.putStringSet("base_app_routing_packages", set)?.apply()
+        propagateActiveProfile()
     }
 
     fun toggleAppRoutingPackage(packageName: String) {
@@ -773,22 +826,25 @@ class MainScreenViewModel(
         }
         val normalized = packages.sorted().joinToString("\n")
         _appRoutingPackages.value = normalized
-        writeString(KEY_APP_ROUTING_PACKAGES, normalized)
+        writeString("base_app_routing_packages_str", normalized)
         
-        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, packages)
+        prefs?.edit()?.putStringSet("base_app_routing_packages", packages)?.apply()
+        propagateActiveProfile()
     }
 
     fun clearAppRoutingPackages() {
         _appRoutingPackages.value = ""
-        writeString(KEY_APP_ROUTING_PACKAGES, "")
-        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, mutableSetOf())
+        writeString("base_app_routing_packages_str", "")
+        prefs?.edit()?.putStringSet("base_app_routing_packages", emptySet())?.apply()
+        propagateActiveProfile()
         showToast("Список приложений очищен")
     }
 
     fun changeTunStack(stack: TunStack) {
+        resetProfileToCustom()
         _tunStack.value = stack
-        writeString(KEY_TUN_STACK, stack.name)
-        MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, stack == TunStack.GVISOR)
+        writeString("base_tun_stack", stack.name)
+        propagateActiveProfile()
         addLog("[SYSTEM] TUN стек: ${stack.label}")
         showToast("TUN стек: ${stack.label}")
     }
@@ -800,15 +856,19 @@ class MainScreenViewModel(
     }
 
     fun changeFakeDnsEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _fakeDnsEnabled.value = enabled
-        MmkvManager.encodeSettings(AppConfig.PREF_FAKE_DNS_ENABLED, enabled)
+        writeBoolean("base_fake_dns_enabled", enabled)
+        propagateActiveProfile()
         addLog("[SYSTEM] Fake DNS: ${if (enabled) "включен" else "выключен"}")
         showToast("Fake DNS: ${if (enabled) "включен" else "выключен"}")
     }
 
     fun changeFragmentEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _fragmentEnabled.value = enabled
-        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, enabled)
+        writeBoolean("base_fragment_enabled", enabled)
+        propagateActiveProfile()
         addLog("[SYSTEM] Фрагментация (Fragment): ${if (enabled) "включена" else "выключена"}")
         showToast("Fragment: ${if (enabled) "включен" else "выключен"}")
     }
@@ -835,8 +895,10 @@ class MainScreenViewModel(
     }
 
     fun changeSniffingEnabled(enabled: Boolean) {
+        resetProfileToCustom()
         _sniffingEnabled.value = enabled
-        MmkvManager.encodeSettings(AppConfig.PREF_SNIFFING_ENABLED, enabled)
+        writeBoolean("base_sniffing_enabled", enabled)
+        propagateActiveProfile()
         addLog("[SYSTEM] Сниффинг трафика: ${if (enabled) "включен" else "выключен"}")
         showToast("Сниффинг: ${if (enabled) "включен" else "выключен"}")
     }
@@ -856,6 +918,20 @@ class MainScreenViewModel(
     fun changeTapImpactScale(scale: Float) {
         _tapImpactScale.value = scale
         prefs?.edit()?.putFloat("pref_tap_impact_scale", scale)?.apply()
+    }
+
+    fun changeRoutingDomainStrategy(strategy: String) {
+        _routingDomainStrategy.value = strategy
+        MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, strategy)
+        addLog("[SYSTEM] Domain Strategy изменена: $strategy")
+        showToast("Domain Strategy: $strategy")
+    }
+
+    fun changeOutboundDomainResolveMethod(method: String) {
+        _outboundDomainResolveMethod.value = method
+        MmkvManager.encodeSettings(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, method)
+        addLog("[SYSTEM] Outbound Resolve Method изменён: $method")
+        showToast("Outbound Resolve: $method")
     }
 
     fun changeCornerRoundness(roundness: String) {
@@ -881,6 +957,132 @@ class MainScreenViewModel(
     fun changeLanguage(lang: String) {
         _language.value = lang
         prefs?.edit()?.putString("pref_language", lang)?.apply()
+    }
+
+    private fun resetProfileToCustom() {
+        // No-op in dynamic profile system
+    }
+
+    fun changeDarkThemeStyle(style: DarkThemeStyle) {
+        _darkThemeStyle.value = style
+        writeString(KEY_DARK_THEME_STYLE, style.name)
+    }
+
+    fun changeActiveProfileId(id: String) {
+        val context = appContext ?: return
+        val list = _profiles.value
+        val profile = list.find { it.id == id } ?: return
+
+        isApplyingProfilePreset = true
+        try {
+            ProfilePresetManager.switchActiveProfile(context, id)
+            loadDataFromMmkv()
+
+            // If service is running, toggle it to apply new Xray settings/server config
+            val isVpnRunning = MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
+            if (isVpnRunning) {
+                com.v2ray.ang.util.MessageUtil.sendMsg2Service(context, AppConfig.MSG_STATE_RESTART, "")
+            }
+        } finally {
+            isApplyingProfilePreset = false
+        }
+        addLog("[SYSTEM] Активирован профиль настроек: ${profile.name}")
+        showToast("Профиль: ${profile.name}")
+    }
+
+    fun addProfile(profile: SettingsProfileData) {
+        val context = appContext ?: return
+        val newList = _profiles.value + profile
+        _profiles.value = newList
+        ProfilePresetManager.saveProfiles(context, newList)
+        addLog("[SYSTEM] Создан новый профиль: ${profile.name}")
+        showToast("Создан профиль: ${profile.name}")
+    }
+
+    fun updateProfile(updated: SettingsProfileData) {
+        val context = appContext ?: return
+        val newList = _profiles.value.map { if (it.id == updated.id) updated else it }
+        _profiles.value = newList
+        ProfilePresetManager.saveProfiles(context, newList)
+        
+        // If updating the currently active profile, apply its updated settings
+        if (updated.id == _activeProfileId.value) {
+            isApplyingProfilePreset = true
+            try {
+                ProfilePresetManager.applyProfile(context, updated)
+                loadDataFromMmkv()
+                val isVpnRunning = MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
+                if (isVpnRunning) {
+                    com.v2ray.ang.util.MessageUtil.sendMsg2Service(context, AppConfig.MSG_STATE_RESTART, "")
+                }
+            } finally {
+                isApplyingProfilePreset = false
+            }
+        }
+        showToast("Профиль сохранен")
+    }
+
+    fun deleteProfile(id: String) {
+        val context = appContext ?: return
+        val list = _profiles.value
+        if (list.size <= 1) {
+            showToast("Нельзя удалить единственный профиль")
+            return
+        }
+        val target = list.find { it.id == id } ?: return
+        val newList = list.filter { it.id != id }
+        _profiles.value = newList
+        ProfilePresetManager.saveProfiles(context, newList)
+        
+        // If we deleted the active profile, switch to the first remaining profile
+        if (id == _activeProfileId.value) {
+            val nextId = newList.firstOrNull()?.id ?: ""
+            changeActiveProfileId(nextId)
+        }
+        addLog("[SYSTEM] Удален профиль: ${target.name}")
+        showToast("Удален профиль: ${target.name}")
+    }
+
+    fun reorderProfiles(reordered: List<SettingsProfileData>) {
+        val context = appContext ?: return
+        _profiles.value = reordered
+        ProfilePresetManager.saveProfiles(context, reordered)
+    }
+
+    fun changeCompactLayoutEnabled(enabled: Boolean) {
+        _compactLayoutEnabled.value = enabled
+        prefs?.edit()?.putBoolean("pref_compact_layout", enabled)?.apply()
+    }
+
+    fun changeShowFlagsEnabled(enabled: Boolean) {
+        _showFlagsEnabled.value = enabled
+        prefs?.edit()?.putBoolean("pref_show_flags", enabled)?.apply()
+    }
+
+    fun changeCustomDnsServer(server: String) {
+        val trimmed = server.trim()
+        if (trimmed.isNotBlank() && !com.v2ray.ang.util.Utils.isPureIpAddress(trimmed)) {
+            showToast("Некорректный IP-адрес DNS")
+            return
+        }
+        _customDnsServer.value = trimmed
+        writeString("base_custom_dns", trimmed)
+        propagateActiveProfile()
+        addLog("[SYSTEM] Свой DNS: $trimmed")
+    }
+
+    fun changeCustomDirectRules(rules: String) {
+        _customDirectRules.value = rules
+        writeString("base_custom_direct_rules", rules)
+        propagateActiveProfile()
+        addLog("[SYSTEM] Кастомные правила DIRECT: $rules")
+    }
+
+    fun changeCustomProxyRules(rules: String) {
+        _customProxyRules.value = rules
+        writeString("base_custom_proxy_rules", rules)
+        propagateActiveProfile()
+        addLog("[SYSTEM] Кастомные правила PROXY: $rules")
     }
 
     fun changeLogLevel(level: String) {
@@ -964,6 +1166,69 @@ class MainScreenViewModel(
 
     fun clearToast() {
         _toastMessage.value = null
+    }
+
+    fun triggerHaptic(type: HapticType) {
+        val context = appContext ?: return
+        val scale = _tapImpactScale.value
+        runCatching {
+            val multiplier = when {
+                scale >= 1.00f -> 0.0f
+                scale >= 0.95f -> 0.6f
+                scale >= 0.90f -> 1.0f
+                else -> 1.6f
+            }
+            if (multiplier <= 0.0f) return
+
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                manager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+
+            if (vibrator?.hasVibrator() == true) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    when (type) {
+                        HapticType.LIGHT -> {
+                            val dur = (8 * multiplier).toLong().coerceAtLeast(1)
+                            val amp = (30 * multiplier).toInt().coerceIn(1, 255)
+                            vibrator.vibrate(android.os.VibrationEffect.createOneShot(dur, amp))
+                        }
+                        HapticType.MEDIUM -> {
+                            val dur = (15 * multiplier).toLong().coerceAtLeast(1)
+                            val amp = (70 * multiplier).toInt().coerceIn(1, 255)
+                            vibrator.vibrate(android.os.VibrationEffect.createOneShot(dur, amp))
+                        }
+                        HapticType.HEAVY -> {
+                            val dur = (30 * multiplier).toLong().coerceAtLeast(1)
+                            val amp = (140 * multiplier).toInt().coerceIn(1, 255)
+                            vibrator.vibrate(android.os.VibrationEffect.createOneShot(dur, amp))
+                        }
+                        HapticType.SUCCESS -> {
+                            val timings = longArrayOf(0, (10 * multiplier).toLong().coerceAtLeast(1), 40, (20 * multiplier).toLong().coerceAtLeast(1))
+                            val amplitudes = intArrayOf(0, (120 * multiplier).toInt().coerceIn(1, 255), 0, (140 * multiplier).toInt().coerceIn(1, 255))
+                            vibrator.vibrate(android.os.VibrationEffect.createWaveform(timings, amplitudes, -1))
+                        }
+                        HapticType.ERROR -> {
+                            val timings = longArrayOf(0, (30 * multiplier).toLong().coerceAtLeast(1), 30, (40 * multiplier).toLong().coerceAtLeast(1))
+                            val amplitudes = intArrayOf(0, (160 * multiplier).toInt().coerceIn(1, 255), 0, (200 * multiplier).toInt().coerceIn(1, 255))
+                            vibrator.vibrate(android.os.VibrationEffect.createWaveform(timings, amplitudes, -1))
+                        }
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    when (type) {
+                        HapticType.LIGHT -> vibrator.vibrate((8 * multiplier).toLong().coerceAtLeast(1))
+                        HapticType.MEDIUM -> vibrator.vibrate((15 * multiplier).toLong().coerceAtLeast(1))
+                        HapticType.HEAVY -> vibrator.vibrate((30 * multiplier).toLong().coerceAtLeast(1))
+                        HapticType.SUCCESS -> vibrator.vibrate(longArrayOf(0, (10 * multiplier).toLong().coerceAtLeast(1), 40, (20 * multiplier).toLong().coerceAtLeast(1)), -1)
+                        HapticType.ERROR -> vibrator.vibrate(longArrayOf(0, (30 * multiplier).toLong().coerceAtLeast(1), 30, (40 * multiplier).toLong().coerceAtLeast(1)), -1)
+                    }
+                }
+            }
+        }
     }
 
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T {
@@ -1082,15 +1347,15 @@ class MainScreenViewModel(
         _vpnModeEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN"
         _socksPort.value = MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808"
         _proxySharingEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING, false)
-        _muxEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
-        _fakeDnsEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED, false)
-        _fragmentEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false)
+        _muxEnabled.value = prefs?.getBoolean("base_mux_enabled", false) ?: false
+        _fakeDnsEnabled.value = prefs?.getBoolean("base_fake_dns_enabled", true) ?: true
+        _fragmentEnabled.value = prefs?.getBoolean("base_fragment_enabled", false) ?: false
         _ipv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false)
         _startOnBootEnabled.value = MmkvManager.decodeStartOnBoot()
         _lanBypassEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2"
         _healthCheckUrl.value = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204"
         _blockingEnabled.value = MmkvManager.decodeSettingsBool("pref_blocking", false)
-        _sniffingEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true)
+        _sniffingEnabled.value = prefs?.getBoolean("base_sniffing_enabled", true) ?: true
         _confirmRemoveEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_CONFIRM_REMOVE, true)
         _preferIpv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6, false)
         _tapImpactScale.value = prefs?.getFloat("pref_tap_impact_scale", 0.90f) ?: 0.90f
@@ -1098,13 +1363,121 @@ class MainScreenViewModel(
         _pulseEnabled.value = prefs?.getBoolean("pref_pulse_enabled", true) ?: true
         _glassmorphicBar.value = prefs?.getBoolean("pref_glassmorphic_bar", true) ?: true
         _maxBlurEnabled.value = prefs?.getBoolean("pref_max_blur", true) ?: true
-        _language.value = prefs?.getString("pref_language", "ru") ?: "ru"
+        _language.value = prefs?.getString("pref_language", "system") ?: "system"
+        val context = appContext
+        if (context != null) {
+            _profiles.value = ProfilePresetManager.loadProfiles(context)
+            _activeProfileId.value = ProfilePresetManager.getActiveProfileId(context)
+        }
+        _darkThemeStyle.value = readEnum(KEY_DARK_THEME_STYLE, DarkThemeStyle.STANDARD)
+        _compactLayoutEnabled.value = prefs?.getBoolean("pref_compact_layout", false) ?: false
+        _showFlagsEnabled.value = prefs?.getBoolean("pref_show_flags", true) ?: true
+        _customDnsServer.value = prefs?.getString("base_custom_dns", "") ?: ""
+        _customDirectRules.value = prefs?.getString("base_custom_direct_rules", "") ?: ""
+        _customProxyRules.value = prefs?.getString("base_custom_proxy_rules", "") ?: ""
+        
+        _routingProfile.value = readEnum("base_routing_profile", RoutingProfile.BYPASS_LAN_CN_RU)
+        _dnsServer.value = readEnum("base_dns_server", DnsServer.SYSTEM)
+        _appRoutingMode.value = readEnum("base_app_routing_mode", AppRoutingMode.OFF)
+        _appRoutingPackages.value = readString("base_app_routing_packages_str", "")
+        _tunStack.value = readEnum("base_tun_stack", TunStack.GVISOR)
+        _routingDomainStrategy.value = MmkvManager.decodeSettingsString(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY) ?: "AsIs"
+        _outboundDomainResolveMethod.value = MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD) ?: "0"
     }
 
     override fun onCleared() {
         super.onCleared()
+        prefs?.unregisterOnSharedPreferenceChangeListener(prefsListener)
         appContext?.unregisterReceiver(mMsgReceiver)
         trafficJob?.cancel()
+    }
+
+    private fun migrateBaseSettingsIfNeeded() {
+        val context = appContext ?: return
+        val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("base_settings_migrated_v2", false)) return
+
+        val editor = prefs.edit()
+        
+        // 1. routing_profile
+        if (!prefs.contains("base_routing_profile")) {
+            val oldVal = prefs.getString("routing_profile", "BYPASS_LAN_CN_RU")
+            editor.putString("base_routing_profile", oldVal)
+        }
+        // 2. dns_server
+        if (!prefs.contains("base_dns_server")) {
+            val oldVal = prefs.getString("dns_server", "SYSTEM")
+            editor.putString("base_dns_server", oldVal)
+        }
+        // 3. custom dns
+        if (!prefs.contains("base_custom_dns")) {
+            val oldVal = MmkvManager.decodeSettingsString("pref_custom_dns", "") ?: ""
+            editor.putString("base_custom_dns", oldVal)
+        }
+        // 4. app_routing_mode
+        if (!prefs.contains("base_app_routing_mode")) {
+            val oldVal = prefs.getString("app_routing_mode", "OFF")
+            editor.putString("base_app_routing_mode", oldVal)
+        }
+        // 5. app_routing_packages
+        if (!prefs.contains("base_app_routing_packages_str")) {
+            val oldVal = prefs.getString("app_routing_packages", "")
+            editor.putString("base_app_routing_packages_str", oldVal)
+        }
+        // 6. tun_stack
+        if (!prefs.contains("base_tun_stack")) {
+            val oldVal = prefs.getString("tun_stack", "SYSTEM")
+            editor.putString("base_tun_stack", oldVal)
+        }
+        // 7. fake dns
+        if (!prefs.contains("base_fake_dns_enabled")) {
+            val oldVal = MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED, true)
+            editor.putBoolean("base_fake_dns_enabled", oldVal)
+        }
+        // 8. fragment
+        if (!prefs.contains("base_fragment_enabled")) {
+            val oldVal = MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false)
+            editor.putBoolean("base_fragment_enabled", oldVal)
+        }
+        // 9. mux
+        if (!prefs.contains("base_mux_enabled")) {
+            val oldVal = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
+            editor.putBoolean("base_mux_enabled", oldVal)
+        }
+        // 10. sniffing
+        if (!prefs.contains("base_sniffing_enabled")) {
+            val oldVal = MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true)
+            editor.putBoolean("base_sniffing_enabled", oldVal)
+        }
+        // 11. custom rules
+        if (!prefs.contains("base_custom_direct_rules")) {
+            val oldVal = MmkvManager.decodeSettingsString("pref_custom_direct_rules", "") ?: ""
+            editor.putString("base_custom_direct_rules", oldVal)
+        }
+        if (!prefs.contains("base_custom_proxy_rules")) {
+            val oldVal = MmkvManager.decodeSettingsString("pref_custom_proxy_rules", "") ?: ""
+            editor.putString("base_custom_proxy_rules", oldVal)
+        }
+        
+        val packagesSet = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET) ?: emptySet()
+        editor.putStringSet("base_app_routing_packages", packagesSet)
+
+        editor.putBoolean("base_settings_migrated_v2", true)
+        editor.apply()
+    }
+
+    private fun propagateActiveProfile() {
+        val context = appContext ?: return
+        val activeId = ProfilePresetManager.getActiveProfileId(context)
+        val profiles = _profiles.value.ifEmpty { ProfilePresetManager.loadProfiles(context) }
+        val activeProfile = profiles.find { it.id == activeId } ?: return
+        
+        isApplyingProfilePreset = true
+        try {
+            ProfilePresetManager.applyProfile(context, activeProfile)
+        } finally {
+            isApplyingProfilePreset = false
+        }
     }
 
     companion object {
@@ -1119,6 +1492,8 @@ class MainScreenViewModel(
         private const val KEY_HEALTH_CHECK_URL = "health_check_url"
         private const val KEY_STRICT_HEALTH_CHECK = "strict_health_check"
         private const val KEY_TUN_STACK = "tun_stack"
+        private const val KEY_SETTINGS_PROFILE = "settings_profile"
+        private const val KEY_DARK_THEME_STYLE = "pref_dark_theme_style"
     }
 }
 

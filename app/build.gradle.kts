@@ -11,8 +11,8 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.5.0-alpha"
+        versionCode = 13
+        versionName = "0.7.1-Beta"
         multiDexEnabled = true
         ndk {
             abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
@@ -56,6 +56,8 @@ android {
       unitTests.isIncludeAndroidResources = true
     }
 }
+
+
 
 kotlin {
     jvmToolchain(17)
@@ -105,6 +107,7 @@ dependencies {
 
   // Material Icons Core
   implementation("androidx.compose.material:material-icons-core")
+  implementation("androidx.compose.material:material-icons-extended")
 
   // Xray shared library (gomobile-generated)
   implementation(files("libs/libv2ray.aar"))
@@ -123,5 +126,26 @@ dependencies {
   implementation(libs.androidx.camera.view)
   implementation(libs.mlkit.barcode.scanning)
   implementation("dev.chrisbanes.haze:haze:0.7.3")
+}
+
+tasks.register("renameApks") {
+    doLast {
+        val apkDir = file("build/outputs/apk")
+        if (apkDir.exists()) {
+            apkDir.walk().forEach { file ->
+                if (file.isFile && file.name.endsWith(".apk") && file.name.startsWith("app-")) {
+                    val newName = file.name.replace("app-", "byebox-")
+                    val newFile = File(file.parentFile, newName)
+                    if (file.renameTo(newFile)) {
+                        println("Renamed: ${file.name} -> $newName")
+                    }
+                }
+            }
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("assemble") }.all {
+    finalizedBy("renameApks")
 }
 

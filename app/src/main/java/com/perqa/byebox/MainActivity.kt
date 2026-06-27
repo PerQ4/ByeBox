@@ -24,6 +24,8 @@ import com.perqa.byebox.theme.ByeBoxTheme
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.MainScreenViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -98,7 +100,8 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
         setContent {
-            ByeBoxTheme {
+            val state by viewModel.uiState.collectAsStateWithLifecycle()
+            ByeBoxTheme(appTheme = state.appTheme, darkThemeStyle = state.darkThemeStyle) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

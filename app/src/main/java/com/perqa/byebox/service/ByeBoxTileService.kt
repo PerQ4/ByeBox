@@ -122,16 +122,7 @@ class ByeBoxTileService : TileService() {
     }
 
     private fun isVpnServiceRunning(context: Context): Boolean {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return false
-        @Suppress("DEPRECATION")
-        val runningServices = manager.getRunningServices(Integer.MAX_VALUE) ?: return false
-        for (service in runningServices) {
-            if (service.service.className == "com.v2ray.ang.service.CoreVpnService" ||
-                service.service.className == "com.v2ray.ang.service.CoreProxyOnlyService") {
-                return true
-            }
-        }
-        return false
+        return com.v2ray.ang.handler.MmkvManager.decodeSettingsBool(com.v2ray.ang.AppConfig.PREF_TILE_VPN_RUNNING, false)
     }
 
     private class ReceiveMessageHandler(service: ByeBoxTileService) : BroadcastReceiver() {
