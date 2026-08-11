@@ -4,10 +4,15 @@ import android.content.Context
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+@Serializable
 data class SettingsProfileData(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -26,60 +31,18 @@ data class SettingsProfileData(
     val appRoutingPackages: Set<String>? = null
 ) {
     fun toJson(): JSONObject {
-        return JSONObject().apply {
-            put("id", id)
-            put("name", name)
-            put("assignedConfigId", assignedConfigId ?: "")
-            put("routingProfile", routingProfile)
-            put("dnsServer", dnsServer)
-            if (customDnsServer != null) put("customDnsServer", customDnsServer)
-            put("appRoutingMode", appRoutingMode)
-            put("tunStack", tunStack)
-            if (fakeDnsEnabled != null) put("fakeDnsEnabled", fakeDnsEnabled)
-            if (fragmentEnabled != null) put("fragmentEnabled", fragmentEnabled)
-            if (muxEnabled != null) put("muxEnabled", muxEnabled)
-            if (sniffingEnabled != null) put("sniffingEnabled", sniffingEnabled)
-            if (customDirectRules != null) put("customDirectRules", customDirectRules)
-            if (customProxyRules != null) put("customProxyRules", customProxyRules)
-            if (appRoutingPackages != null) {
-                val pkgsArray = JSONArray()
-                appRoutingPackages.forEach { pkgsArray.put(it) }
-                put("appRoutingPackages", pkgsArray)
-            }
-        }
+        return JSONObject(profileJson.encodeToString(this))
     }
 
     companion object {
+        private val profileJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+            coerceInputValues = true
+        }
+
         fun fromJson(json: JSONObject): SettingsProfileData {
-            val packagesSet = if (json.has("appRoutingPackages")) {
-                val s = mutableSetOf<String>()
-                val arr = json.optJSONArray("appRoutingPackages")
-                if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        s.add(arr.optString(i))
-                    }
-                }
-                s
-            } else {
-                null
-            }
-            return SettingsProfileData(
-                id = json.optString("id", UUID.randomUUID().toString()),
-                name = json.optString("name", "Профиль"),
-                assignedConfigId = json.optString("assignedConfigId", "").takeIf { it.isNotEmpty() },
-                routingProfile = json.optString("routingProfile", "INHERIT"),
-                dnsServer = json.optString("dnsServer", "INHERIT"),
-                customDnsServer = if (json.has("customDnsServer")) json.optString("customDnsServer") else null,
-                appRoutingMode = json.optString("appRoutingMode", "INHERIT"),
-                tunStack = json.optString("tunStack", "INHERIT"),
-                fakeDnsEnabled = if (json.has("fakeDnsEnabled")) json.optBoolean("fakeDnsEnabled") else null,
-                fragmentEnabled = if (json.has("fragmentEnabled")) json.optBoolean("fragmentEnabled") else null,
-                muxEnabled = if (json.has("muxEnabled")) json.optBoolean("muxEnabled") else null,
-                sniffingEnabled = if (json.has("sniffingEnabled")) json.optBoolean("sniffingEnabled") else null,
-                customDirectRules = if (json.has("customDirectRules")) json.optString("customDirectRules") else null,
-                customProxyRules = if (json.has("customProxyRules")) json.optString("customProxyRules") else null,
-                appRoutingPackages = packagesSet
-            )
+            return profileJson.decodeFromString(json.toString())
         }
     }
 }
@@ -88,9 +51,9 @@ object ProfilePresetManager {
     fun loadProfiles(context: Context): List<SettingsProfileData> {
         val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
         val jsonStr = prefs.getString("pref_dynamic_profiles", null)
-        
+
         val baseProfile = loadBaseProfile(context)
-        
+
         val customProfiles = if (jsonStr.isNullOrBlank()) {
             val defaults = createDefaultProfiles()
             saveProfiles(context, defaults)
@@ -209,133 +172,157 @@ object ProfilePresetManager {
     fun applyProfile(context: Context, profile: SettingsProfileData) {
         try {
             val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
-            
-            // 1. Routing profile
-            val effectiveRoutingProfile = if (profile.id == "base" || profile.routingProfile == "INHERIT") {
-                prefs.getString("base_routing_profile", "BYPASS_LAN_CN_RU") ?: "BYPASS_LAN_CN_RU"
-            } else {
-                profile.routingProfile
-            }
-            val routingIndex = when (effectiveRoutingProfile) {
-                "BYPASS_LAN_CN_RU" -> 4 // BYPASS_LAN_CN_RU (WHITE_RUSSIA)
-                "PROXY_ALL" -> 2 // PROXY_ALL (GLOBAL)
-                else -> 0 // DIRECT
-            }
-            prefs.edit().putString("routing_profile", effectiveRoutingProfile).apply()
-            SettingsManager.resetRoutingRulesetsFromPresets(context, routingIndex)
-
-            // 2. DNS
-            val effectiveDnsServer = if (profile.id == "base" || profile.dnsServer == "INHERIT") {
-                prefs.getString("base_dns_server", "SYSTEM") ?: "SYSTEM"
-            } else {
-                profile.dnsServer
-            }
-            val effectiveCustomDnsServer = if (profile.id == "base" || profile.customDnsServer == null) {
-                prefs.getString("base_custom_dns", "") ?: ""
-            } else {
-                profile.customDnsServer
-            }
-            val dns = when (effectiveDnsServer) {
-                "CLOUDFLARE" -> "1.1.1.1"
-                "GOOGLE" -> "8.8.8.8"
-                "ADGUARD" -> "94.140.14.14"
-                "CUSTOM" -> effectiveCustomDnsServer.ifBlank { "1.1.1.1" }
-                else -> "1.1.1.1" // SYSTEM
-            }
-            prefs.edit().putString("dns_server", effectiveDnsServer).apply()
-            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dns)
-            if (effectiveDnsServer != "SYSTEM") {
-                MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, dns)
-            } else {
-                MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, AppConfig.DNS_VPN)
-            }
-
-            // 3. App routing mode
-            val effectiveAppRoutingMode = if (profile.id == "base" || profile.appRoutingMode == "INHERIT") {
-                prefs.getString("base_app_routing_mode", "OFF") ?: "OFF"
-            } else {
-                profile.appRoutingMode
-            }
-            val effectiveAppRoutingPackages = if (profile.id == "base" || profile.appRoutingPackages == null) {
-                prefs.getStringSet("base_app_routing_packages", emptySet()) ?: emptySet()
-            } else {
-                profile.appRoutingPackages
-            }
-            prefs.edit().putString("app_routing_mode", effectiveAppRoutingMode).apply()
-            if (effectiveAppRoutingMode == "OFF") {
-                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, false)
-            } else {
-                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
-                MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, effectiveAppRoutingMode == "BYPASS_SELECTED")
-                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, effectiveAppRoutingPackages.toMutableSet())
-            }
-
-            // 4. TUN stack
-            val effectiveTunStack = if (profile.id == "base" || profile.tunStack == "INHERIT") {
-                prefs.getString("base_tun_stack", "SYSTEM") ?: "SYSTEM"
-            } else {
-                profile.tunStack
-            }
-            prefs.edit().putString("tun_stack", effectiveTunStack).apply()
-            MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, effectiveTunStack == "GVISOR")
-
-            // 5. Fake DNS
-            val effectiveFakeDns = if (profile.id == "base" || profile.fakeDnsEnabled == null) {
-                prefs.getBoolean("base_fake_dns_enabled", true)
-            } else {
-                profile.fakeDnsEnabled
-            }
-            MmkvManager.encodeSettings(AppConfig.PREF_FAKE_DNS_ENABLED, effectiveFakeDns)
-
-            // 6. Fragment
-            val effectiveFragment = if (profile.id == "base" || profile.fragmentEnabled == null) {
-                prefs.getBoolean("base_fragment_enabled", false)
-            } else {
-                profile.fragmentEnabled
-            }
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, effectiveFragment)
-
-            // 7. Mux
-            val effectiveMux = if (profile.id == "base" || profile.muxEnabled == null) {
-                prefs.getBoolean("base_mux_enabled", false)
-            } else {
-                profile.muxEnabled
-            }
-            MmkvManager.encodeSettings(AppConfig.PREF_MUX_ENABLED, effectiveMux)
-
-            // 8. Sniffing
-            val effectiveSniffing = if (profile.id == "base" || profile.sniffingEnabled == null) {
-                prefs.getBoolean("base_sniffing_enabled", true)
-            } else {
-                profile.sniffingEnabled
-            }
-            MmkvManager.encodeSettings(AppConfig.PREF_SNIFFING_ENABLED, effectiveSniffing)
-
-            // 9. Custom rules
-            val effectiveDirectRules = if (profile.id == "base" || profile.customDirectRules == null) {
-                prefs.getString("base_custom_direct_rules", "") ?: ""
-            } else {
-                profile.customDirectRules
-            }
-            val effectiveProxyRules = if (profile.id == "base" || profile.customProxyRules == null) {
-                prefs.getString("base_custom_proxy_rules", "") ?: ""
-            } else {
-                profile.customProxyRules
-            }
-            MmkvManager.encodeSettings("pref_custom_direct_rules", effectiveDirectRules)
-            MmkvManager.encodeSettings("pref_custom_proxy_rules", effectiveProxyRules)
-
-            // 10. Selected VPN Config
-            if (profile.assignedConfigId == "LAST_ACTIVE") {
-                val savedServerId = prefs.getString("last_selected_server_profile_${profile.id}", null)
-                if (!savedServerId.isNullOrBlank()) {
-                    MmkvManager.setSelectServer(savedServerId)
-                }
-            } else if (profile.assignedConfigId != null) {
-                MmkvManager.setSelectServer(profile.assignedConfigId)
-            }
+            applyRoutingSettings(context, prefs, profile)
+            applyDnsSettings(context, prefs, profile)
+            applyAppRoutingSettings(context, prefs, profile)
+            applyTunStackSettings(prefs, profile)
+            applyFakeDnsSettings(prefs, profile)
+            applyFragmentSettings(prefs, profile)
+            applyMuxSettings(prefs, profile)
+            applySniffingSettings(prefs, profile)
+            applyCustomRulesSettings(prefs, profile)
+            applyServerAssignment(prefs, profile)
         } catch (e: Exception) {
             com.v2ray.ang.util.LogUtil.e(AppConfig.TAG, "Failed to apply profile preset: ${e.message}", e)
+        }
+    }
+
+    private fun resolveBase(prefs: android.content.SharedPreferences, key: String, default: String): String {
+        return prefs.getString(key, default) ?: default
+    }
+
+    private fun resolveBaseBool(prefs: android.content.SharedPreferences, key: String, default: Boolean): Boolean {
+        return prefs.getBoolean(key, default)
+    }
+
+    private fun applyRoutingSettings(context: Context, prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.routingProfile == "INHERIT") {
+            resolveBase(prefs, "base_routing_profile", "BYPASS_LAN_CN_RU")
+        } else {
+            profile.routingProfile
+        }
+        val index = when (effective) {
+            "BYPASS_LAN_CN_RU" -> 4
+            "PROXY_ALL" -> 2
+            else -> 0
+        }
+        prefs.edit().putString("routing_profile", effective).apply()
+        SettingsManager.resetRoutingRulesetsFromPresets(context, index)
+    }
+
+    private fun applyDnsSettings(context: Context, prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effectiveServer = if (profile.id == "base" || profile.dnsServer == "INHERIT") {
+            resolveBase(prefs, "base_dns_server", "SYSTEM")
+        } else {
+            profile.dnsServer
+        }
+        val effectiveCustom = if (profile.id == "base" || profile.customDnsServer == null) {
+            resolveBase(prefs, "base_custom_dns", "")
+        } else {
+            profile.customDnsServer
+        }
+        val dns = when (effectiveServer) {
+            "CLOUDFLARE" -> "1.1.1.1"
+            "GOOGLE" -> "8.8.8.8"
+            "ADGUARD" -> "94.140.14.14"
+            "CUSTOM" -> effectiveCustom.ifBlank { "1.1.1.1" }
+            else -> "1.1.1.1"
+        }
+        prefs.edit().putString("dns_server", effectiveServer).apply()
+        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dns)
+        MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, if (effectiveServer != "SYSTEM") dns else AppConfig.DNS_VPN)
+    }
+
+    private fun applyAppRoutingSettings(context: Context, prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effectiveMode = if (profile.id == "base" || profile.appRoutingMode == "INHERIT") {
+            resolveBase(prefs, "base_app_routing_mode", "OFF")
+        } else {
+            profile.appRoutingMode
+        }
+        val effectivePackages = if (profile.id == "base" || profile.appRoutingPackages == null) {
+            prefs.getStringSet("base_app_routing_packages", emptySet()) ?: emptySet()
+        } else {
+            profile.appRoutingPackages
+        }
+        prefs.edit().putString("app_routing_mode", effectiveMode).apply()
+        if (effectiveMode == "OFF") {
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, false)
+        } else {
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
+            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, effectiveMode == "BYPASS_SELECTED")
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, effectivePackages.toMutableSet())
+        }
+    }
+
+    private fun applyTunStackSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.tunStack == "INHERIT") {
+            resolveBase(prefs, "base_tun_stack", "SYSTEM")
+        } else {
+            profile.tunStack
+        }
+        prefs.edit().putString("tun_stack", effective).apply()
+        MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, effective == "GVISOR")
+    }
+
+    private fun applyFakeDnsSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.fakeDnsEnabled == null) {
+            resolveBaseBool(prefs, "base_fake_dns_enabled", true)
+        } else {
+            profile.fakeDnsEnabled
+        }
+        MmkvManager.encodeSettings(AppConfig.PREF_FAKE_DNS_ENABLED, effective)
+    }
+
+    private fun applyFragmentSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.fragmentEnabled == null) {
+            resolveBaseBool(prefs, "base_fragment_enabled", false)
+        } else {
+            profile.fragmentEnabled
+        }
+        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, effective)
+    }
+
+    private fun applyMuxSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.muxEnabled == null) {
+            resolveBaseBool(prefs, "base_mux_enabled", false)
+        } else {
+            profile.muxEnabled
+        }
+        MmkvManager.encodeSettings(AppConfig.PREF_MUX_ENABLED, effective)
+    }
+
+    private fun applySniffingSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effective = if (profile.id == "base" || profile.sniffingEnabled == null) {
+            resolveBaseBool(prefs, "base_sniffing_enabled", true)
+        } else {
+            profile.sniffingEnabled
+        }
+        MmkvManager.encodeSettings(AppConfig.PREF_SNIFFING_ENABLED, effective)
+    }
+
+    private fun applyCustomRulesSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        val effectiveDirect = if (profile.id == "base" || profile.customDirectRules == null) {
+            resolveBase(prefs, "base_custom_direct_rules", "")
+        } else {
+            profile.customDirectRules
+        }
+        val effectiveProxy = if (profile.id == "base" || profile.customProxyRules == null) {
+            resolveBase(prefs, "base_custom_proxy_rules", "")
+        } else {
+            profile.customProxyRules
+        }
+        MmkvManager.encodeSettings("pref_custom_direct_rules", effectiveDirect)
+        MmkvManager.encodeSettings("pref_custom_proxy_rules", effectiveProxy)
+    }
+
+    private fun applyServerAssignment(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
+        if (profile.assignedConfigId == "LAST_ACTIVE") {
+            val savedServerId = prefs.getString("last_selected_server_profile_${profile.id}", null)
+            if (!savedServerId.isNullOrBlank()) {
+                MmkvManager.setSelectServer(savedServerId)
+            }
+        } else if (profile.assignedConfigId != null) {
+            MmkvManager.setSelectServer(profile.assignedConfigId)
         }
     }
 }

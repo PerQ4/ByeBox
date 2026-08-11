@@ -76,11 +76,11 @@ fun MainTabBar(
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
 
-    val containerShape = RoundedCornerShape(30.dp)
+    val containerShape = RoundedCornerShape(Dimens.tabBarShape)
 
     Box(
         modifier = modifier
-            .width(280.dp) // Enlarged width from 240.dp to 280.dp
+            .width(Dimens.tabBarWidth)
             .then(
                 if (glassmorphic && maxBlurEnabled) {
                     Modifier
@@ -138,8 +138,8 @@ fun MainTabBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(Dimens.tabPadding),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.tabSpacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val tabs = listOf(
@@ -161,7 +161,7 @@ fun MainTabBar(
                     else -> MaterialTheme.colorScheme.onTertiaryContainer
                 }
                 val tabWeight by animateFloatAsState(
-                    targetValue = if (active) 1.38f else 0.82f,
+                    targetValue = if (active) Dimens.tabActiveWeight else Dimens.tabInactiveWeight,
                     label = "tabWeight"
                 )
                 val activeBgColor by animateColorAsState(
@@ -174,7 +174,7 @@ fun MainTabBar(
                 )
                 
                 val tabRadius by animateDpAsState(
-                    targetValue = if (active) 24.dp else 10.dp, // Enlarged radius from 21.dp to 24.dp
+                    targetValue = if (active) Dimens.tabActiveRadius else Dimens.tabInactiveRadius,
                     label = "tabCornerRadius"
                 )
 
@@ -182,8 +182,8 @@ fun MainTabBar(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .weight(tabWeight)
-                        .height(48.dp) // Enlarged height from 42.dp to 48.dp
-                        .clip(RoundedCornerShape(24.dp)) // Enlarged shape from 21.dp to 24.dp
+                        .height(Dimens.tabHeight)
+                        .clip(RoundedCornerShape(Dimens.tabActiveRadius))
                         .background(activeBgColor)
                         .clickable {
                             if (!active) {
@@ -201,14 +201,14 @@ fun MainTabBar(
                             imageVector = tab.second,
                             contentDescription = tab.first,
                             tint = activeContentColor,
-                            modifier = Modifier.size(if (active) 21.dp else 20.dp) // Enlarged icons from 19/18 to 21/20
+                            modifier = Modifier.size(if (active) Dimens.tabIconActive else Dimens.tabIconInactive)
                         )
                         AnimatedVisibility(visible = active) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(Dimens.tabLabelPadding))
                                 Text(
                                     text = tab.first,
-                                    fontSize = 10.sp, // Enlarged font size from 9.sp to 10.sp
+                                    fontSize = Dimens.tabLabelFontSize,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.Black,
@@ -304,7 +304,7 @@ fun ImportBubble(
     val density = LocalDensity.current
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val contentColor = MaterialTheme.colorScheme.onSurface
-    val bubbleShape = RoundedCornerShape(20.dp)
+    val bubbleShape = RoundedCornerShape(Dimens.bubbleShape)
 
     val finalModifier = Modifier
         .graphicsLayer {

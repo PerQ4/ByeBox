@@ -1,5 +1,8 @@
 package com.perqa.byebox.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class SubscriptionSource(
     val id: String,
     val name: String,

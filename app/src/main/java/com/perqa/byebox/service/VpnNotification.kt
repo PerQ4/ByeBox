@@ -73,7 +73,7 @@ object VpnNotification {
     }
 
     fun updateNotification(context: Context, notification: Notification) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val nm = context.getSystemService(NotificationManager::class.java)
         nm.notify(NOTIFICATION_ID, notification)
     }
 }

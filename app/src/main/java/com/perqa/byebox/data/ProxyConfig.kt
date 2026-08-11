@@ -1,35 +1,64 @@
 package com.perqa.byebox.data
 
 import android.util.Base64
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.json.JSONArray
 import org.json.JSONObject
 
+private val proxyConfigJsonAliases = mapOf(
+    "desc" to "description",
+    "remarks" to "description",
+    "remark" to "description",
+    "wsPath" to "ws_path",
+    "wsHost" to "ws_host",
+    "grpcServiceName" to "grpc_service_name",
+    "failureCount" to "failure_count",
+    "lastFailureAt" to "last_failure_at",
+    "sourceName" to "source_name",
+    "sourceUrl" to "source_url",
+    "countryFlag" to "country_flag",
+)
+
+private val proxyJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = false
+    coerceInputValues = true
+}
+
+@Serializable
 data class ProxyConfig(
     val id: String,
     val name: String,
     val description: String? = null,
-    val protocol: String, // VLESS, VMESS, Trojan, Shadowsocks
+    val protocol: String,
     val address: String,
     val port: Int,
     val uuid: String,
     val flow: String? = null,
     val security: String? = null,
     val sni: String? = null,
-    val pbk: String? = null, // reality public key
-    val sid: String? = null, // reality short id
-
-    // Transport layer (WS, gRPC, HTTP/2)
+    val pbk: String? = null,
+    val sid: String? = null,
     val network: String? = null,
+    @SerialName("ws_path")
     val wsPath: String? = null,
+    @SerialName("ws_host")
     val wsHost: String? = null,
+    @SerialName("grpc_service_name")
     val grpcServiceName: String? = null,
-
     val ping: Int? = null,
+    @SerialName("failure_count")
     val failureCount: Int = 0,
+    @SerialName("last_failure_at")
     val lastFailureAt: Long? = null,
-    val sourceName: String = "Локальные конфигурации",
+    @SerialName("source_name")
+    val sourceName: String = "Local Configs",
+    @SerialName("source_url")
     val sourceUrl: String? = null,
-    val countryFlag: String = "🏳️"
+    @SerialName("country_flag")
+    val countryFlag: String = "🌍"
 ) {
     fun toConfigLink(): String {
         return try {
@@ -91,70 +120,17 @@ data class ProxyConfig(
     }
 
     fun toJson(): JSONObject {
-        return JSONObject().apply {
-            put("id", id)
-            put("name", name)
-            description?.let { put("description", it) }
-            put("protocol", protocol)
-            put("address", address)
-            put("port", port)
-            put("uuid", uuid)
-            flow?.let { put("flow", it) }
-            security?.let { put("security", it) }
-            sni?.let { put("sni", it) }
-            pbk?.let { put("pbk", it) }
-            sid?.let { put("sid", it) }
-            network?.let { put("network", it) }
-            wsPath?.let { put("ws_path", it) }
-            wsHost?.let { put("ws_host", it) }
-            grpcServiceName?.let { put("grpc_service_name", it) }
-            ping?.let { put("ping", it) }
-            put("failure_count", failureCount)
-            lastFailureAt?.let { put("last_failure_at", it) }
-            put("source_name", sourceName)
-            sourceUrl?.let { put("source_url", it) }
-            put("country_flag", countryFlag)
-        }
+        val raw = proxyJson.encodeToString(this)
+        return JSONObject(raw)
     }
 
     companion object {
         fun fromJson(json: JSONObject): ProxyConfig {
-            fun optNullableString(vararg keys: String): String? {
-                for (key in keys) {
-                    if (!json.has(key) || json.isNull(key)) continue
-                    val value = json.optString(key, "").trim()
-                    if (value.isNotEmpty() && value != "null") return value
-                }
-                return null
+            val resolved = JSONObject()
+            for (key in json.keys()) {
+                resolved.put(proxyConfigJsonAliases.getOrDefault(key, key), json.get(key))
             }
-
-            return ProxyConfig(
-                id = json.optString("id", ""),
-                name = json.optString("name", ""),
-                description = optNullableString("description", "desc", "remarks", "remark"),
-                protocol = json.optString("protocol", ""),
-                address = json.optString("address", ""),
-                port = json.optInt("port", 0),
-                uuid = json.optString("uuid", ""),
-                flow = optNullableString("flow"),
-                security = optNullableString("security"),
-                sni = optNullableString("sni"),
-                pbk = optNullableString("pbk"),
-                sid = optNullableString("sid"),
-                network = optNullableString("network"),
-                wsPath = optNullableString("ws_path", "wsPath"),
-                wsHost = optNullableString("ws_host", "wsHost"),
-                grpcServiceName = optNullableString("grpc_service_name", "grpcServiceName"),
-                ping = if (json.has("ping")) json.getInt("ping") else null,
-                failureCount = json.optInt("failure_count", json.optInt("failureCount", 0)),
-                lastFailureAt = if (json.has("last_failure_at")) json.getLong("last_failure_at")
-                    else if (json.has("lastFailureAt")) json.getLong("lastFailureAt") else null,
-                sourceName = json.optString("source_name", json.optString("sourceName", "Локальные конфигурации")),
-                sourceUrl = optNullableString("source_url", "sourceUrl"),
-                countryFlag = json.optString("country_flag", json.optString("countryFlag", "🏳️"))
-            )
+            return proxyJson.decodeFromString(resolved.toString())
         }
     }
 }
-
-

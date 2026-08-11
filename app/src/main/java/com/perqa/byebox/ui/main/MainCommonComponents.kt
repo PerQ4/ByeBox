@@ -1,11 +1,9 @@
 package com.perqa.byebox.ui.main
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -84,13 +82,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.perqa.byebox.core.HapticFeedbackUtil
+import com.perqa.byebox.core.HapticType
 import com.perqa.byebox.findActivity
 
 @Composable
@@ -102,14 +101,6 @@ fun PlainDragHandle(modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(2.dp))
             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
     )
-}
-
-enum class HapticType {
-    LIGHT,
-    MEDIUM,
-    HEAVY,
-    SUCCESS,
-    ERROR
 }
 
 fun interface TactileFeedbackPlayer {
@@ -124,64 +115,7 @@ fun rememberTactileFeedback(scaleFactor: Float = 0.90f): TactileFeedbackPlayer {
     val context = LocalContext.current
     return remember(context, scaleFactor) {
         TactileFeedbackPlayer { type ->
-            runCatching {
-                val multiplier = when {
-                    scaleFactor >= 1.00f -> 0.0f
-                    scaleFactor >= 0.95f -> 0.6f
-                    scaleFactor >= 0.90f -> 1.0f
-                    else -> 1.6f
-                }
-                if (multiplier <= 0.0f) return@TactileFeedbackPlayer
-
-                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                    manager?.defaultVibrator
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                }
-
-                if (vibrator?.hasVibrator() == true) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        when (type) {
-                            HapticType.LIGHT -> {
-                                val dur = (8 * multiplier).toLong().coerceAtLeast(1)
-                                val amp = (30 * multiplier).toInt().coerceIn(1, 255)
-                                vibrator.vibrate(VibrationEffect.createOneShot(dur, amp))
-                            }
-                            HapticType.MEDIUM -> {
-                                val dur = (15 * multiplier).toLong().coerceAtLeast(1)
-                                val amp = (70 * multiplier).toInt().coerceIn(1, 255)
-                                vibrator.vibrate(VibrationEffect.createOneShot(dur, amp))
-                            }
-                            HapticType.HEAVY -> {
-                                val dur = (30 * multiplier).toLong().coerceAtLeast(1)
-                                val amp = (140 * multiplier).toInt().coerceIn(1, 255)
-                                vibrator.vibrate(VibrationEffect.createOneShot(dur, amp))
-                            }
-                            HapticType.SUCCESS -> {
-                                val timings = longArrayOf(0, (10 * multiplier).toLong().coerceAtLeast(1), 40, (20 * multiplier).toLong().coerceAtLeast(1))
-                                val amplitudes = intArrayOf(0, (120 * multiplier).toInt().coerceIn(1, 255), 0, (140 * multiplier).toInt().coerceIn(1, 255))
-                                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
-                            }
-                            HapticType.ERROR -> {
-                                val timings = longArrayOf(0, (30 * multiplier).toLong().coerceAtLeast(1), 30, (40 * multiplier).toLong().coerceAtLeast(1))
-                                val amplitudes = intArrayOf(0, (160 * multiplier).toInt().coerceIn(1, 255), 0, (200 * multiplier).toInt().coerceIn(1, 255))
-                                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
-                            }
-                        }
-                    } else {
-                        @Suppress("DEPRECATION")
-                        when (type) {
-                            HapticType.LIGHT -> vibrator.vibrate((8 * multiplier).toLong().coerceAtLeast(1))
-                            HapticType.MEDIUM -> vibrator.vibrate((15 * multiplier).toLong().coerceAtLeast(1))
-                            HapticType.HEAVY -> vibrator.vibrate((30 * multiplier).toLong().coerceAtLeast(1))
-                            HapticType.SUCCESS -> vibrator.vibrate(longArrayOf(0, (10 * multiplier).toLong().coerceAtLeast(1), 40, (20 * multiplier).toLong().coerceAtLeast(1)), -1)
-                            HapticType.ERROR -> vibrator.vibrate(longArrayOf(0, (30 * multiplier).toLong().coerceAtLeast(1), 30, (40 * multiplier).toLong().coerceAtLeast(1)), -1)
-                        }
-                    }
-                }
-            }
+            HapticFeedbackUtil.play(context, type, scaleFactor)
         }
     }
 }
@@ -299,7 +233,8 @@ fun AppPickerSheet(
     apps: List<InstalledAppInfo>,
     selectedPackages: Set<String>,
     onSave: (Set<String>) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    language: String = "ru"
 ) {
     val tactileFeedback = rememberTactileFeedback()
     var query by remember { mutableStateOf("") }
@@ -337,24 +272,24 @@ fun AppPickerSheet(
             onDismissRequest = { showExitDialog = false },
             title = {
                 Text(
-                    text = "Несохраненные изменения",
+                    text = Loc.get("config_details_unsaved_title", language),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
                 )
             },
             text = {
-                Text("У вас есть несохраненные изменения. Выйти без сохранения?")
+                Text(Loc.get("config_details_unsaved_msg", language))
             },
             confirmButton = {
                 TextButton(onClick = {
                     showExitDialog = false
                     onDismiss()
                 }) {
-                    Text("Выйти", color = MaterialTheme.colorScheme.error)
+                    Text(Loc.get("config_details_exit", language), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showExitDialog = false }) {
-                    Text("Остаться")
+                    Text(Loc.get("config_details_stay", language))
                 }
             },
             shape = RoundedCornerShape(28.dp),
@@ -387,7 +322,7 @@ fun AppPickerSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Выбор приложений",
+                text = Loc.get("app_picker_title", language),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
             )
 
@@ -405,14 +340,14 @@ fun AppPickerSheet(
                 ) {
                     Column {
                         Text(
-                            text = "${localSelected.size} выбрано",
+                            text = String.format(Loc.get("app_picker_count", language), localSelected.size),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         )
                         Text(
-                            text = "Найдено: ${filteredApps.size}",
+                            text = String.format(Loc.get("app_picker_found", language), filteredApps.size),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -423,7 +358,7 @@ fun AppPickerSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Скрыть системные",
+                            text = Loc.get("app_picker_hide_system", language),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Bold
@@ -440,7 +375,7 @@ fun AppPickerSheet(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Поиск по имени или пакету...") },
+                placeholder = { Text(Loc.get("app_picker_search", language)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -456,7 +391,7 @@ fun AppPickerSheet(
                         IconButton(onClick = { query = "" }) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
-                                contentDescription = "Очистить",
+                                contentDescription = Loc.get("app_picker_clear", language),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -482,8 +417,22 @@ fun AppPickerSheet(
                     contentType = { "app" }
                 ) { app ->
                     val checked = app.packageName in localSelected
-                    val iconPainter = remember(app.icon) {
-                        app.icon?.let { BitmapPainter(it.asImageBitmap()) }
+                    val ctx = LocalContext.current
+                    val iconPainter = remember(app.packageName) {
+                        val pm = ctx.packageManager
+                        try {
+                            val drawable = pm.getApplicationIcon(app.packageName)
+                            val bitmap = Bitmap.createBitmap(
+                                drawable.intrinsicWidth.coerceAtLeast(1),
+                                drawable.intrinsicHeight.coerceAtLeast(1),
+                                Bitmap.Config.ARGB_8888
+                            )
+                            Canvas(bitmap).apply {
+                                drawable.setBounds(0, 0, width, height)
+                                drawable.draw(this)
+                            }
+                            BitmapPainter(bitmap.asImageBitmap())
+                        } catch (_: Exception) { null }
                     }
 
                     val itemCornerRadius by animateDpAsState(
@@ -613,7 +562,7 @@ fun AppPickerSheet(
                     disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                 )
             ) {
-                Text("Сохранить изменения", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text(Loc.get("app_picker_save", language), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -872,19 +821,20 @@ fun SettingsHealthRow(
     scaleFactor: Float = 0.90f,
     cornerRoundness: String = "expressive",
     top: Boolean = false,
-    bottom: Boolean = false
+    bottom: Boolean = false,
+    language: String = "ru"
 ) {
     SettingsRowSurface(top = top, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            label = { Text("URL ресурса") },
+            label = { Text(Loc.get("health_url_label", language)) },
             singleLine = true,
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(20.dp)
         )
         IconButton(onClick = onTest) {
-            Icon(Icons.Default.Search, contentDescription = "Проверить")
+            Icon(Icons.Default.Search, contentDescription = Loc.get("health_check_cd", language))
         }
     }
 }

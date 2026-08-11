@@ -114,11 +114,10 @@ import com.perqa.byebox.data.SubscriptionSource
 import com.perqa.byebox.findActivity
 import kotlinx.coroutines.launch
 
-enum class NodeSortMode(val label: String) {
-    DEFAULT("По умолчанию"),
-    SOURCE("Источник"),
-    PING("Пинг"),
-    NAME("Имя")
+enum class NodeSortMode {
+    DEFAULT, SOURCE, PING, NAME;
+
+    fun label(language: String): String = Loc.get("sort_${name.lowercase()}", language)
 }
 
 @Composable
@@ -249,7 +248,7 @@ fun ProxyTab(
                     (config.security?.lowercase()?.contains(query) == true)
             }
             .toList()
-            .groupBy { it.sourceName.ifBlank { "Локальные конфигурации" } }
+            .groupBy { it.sourceName.ifBlank { Loc.get("local_configs", state.language) } }
             .mapValues { (_, configs) -> configs.sortedFor(sortMode) }
             .toList()
             .sortedBy { it.first.lowercase() }
@@ -270,7 +269,8 @@ fun ProxyTab(
         ConfigDetailsSheet(
             config = config,
             onDismiss = { configDetails = null },
-            viewModel = viewModel
+            viewModel = viewModel,
+            language = state.language
         )
     }
 
@@ -286,7 +286,8 @@ fun ProxyTab(
                 onSortModeSelected = {
                     sortMode = it
                     showProxyToolsSheet = false
-                }
+                },
+                language = state.language
             )
         }
     }
@@ -305,14 +306,14 @@ fun ProxyTab(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Конфигурации",
+                    text = Loc.get("configurations", state.language),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                 )
                 Text(
-                    text = "${sourceGroups.size} источника · ${state.configs.size} узлов",
+                    text = String.format(Loc.get("sources_nodes_fmt", state.language), sourceGroups.size, state.configs.size),
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.62f),
                         fontWeight = FontWeight.Medium
@@ -337,7 +338,7 @@ fun ProxyTab(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
-                            contentDescription = "Тест пинга всех",
+                            contentDescription = Loc.get("test_ping_all", state.language),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -351,7 +352,7 @@ fun ProxyTab(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Обновить подписки",
+                        contentDescription = Loc.get("refresh_subs", state.language),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -364,7 +365,8 @@ fun ProxyTab(
             onOpenFilters = {
                 tactileFeedback()
                 showProxyToolsSheet = true
-            }
+            },
+            language = state.language
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -379,7 +381,8 @@ fun ProxyTab(
                 item(key = "proxy-empty", contentType = "empty") {
                     ProxyEmptyState(
                         hasSearch = nodeSearchQuery.isNotBlank(),
-                        onClearSearch = { nodeSearchQuery = "" }
+                        onClearSearch = { nodeSearchQuery = "" },
+                        language = state.language
                     )
                 }
             }
@@ -437,7 +440,8 @@ fun ProxyTab(
                         showConfigs = false,
                         shape = headerShape,
                         compactMode = state.compactLayoutEnabled,
-                        showFlags = state.showFlagsEnabled
+                        showFlags = state.showFlagsEnabled,
+                        language = state.language
                     )
                 }
 
@@ -490,6 +494,7 @@ fun ProxyTab(
                                 neighborOffsetDp = neighborOffsetPx.dp,
                                 compactMode = state.compactLayoutEnabled,
                                 showFlags = state.showFlagsEnabled,
+                                language = state.language,
                                 onSwipeOffsetChanged = { offset ->
                                     if (swipingConfigId == config.id) {
                                         val crossesDeleteThreshold = kotlin.math.abs(offset) >= 140f && kotlin.math.abs(swipingDragPx) < 140f
@@ -530,6 +535,7 @@ fun ProxyControlPanel(
     collapsed: Boolean,
     onToggleExpanded: () -> Unit,
     sortMode: NodeSortMode,
+    language: String = "ru",
     onOpenFilters: () -> Unit,
     onRefreshSubscriptions: () -> Unit,
     onPingAll: () -> Unit,
@@ -553,14 +559,14 @@ fun ProxyControlPanel(
             ) {
                 Column {
                     Text(
-                        text = "Конфигурации",
+                        text = Loc.get("configurations", language),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     )
                     Text(
-                        text = "$sourceCount источника · $configCount узлов",
+                        text = String.format(Loc.get("sources_nodes_fmt", language), sourceCount, configCount),
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                             fontWeight = FontWeight.Medium
@@ -578,7 +584,7 @@ fun ProxyControlPanel(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (collapsed) "Раскрыть" else "Скрыть",
+                            text = if (collapsed) Loc.get("expand", language) else Loc.get("collapse", language),
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
@@ -606,7 +612,8 @@ fun ProxyControlPanel(
                         onOpenFilters = {
                             tactileFeedback()
                             onOpenFilters()
-                        }
+                        },
+                        language = language
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -614,7 +621,7 @@ fun ProxyControlPanel(
                         onValueChange = onImportUrlChange,
                         placeholder = {
                             Text(
-                                "Вставьте vless://, vmess://, ss://, trojan://",
+                                Loc.get("import_placeholder", language),
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -632,7 +639,7 @@ fun ProxyControlPanel(
                         maxLines = 1,
                         isError = importUrlError,
                         supportingText = if (importUrlError) {
-                            { Text("Вставьте ссылку на конфиг или подписку") }
+                            { Text(Loc.get("import_error_hint", language)) }
                         } else {
                             null
                         }
@@ -662,7 +669,7 @@ fun ProxyControlPanel(
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Обн.", fontWeight = FontWeight.Bold)
+                                Text(Loc.get("refresh_short", language), fontWeight = FontWeight.Bold)
                             }
 
                             Button(
@@ -682,7 +689,7 @@ fun ProxyControlPanel(
                             ) {
                                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Пинг", fontWeight = FontWeight.Bold)
+                                Text(Loc.get("ping", language), fontWeight = FontWeight.Bold)
                             }
 
                             Button(
@@ -701,7 +708,7 @@ fun ProxyControlPanel(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Добавить", fontWeight = FontWeight.Bold)
+                                Text(Loc.get("add", language), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -709,6 +716,7 @@ fun ProxyControlPanel(
                     SortSummaryBar(
                         selected = sortMode,
                         searchQuery = searchQuery,
+                        language = language,
                         onOpenFilters = {
                             tactileFeedback()
                             onOpenFilters()
@@ -733,7 +741,8 @@ private fun List<ProxyConfig>.sortedFor(mode: NodeSortMode): List<ProxyConfig> {
 fun ProxySearchField(
     value: String,
     onValueChange: (String) -> Unit,
-    onOpenFilters: () -> Unit
+    onOpenFilters: () -> Unit,
+    language: String = "ru"
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -760,7 +769,7 @@ fun ProxySearchField(
                 onValueChange = onValueChange,
                 placeholder = {
                     Text(
-                        text = "Поиск узлов, стран, протоколов",
+                        text = Loc.get("search_nodes", language),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -783,7 +792,7 @@ fun ProxySearchField(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Сортировка и фильтры",
+                    contentDescription = Loc.get("sort_and_filters", language),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -794,7 +803,8 @@ fun ProxySearchField(
 @Composable
 fun ProxyEmptyState(
     hasSearch: Boolean,
-    onClearSearch: () -> Unit
+    onClearSearch: () -> Unit,
+    language: String = "ru"
 ) {
     Surface(
         modifier = Modifier
@@ -816,15 +826,15 @@ fun ProxyEmptyState(
                 modifier = Modifier.size(28.dp)
             )
             Text(
-                text = if (hasSearch) "Ничего не найдено" else "Нет конфигураций",
+                text = if (hasSearch) Loc.get("nothing_found", language) else Loc.get("no_configs", language),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
                 textAlign = TextAlign.Center
             )
             Text(
                 text = if (hasSearch) {
-                    "Попробуйте изменить запрос или сбросить фильтр."
+                    Loc.get("search_try_again", language)
                 } else {
-                    "Добавьте ссылку на конфиг или подписку выше."
+                    Loc.get("add_config_hint", language)
                 },
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -833,7 +843,7 @@ fun ProxyEmptyState(
             )
             if (hasSearch) {
                 TextButton(onClick = onClearSearch) {
-                    Text("Сбросить поиск", fontWeight = FontWeight.Bold)
+                    Text(Loc.get("clear_search", language), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -843,7 +853,8 @@ fun ProxyEmptyState(
 @Composable
 fun ProxyToolsSheet(
     sortMode: NodeSortMode,
-    onSortModeSelected: (NodeSortMode) -> Unit
+    onSortModeSelected: (NodeSortMode) -> Unit,
+    language: String = "ru"
 ) {
     Column(
         modifier = Modifier
@@ -853,7 +864,7 @@ fun ProxyToolsSheet(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            text = "Сортировка узлов",
+            text = Loc.get("sort_nodes", language),
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
         )
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -901,7 +912,7 @@ fun ProxyToolsSheet(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Text(
-                            text = mode.label,
+                            text = mode.label(language),
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
@@ -918,12 +929,13 @@ fun ProxyToolsSheet(
 fun SortSummaryBar(
     selected: NodeSortMode,
     searchQuery: String,
-    onOpenFilters: () -> Unit
+    onOpenFilters: () -> Unit,
+    language: String = "ru"
 ) {
     val label = if (searchQuery.isBlank()) {
-        "Сортировка: ${selected.label}"
+        String.format(Loc.get("sort_by_fmt", language), selected.label(language))
     } else {
-        "Фильтр: $searchQuery"
+        String.format(Loc.get("filter_by_fmt", language), searchQuery)
     }
     Surface(
         modifier = Modifier
@@ -960,7 +972,7 @@ fun SortSummaryBar(
             )
             Icon(
                 imageVector = Icons.Default.KeyboardArrowUp,
-                contentDescription = "Открыть фильтры",
+                contentDescription = Loc.get("open_filters_cd", language),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .size(18.dp)
@@ -987,7 +999,8 @@ fun SourceGroupCard(
     showConfigs: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp),
     compactMode: Boolean = false,
-    showFlags: Boolean = true
+    showFlags: Boolean = true,
+    language: String = "ru"
 ) {
     val tactileFeedback = rememberTactileFeedback()
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
@@ -1033,7 +1046,7 @@ fun SourceGroupCard(
                                         isRenaming = false
                                     }
                                 ) {
-                                    Icon(Icons.Default.Check, contentDescription = "Сохранить")
+                                    Icon(Icons.Default.Check, contentDescription = Loc.get("save_cd", language))
                                 }
                             }
                         )
@@ -1049,7 +1062,7 @@ fun SourceGroupCard(
                         )
                     }
                     Text(
-                        text = sourceSubtitle(sourceUrl, source),
+                        text = sourceSubtitle(sourceUrl, source, language),
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
                         ),
@@ -1070,7 +1083,7 @@ fun SourceGroupCard(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${configs.size} узл.",
+                        text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
                         style = MaterialTheme.typography.labelLarge.copy(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Black
@@ -1086,7 +1099,7 @@ fun SourceGroupCard(
                     source?.let {
                         val expireColor = subscriptionExpireColor(it, MaterialTheme.colorScheme)
                         Text(
-                            text = trafficSubtitle(it),
+                            text = trafficSubtitle(it, language),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = expireColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 fontWeight = FontWeight.Bold
@@ -1098,7 +1111,7 @@ fun SourceGroupCard(
                 }
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Свернуть" else "Развернуть",
+                    contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp).padding(2.dp)
                 )
@@ -1114,25 +1127,25 @@ fun SourceGroupCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SourceActionButton(
-                        label = "Пинг",
+                        label = Loc.get("ping", language),
                         icon = Icons.Default.Search,
                         onClick = onPingSource,
                         modifier = Modifier.weight(1f)
                     )
                     SourceActionButton(
-                        label = "Обновить",
+                        label = Loc.get("refresh", language),
                         icon = Icons.Default.Refresh,
                         onClick = { onRefreshSource(source.id) },
                         modifier = Modifier.weight(1f)
                     )
                     SourceActionButton(
-                        label = "Имя",
+                        label = Loc.get("rename", language),
                         icon = Icons.Default.Edit,
                         onClick = { isRenaming = true },
                         modifier = Modifier.weight(1f)
                     )
                     SourceActionButton(
-                        label = "Удалить",
+                        label = Loc.get("delete", language),
                         icon = Icons.Default.Delete,
                         onClick = { onDeleteSource(source.id) },
                         destructive = true,
@@ -1154,7 +1167,8 @@ fun SourceGroupCard(
                             onSelect = { onSelect(config.id) },
                             onDelete = { onDelete(config.id) },
                             compactMode = compactMode,
-                            showFlags = showFlags
+                            showFlags = showFlags,
+                            language = language
                         )
                     }
                 }
@@ -1314,13 +1328,7 @@ fun ImportConfigDialog(
                 )
             }
 
-            val description = if (language == "ru") {
-                "Введите ссылку на прокси-сервер (vless, vmess, ss, trojan) или ссылку на подписку (http/https):"
-            } else if (language == "zh") {
-                "请输入代理服务器链接 (vless, vmess, ss, trojan) 或订阅链接 (http/https)："
-            } else {
-                "Enter proxy server link (vless, vmess, ss, trojan) or subscription URL (http/https):"
-            }
+            val description = Loc.get("import_desc", language)
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
@@ -1429,7 +1437,8 @@ fun ImportConfigDialog(
 fun ConfigDetailsSheet(
     config: ProxyConfig,
     onDismiss: () -> Unit,
-    viewModel: MainScreenViewModel
+    viewModel: MainScreenViewModel,
+    language: String = "ru"
 ) {
     var isEditing by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -1483,28 +1492,28 @@ fun ConfigDetailsSheet(
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
             title = {
-                Text(
-                    text = "Несохраненные изменения",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-                )
-            },
-            text = {
-                Text("У вас есть несохраненные изменения. Выйти без сохранения?")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showExitDialog = false
-                    isEditing = false
-                    onDismiss()
-                }) {
-                    Text("Выйти", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("Остаться")
-                }
-            },
+                    Text(
+                        text = Loc.get("config_details_unsaved_title", language),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                    )
+                },
+                text = {
+                    Text(Loc.get("config_details_unsaved_msg", language))
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showExitDialog = false
+                        isEditing = false
+                        onDismiss()
+                    }) {
+                        Text(Loc.get("config_details_exit", language), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExitDialog = false }) {
+                        Text(Loc.get("config_details_stay", language))
+                    }
+                },
             shape = RoundedCornerShape(28.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
@@ -1558,7 +1567,7 @@ fun ConfigDetailsSheet(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isEditing) "Редактирование" else config.name,
+                        text = if (isEditing) Loc.get("config_details_editing", language) else config.name,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
@@ -1574,7 +1583,7 @@ fun ConfigDetailsSheet(
                     )
                 }
                 IconButton(onClick = ::attemptDismiss) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Закрыть")
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = Loc.get("config_details_close", language))
                 }
             }
 
@@ -1589,7 +1598,7 @@ fun ConfigDetailsSheet(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Название (Remarks)") },
+                        label = { Text(Loc.get("remark_label", language)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp)
@@ -1602,7 +1611,7 @@ fun ConfigDetailsSheet(
                         OutlinedTextField(
                             value = address,
                             onValueChange = { address = it },
-                            label = { Text("Адрес (IP/Host)") },
+                            label = { Text(Loc.get("address_label", language)) },
                             singleLine = true,
                             modifier = Modifier.weight(1.5f),
                             shape = RoundedCornerShape(18.dp)
@@ -1610,7 +1619,7 @@ fun ConfigDetailsSheet(
                         OutlinedTextField(
                             value = portString,
                             onValueChange = { portString = it.filter { char -> char.isDigit() } },
-                            label = { Text("Порт") },
+                            label = { Text(Loc.get("port_label", language)) },
                             singleLine = true,
                             modifier = Modifier.weight(0.8f),
                             shape = RoundedCornerShape(18.dp)
@@ -1620,7 +1629,7 @@ fun ConfigDetailsSheet(
                     OutlinedTextField(
                         value = uuid,
                         onValueChange = { uuid = it },
-                        label = { Text("UUID / Пароль") },
+                        label = { Text(Loc.get("config_details_uuid", language)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp)
@@ -1629,14 +1638,14 @@ fun ConfigDetailsSheet(
                     OutlinedTextField(
                         value = sni,
                         onValueChange = { sni = it },
-                        label = { Text("SNI") },
+                        label = { Text(Loc.get("config_details_sni", language)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp)
                     )
 
                     SegmentedSelector(
-                        label = "Безопасность (security)",
+                        label = Loc.get("config_details_security", language),
                         options = listOf(
                             "none" to "None",
                             "tls" to "TLS",
@@ -1647,7 +1656,7 @@ fun ConfigDetailsSheet(
                     )
 
                     SegmentedSelector(
-                        label = "Транспорт (network)",
+                        label = Loc.get("config_details_transport", language),
                         options = listOf(
                             "tcp" to "TCP",
                             "ws" to "WebSocket",
@@ -1726,15 +1735,15 @@ fun ConfigDetailsSheet(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        ConfigDetailLine("Протокол", config.protocolSummary())
-                        ConfigDetailLine("Адрес", "${config.address}:${config.port}")
-                        ConfigDetailLine("Транспорт", config.network ?: "tcp")
-                        config.security?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine("Безопасность", it) }
+                        ConfigDetailLine(Loc.get("config_details_protocol", language), config.protocolSummary())
+                        ConfigDetailLine(Loc.get("config_details_address", language), "${config.address}:${config.port}")
+                        ConfigDetailLine(Loc.get("config_details_transport_val", language), config.network ?: "tcp")
+                        config.security?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine(Loc.get("config_details_security_val", language), it) }
                         config.sni?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine("SNI", it) }
                         config.flow?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine("Flow", it) }
                         config.wsPath?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine("WS Path", it) }
                         config.grpcServiceName?.takeIf { it.isNotBlank() }?.let { ConfigDetailLine("gRPC Service", it) }
-                        ConfigDetailLine("Источник", config.sourceName)
+                        ConfigDetailLine(Loc.get("config_details_source", language), config.sourceName)
                     }
                 }
             }
@@ -1758,7 +1767,7 @@ fun ConfigDetailsSheet(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("Отмена", fontWeight = FontWeight.Bold)
+                        Text(Loc.get("config_details_cancel", language), fontWeight = FontWeight.Bold)
                     }
 
                     Button(
@@ -1766,11 +1775,11 @@ fun ConfigDetailsSheet(
                             tactileFeedback()
                             val parsedPort = portString.toIntOrNull()
                             if (parsedPort == null || parsedPort !in 1..65535) {
-                                Toast.makeText(context, "Некорректный порт (1..65535)", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, Loc.get("invalid_port", language), Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             if (address.isBlank() || name.isBlank() || uuid.isBlank()) {
-                                Toast.makeText(context, "Имя, адрес и пароль не могут быть пустыми", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, Loc.get("empty_fields", language), Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
 
@@ -1803,7 +1812,7 @@ fun ConfigDetailsSheet(
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     ) {
-                        Text("Сохранить", fontWeight = FontWeight.Bold)
+                        Text(Loc.get("config_details_save", language), fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Button(
@@ -1817,7 +1826,7 @@ fun ConfigDetailsSheet(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("Готово", fontWeight = FontWeight.Bold)
+                        Text(Loc.get("config_details_done", language), fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = {
@@ -1833,7 +1842,7 @@ fun ConfigDetailsSheet(
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     ) {
-                        Text("Изменить", fontWeight = FontWeight.Bold)
+                        Text(Loc.get("config_details_change", language), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1872,9 +1881,9 @@ private fun ConfigDetailLine(
     }
 }
 
-private fun sourceSubtitle(sourceUrl: String?, source: SubscriptionSource?): String {
+private fun sourceSubtitle(sourceUrl: String?, source: SubscriptionSource?, language: String = "ru"): String {
     val parts = mutableListOf<String>()
-    val url = sourceUrl ?: "Локальный импорт"
+    val url = sourceUrl ?: Loc.get("local_import", language)
     parts.add(url)
     source?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
@@ -1883,7 +1892,7 @@ private fun sourceSubtitle(sourceUrl: String?, source: SubscriptionSource?): Str
     return parts.joinToString(" · ")
 }
 
-private fun trafficSubtitle(source: SubscriptionSource): String {
+private fun trafficSubtitle(source: SubscriptionSource, language: String = "ru"): String {
     val parts = mutableListOf<String>()
     val total = source.totalBytes
     if (total != null && total > 0L) {
@@ -1895,14 +1904,14 @@ private fun trafficSubtitle(source: SubscriptionSource): String {
             val now = System.currentTimeMillis()
             val daysLeft = (epochMillis - now) / (1000L * 60 * 60 * 24)
             when {
-                daysLeft < 0 -> parts.add("истекла")
-                daysLeft == 0L -> parts.add("сегодня")
-                daysLeft == 1L -> parts.add("1 день")
-                daysLeft in 2L..4L -> parts.add("$daysLeft дня")
-                daysLeft <= 30L -> parts.add("$daysLeft дн.")
+                daysLeft < 0 -> parts.add(Loc.get("expired", language))
+                daysLeft == 0L -> parts.add(Loc.get("today", language))
+                daysLeft == 1L -> parts.add(Loc.get("day_1", language))
+                daysLeft in 2L..4L -> parts.add(String.format(Loc.get("day_2_4", language), daysLeft))
+                daysLeft <= 30L -> parts.add(String.format(Loc.get("day_5_30", language), daysLeft))
                 else -> {
                     val formatter = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
-                    parts.add("до ${formatter.format(java.util.Date(epochMillis))}")
+                    parts.add("${String.format(Loc.get("until_date", language), formatter.format(java.util.Date(epochMillis)))}")
                 }
             }
         }
@@ -1948,7 +1957,8 @@ fun ServerItemCard(
     onSwipeOffsetChanged: (Float) -> Unit = {},
     onSwipingChanged: (Boolean) -> Unit = {},
     compactMode: Boolean = false,
-    showFlags: Boolean = true
+    showFlags: Boolean = true,
+    language: String = "ru"
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -2024,7 +2034,7 @@ fun ServerItemCard(
             if (settingsFraction > 0.08f) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Настройки",
+                    contentDescription = Loc.get("settings_cd", language),
                     tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = (settingsFraction * 2.5f).coerceIn(0f, 1f)),
                     modifier = Modifier
                         .padding(start = 20.dp)
@@ -2043,7 +2053,7 @@ fun ServerItemCard(
             if (swipeFraction > 0.08f) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Удалить",
+                    contentDescription = Loc.get("delete_cd", language),
                     tint = onErrorContainer.copy(alpha = (swipeFraction * 2.5f).coerceIn(0f, 1f)),
                     modifier = Modifier
                         .padding(end = 20.dp)
@@ -2223,7 +2233,7 @@ fun ServerItemCard(
                             val link = config.toConfigLink()
                             if (link.isNotBlank()) {
                                 clipboardManager.setText(AnnotatedString(link))
-                                Toast.makeText(context, "Ссылка скопирована!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, Loc.get("link_copied", language), Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.size(30.dp)

@@ -98,6 +98,7 @@ import androidx.compose.ui.unit.sp
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
+import com.perqa.byebox.ui.main.dashboard.InfoChip
 import com.perqa.byebox.theme.DarkThemeStyle
 
 enum class SettingsSubMenu {
@@ -276,7 +277,8 @@ fun SettingsTab(
                     status = state.connectionStatus,
                     routingProfile = state.routingProfile,
                     dnsServer = state.dnsServer,
-                    appRoutingMode = state.appRoutingMode
+                    appRoutingMode = state.appRoutingMode,
+                    language = state.language
                 )
                 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -340,6 +342,16 @@ fun SettingsTab(
                         selectedSubMenu = SettingsSubMenu.LOGS
                     }
                 )
+
+                val updateInfo = state.updateInfo
+                if (updateInfo != null) {
+                    UpdateBanner(
+                        updateInfo = updateInfo,
+                        language = state.language,
+                        scaleFactor = state.tapImpactScale,
+                        cornerRoundness = state.cornerRoundness,
+                    )
+                }
 
                 Spacer(
                     modifier = Modifier
@@ -452,7 +464,7 @@ fun SettingsTab(
                                 }
                                 SettingsChoiceRow(
                                     title = dns.label,
-                                    subtitle = if (dns == DnsServer.CUSTOM) state.customDnsServer.ifBlank { "Нажмите для ввода IP" } else dns.address,
+                                    subtitle = if (dns == DnsServer.CUSTOM) state.customDnsServer.ifBlank { Loc.get("press_to_enter_ip", state.language) } else dns.address,
                                     selected = state.dnsServer == dns,
                                     icon = dnsIcon,
                                     top = index == 0,
@@ -474,7 +486,7 @@ fun SettingsTab(
                                     OutlinedTextField(
                                         value = state.customDnsServer,
                                         onValueChange = viewModel::changeCustomDnsServer,
-                                        placeholder = { Text("Например: 8.8.4.4") },
+                                        placeholder = { Text(Loc.get("example_dns", state.language)) },
                                         singleLine = true,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -604,7 +616,7 @@ fun SettingsTab(
                                     OutlinedTextField(
                                         value = state.customDirectRules,
                                         onValueChange = viewModel::changeCustomDirectRules,
-                                        placeholder = { Text("Например: yandex.ru, 192.168.1.1") },
+                                        placeholder = { Text(Loc.get("example_direct", state.language)) },
                                         singleLine = false,
                                         maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
@@ -634,7 +646,7 @@ fun SettingsTab(
                                     OutlinedTextField(
                                         value = state.customProxyRules,
                                         onValueChange = viewModel::changeCustomProxyRules,
-                                        placeholder = { Text("Например: google.com, instagram.com") },
+                                        placeholder = { Text(Loc.get("example_proxy", state.language)) },
                                         singleLine = false,
                                         maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
@@ -669,7 +681,7 @@ fun SettingsTab(
                             }
                             SettingsActionRow(
                                 title = Loc.get("selected_apps", state.language),
-                                subtitle = "${selectedAppPackages.size} пакетов",
+                                subtitle = String.format(Loc.get("packages_selected", state.language), selectedAppPackages.size),
                                 button = Loc.get("select_btn", state.language),
                                 enabled = state.appRoutingMode != AppRoutingMode.OFF,
                                 scaleFactor = state.tapImpactScale,
@@ -877,16 +889,16 @@ fun SettingsTab(
                                 val isLast = index == DarkThemeStyle.values().lastIndex
                                 SettingsChoiceRow(
                                     title = when (style) {
-                                        DarkThemeStyle.STANDARD -> if (state.language == "ru") "Стандартный темный" else if (state.language == "zh") "标准深色" else "Standard Dark"
-                                        DarkThemeStyle.DEEP_SLATE -> if (state.language == "ru") "Мягкий серый" else if (state.language == "zh") "柔和灰" else "Deep Slate"
-                                        DarkThemeStyle.MIDNIGHT_NAVY -> if (state.language == "ru") "Глубокий синий" else if (state.language == "zh") "深邃蓝" else "Midnight Navy"
-                                        DarkThemeStyle.PURE_BLACK -> if (state.language == "ru") "OLED супер-черный" else if (state.language == "zh") "OLED 极黑" else "OLED Pure Black"
+                                    DarkThemeStyle.STANDARD -> Loc.get("dark_standard", state.language)
+                                    DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate", state.language)
+                                    DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy", state.language)
+                                    DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black", state.language)
                                     },
                                     subtitle = when (style) {
-                                        DarkThemeStyle.STANDARD -> if (state.language == "ru") "Material Design по умолчанию" else if (state.language == "zh") "默认的 Material Design 风格" else "Default Material Design"
-                                        DarkThemeStyle.DEEP_SLATE -> if (state.language == "ru") "Темно-угольный оттенок (#121212)" else if (state.language == "zh") "深灰色背景 (#121212)" else "Dark charcoal background (#121212)"
-                                        DarkThemeStyle.MIDNIGHT_NAVY -> if (state.language == "ru") "Элегантный полночный оттенок (#080C14)" else if (state.language == "zh") "优雅的深夜蓝色背景 (#080C14)" else "Elegant midnight navy background (#080C14)"
-                                        DarkThemeStyle.PURE_BLACK -> if (state.language == "ru") "Чистый черный фон (#000000) для OLED" else if (state.language == "zh") "用于 OLED 的纯黑色背景 (#000000)" else "Pure black background (#000000) for OLED"
+                                        DarkThemeStyle.STANDARD -> Loc.get("dark_standard_sub", state.language)
+                                        DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate_sub", state.language)
+                                        DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy_sub", state.language)
+                                        DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black_sub", state.language)
                                     },
                                     selected = state.darkThemeStyle == style,
                                     top = isFirst,
@@ -937,17 +949,15 @@ fun SettingsTab(
                                     "system" -> {
                                         val sysLang = java.util.Locale.getDefault().language
                                         val systemResolved = when {
-                                            sysLang.startsWith("ru") || sysLang.startsWith("be") || sysLang.startsWith("uk") || sysLang.startsWith("kk") || sysLang.startsWith("ky") -> "Русский"
-                                            sysLang.startsWith("zh") -> "简体中文"
-                                            else -> "English"
+                                            sysLang.startsWith("ru") || sysLang.startsWith("be") || sysLang.startsWith("uk") || sysLang.startsWith("kk") || sysLang.startsWith("ky") -> Loc.get("lang_ru", state.language)
+                                            sysLang.startsWith("zh") -> Loc.get("lang_zh", state.language)
+                                            else -> Loc.get("lang_en", state.language)
                                         }
-                                        if (state.language == "ru") "Автоматически ($systemResolved)"
-                                        else if (state.language == "zh") "自动 ($systemResolved)"
-                                        else "Automatic ($systemResolved)"
+                                        "${Loc.get("lang_system", state.language)} ($systemResolved)"
                                     }
-                                    "ru" -> "Русский интерфейс"
-                                    "en" -> "English interface"
-                                    else -> "中文界面"
+                                    "ru" -> Loc.get("lang_ru", state.language)
+                                    "en" -> Loc.get("lang_en", state.language)
+                                    else -> Loc.get("lang_zh", state.language)
                                 }
                                 SettingsChoiceRow(
                                     title = label,
@@ -1020,7 +1030,8 @@ fun SettingsTab(
                                 scaleFactor = state.tapImpactScale,
                                 cornerRoundness = state.cornerRoundness,
                                 top = true,
-                                bottom = true
+                                bottom = true,
+                                language = state.language
                             )
                         }
                     }
@@ -1044,7 +1055,8 @@ private fun SettingsHeroCard(
     status: ConnectionStatus,
     routingProfile: RoutingProfile,
     dnsServer: DnsServer,
-    appRoutingMode: AppRoutingMode
+    appRoutingMode: AppRoutingMode,
+    language: String = "ru"
 ) {
     val color by animateColorAsState(
         targetValue = when (status) {
@@ -1072,10 +1084,10 @@ private fun SettingsHeroCard(
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = when (status) {
-                    ConnectionStatus.CONNECTED -> "VPN подключен"
-                    ConnectionStatus.CONNECTING -> "Поднимаем туннель"
-                    ConnectionStatus.RECONNECTING -> "Идёт переподключение"
-                    ConnectionStatus.DISCONNECTED -> "VPN отключен"
+                    ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
+                    ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
+                    ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
+                    ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
                 },
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Black,
@@ -1166,6 +1178,59 @@ fun ThemeButton(
                 fontSize = 13.sp,
                 color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
+
+@Composable
+private fun UpdateBanner(
+    updateInfo: com.perqa.byebox.core.UpdateInfo,
+    language: String,
+    scaleFactor: Float,
+    cornerRoundness: String,
+) {
+    val context = LocalContext.current
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(30.dp)),
+        color = MaterialTheme.colorScheme.tertiaryContainer
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        data = android.net.Uri.parse(updateInfo.downloadUrl)
+                    }
+                    context.startActivity(intent)
+                }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Cloud,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "Доступно обновление ${updateInfo.latestVersion}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                if (updateInfo.releaseNotes.isNotBlank()) {
+                    Text(
+                        text = updateInfo.releaseNotes,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

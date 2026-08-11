@@ -28,12 +28,25 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import android.Manifest
+import android.content.ComponentName
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.perqa.byebox.R
+import com.perqa.byebox.core.AppLogger
+import com.perqa.byebox.service.ByeBoxTileService
+import com.perqa.byebox.ui.main.MainUiState
+import com.v2ray.ang.AppConfig
+import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.handler.MmkvManager
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainScreenViewModel> {
-        object : androidx.lifecycle.ViewModelProvider.Factory {
+        object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return MainScreenViewModel(applicationContext) as T
             }
         }
@@ -61,11 +74,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.perqa.byebox.core.AppLogger.init(applicationContext)
+        AppLogger.init(applicationContext)
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
 
@@ -74,14 +87,14 @@ class MainActivity : ComponentActivity() {
                 val activeConfig = state.configs.find { it.id == state.activeConfigId }
                 if (activeConfig != null) {
                     val isServiceRunning = state.connectionStatus == ConnectionStatus.CONNECTED ||
-                            com.v2ray.ang.handler.MmkvManager.decodeSettingsBool(com.v2ray.ang.AppConfig.PREF_TILE_VPN_RUNNING, false)
+                            MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
                     if (isServiceRunning) {
                         val runtimeSignature = state.runtimeSignature()
                         if (lastRuntimeSignature == null) {
                             lastRuntimeSignature = runtimeSignature
                         } else if (lastRuntimeSignature != runtimeSignature) {
                             lastRuntimeSignature = runtimeSignature
-                            com.v2ray.ang.core.CoreServiceManager.stopVService(this@MainActivity)
+                            CoreServiceManager.stopVService(this@MainActivity)
                             delay(500)
                             requestStartVpn()
                         }
@@ -96,7 +109,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
         setContent {
@@ -157,13 +170,13 @@ class MainActivity : ComponentActivity() {
     }
 
     fun requestQuickSettingsTile() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val statusBarManager = getSystemService(StatusBarManager::class.java)
-            val componentName = android.content.ComponentName(this, com.perqa.byebox.service.ByeBoxTileService::class.java)
+            val componentName = ComponentName(this, ByeBoxTileService::class.java)
             statusBarManager.requestAddTileService(
                 componentName,
-                getString(com.perqa.byebox.R.string.app_name),
-                Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_on),
+                getString(R.string.app_name),
+                Icon.createWithResource(this, R.drawable.ic_notification_on),
                 mainExecutor
             ) { result ->
                 val message = when (result) {
@@ -208,7 +221,7 @@ class MainActivity : ComponentActivity() {
         lastRuntimeSignature = state.runtimeSignature()
 
         try {
-            com.v2ray.ang.core.CoreServiceManager.startVService(this, activeConfig.id)
+            CoreServiceManager.startVService(this, activeConfig.id)
         } catch (e: Exception) {
             e.printStackTrace()
             viewModel.showToast("Ошибка запуска VPN: ${e.message}")
@@ -217,14 +230,14 @@ class MainActivity : ComponentActivity() {
 
     private fun stopVpnServiceInternal() {
         try {
-            com.v2ray.ang.core.CoreServiceManager.stopVService(this)
+            CoreServiceManager.stopVService(this)
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 }
 
-private fun com.perqa.byebox.ui.main.MainUiState.runtimeSignature(): String {
+private fun MainUiState.runtimeSignature(): String {
     return listOf(
         activeConfigId.orEmpty(),
         dnsServer.name,
