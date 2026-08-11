@@ -34,13 +34,19 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.perqa.byebox.theme.ByeBoxTheme
+import com.perqa.byebox.theme.AppTheme
+import com.perqa.byebox.theme.DarkThemeStyle
 import java.util.concurrent.Executors
 
 class QrScanActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = dynamicDarkColorScheme(LocalContext.current)) {
+            val prefs = getSharedPreferences("byebox_settings", MODE_PRIVATE)
+            val appTheme = runCatching { AppTheme.valueOf(prefs.getString("app_theme", "SYSTEM_DYNAMIC") ?: "SYSTEM_DYNAMIC") }.getOrDefault(AppTheme.SYSTEM_DYNAMIC)
+            val darkThemeStyle = runCatching { DarkThemeStyle.valueOf(prefs.getString("pref_dark_theme_style", "STANDARD") ?: "STANDARD") }.getOrDefault(DarkThemeStyle.STANDARD)
+            ByeBoxTheme(appTheme = appTheme, darkThemeStyle = darkThemeStyle) {
                 QrScanScreen(
                     onResult = { url ->
                         setResult(RESULT_OK, Intent().putExtra("SCAN_RESULT", url))
@@ -55,6 +61,12 @@ class QrScanActivity : ComponentActivity() {
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     @Composable
     private fun QrScanScreen(onResult: (String) -> Unit, onBack: () -> Unit) {
+        val sysLang = java.util.Locale.getDefault().language
+        val language = when {
+            sysLang.startsWith("ru") || sysLang.startsWith("be") || sysLang.startsWith("uk") || sysLang.startsWith("kk") || sysLang.startsWith("ky") -> "ru"
+            sysLang.startsWith("zh") -> "zh"
+            else -> "en"
+        }
         var hasCameraPermission by remember {
             mutableStateOf(
                 ContextCompat.checkSelfPermission(this@QrScanActivity, Manifest.permission.CAMERA) ==
@@ -149,7 +161,7 @@ class QrScanActivity : ComponentActivity() {
                 }
 
                 Text(
-                    text = "Наведите камеру на QR-код",
+                    text = Loc.get("qr_scan_hint", language),
                     color = Color.White,
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier
@@ -158,7 +170,7 @@ class QrScanActivity : ComponentActivity() {
                 )
             } else {
                 Text(
-                    text = "Разрешение на камеру не выдано",
+                    text = Loc.get("qr_camera_denied", language),
                     color = Color.White,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -173,7 +185,7 @@ class QrScanActivity : ComponentActivity() {
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Назад",
+                    contentDescription = Loc.get("back_cd", language),
                     tint = Color.White
                 )
             }

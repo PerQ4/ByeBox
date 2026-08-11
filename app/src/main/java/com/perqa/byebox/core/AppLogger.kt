@@ -12,25 +12,43 @@ import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object AppLogger {
     private const val TAG = "AppLogger"
+    private const val FLUSH_INTERVAL_SECONDS = 1L
+    private const val FLUSH_THRESHOLD = 50
+    private const val MAX_BUFFER_SIZE = 600
+    private const val MAX_VISIBLE_LINES = 500
 
-    // Thread-safe in-memory list — CopyOnWriteArrayList is safe from any thread including Go JNI threads
     private val logBuffer = CopyOnWriteArrayList<String>()
-
-    // StateFlow is only updated on the main thread via Handler to avoid JNI crashes
     private val _logs = MutableStateFlow<List<String>>(emptyList())
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val logExecutor = Executors.newSingleThreadExecutor()
+    private val logExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private var appContext: Context? = null
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
     @Volatile private var initialized = false
+
+    private val pendingWrites = ConcurrentLinkedQueue<String>()
+    private val pendingWriteCount = AtomicInteger(0)
+    private val fileLock = Any()
+
+    init {
+        logExecutor.scheduleWithFixedDelay(
+            { flushPendingWrites() },
+            FLUSH_INTERVAL_SECONDS,
+            FLUSH_INTERVAL_SECONDS,
+            TimeUnit.SECONDS
+        )
+    }
 
     fun init(context: Context) {
         if (initialized) return
@@ -72,10 +90,6 @@ object AppLogger {
         Log.i("xray-core", message)
     }
 
-    /**
-     * Called from Go JNI goroutine threads — MUST be safe to call from any thread.
-     * Only uses Android Log (thread-safe), delegates actual logging to log() which is thread-safe.
-     */
     fun xray(message: String) {
         Log.d("xray", message)
         log("[xray] $message")
@@ -83,64 +97,64 @@ object AppLogger {
 
     fun clearLogs() {
         logBuffer.clear()
+        flushPendingWrites()
         mainHandler.post { _logs.value = listOf("[SYSTEM] Логи очищены.") }
-        logExecutor.execute {
-            synchronized(fileLock) {
-                runCatching {
-                    appContext?.let { ctx ->
-                        val internalFile = File(ctx.filesDir, "box_log.txt")
-                        if (internalFile.exists()) internalFile.delete()
-                        internalFile.createNewFile()
+        runCatching {
+            appContext?.let { ctx ->
+                val internalFile = File(ctx.filesDir, "box_log.txt")
+                if (internalFile.exists()) internalFile.delete()
+                internalFile.createNewFile()
 
-                        ctx.getExternalFilesDir(null)?.let { externalDir ->
-                            val externalFile = File(externalDir, "box_log.txt")
-                            if (externalFile.exists()) externalFile.delete()
-                            externalFile.createNewFile()
-                        }
-                    }
+                ctx.getExternalFilesDir(null)?.let { externalDir ->
+                    val externalFile = File(externalDir, "box_log.txt")
+                    if (externalFile.exists()) externalFile.delete()
+                    externalFile.createNewFile()
                 }
             }
         }
     }
 
-    /**
-     * Thread-safe log function — safe to call from Go JNI threads, Kotlin coroutines, or any thread.
-     * - File writes: synchronized on a dedicated lock object (no JVM dependencies)
-     * - StateFlow updates: posted to main thread via Handler (only main thread can safely update StateFlow)
-     */
-    private val fileLock = Any()
-
     private fun log(formattedMessage: String) {
         val timestamp = try { timeFormat.format(Date()) } catch (e: Exception) { "??:??:??.???" }
         val logLine = "[$timestamp] $formattedMessage"
 
-        // Add to in-memory buffer — CopyOnWriteArrayList is thread-safe
         logBuffer.add(logLine)
-        if (logBuffer.size > 600) {
-            // Trim from front — create a new snapshot to avoid concurrent modification
+        if (logBuffer.size > MAX_BUFFER_SIZE) {
             val snapshot = logBuffer.toList()
-            if (snapshot.size > 500) {
-                logBuffer.removeAll(snapshot.take(snapshot.size - 500).toSet())
+            if (snapshot.size > MAX_VISIBLE_LINES) {
+                logBuffer.removeAll(snapshot.take(snapshot.size - MAX_VISIBLE_LINES).toSet())
             }
         }
 
-        // Post StateFlow update to main thread — StateFlow.value must NOT be set from Go JNI threads
         mainHandler.post {
-            _logs.value = logBuffer.toList().takeLast(500)
+            _logs.value = logBuffer.toList().takeLast(MAX_VISIBLE_LINES)
         }
 
-        // Write to files asynchronously — synchronized on a plain lock
-        logExecutor.execute {
-            synchronized(fileLock) {
-                runCatching {
-                    appContext?.let { ctx ->
-                        val internalFile = File(ctx.filesDir, "box_log.txt")
-                        FileWriter(internalFile, true).use { it.write(logLine + "\n") }
+        pendingWrites.add(logLine + "\n")
+        if (pendingWriteCount.incrementAndGet() >= FLUSH_THRESHOLD) {
+            logExecutor.execute { flushPendingWrites() }
+        }
+    }
 
-                        ctx.getExternalFilesDir(null)?.let { externalDir ->
-                            val externalFile = File(externalDir, "box_log.txt")
-                            FileWriter(externalFile, true).use { it.write(logLine + "\n") }
-                        }
+    private fun flushPendingWrites() {
+        val lines = mutableListOf<String>()
+        while (true) {
+            val line = pendingWrites.poll() ?: break
+            lines.add(line)
+        }
+        if (lines.isEmpty()) return
+        pendingWriteCount.addAndGet(-lines.size)
+
+        synchronized(fileLock) {
+            runCatching {
+                appContext?.let { ctx ->
+                    val content = lines.joinToString("")
+                    val internalFile = File(ctx.filesDir, "box_log.txt")
+                    FileWriter(internalFile, true).use { it.write(content) }
+
+                    ctx.getExternalFilesDir(null)?.let { externalDir ->
+                        val externalFile = File(externalDir, "box_log.txt")
+                        FileWriter(externalFile, true).use { it.write(content) }
                     }
                 }
             }

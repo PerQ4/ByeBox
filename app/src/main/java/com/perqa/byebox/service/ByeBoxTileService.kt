@@ -10,49 +10,58 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.perqa.byebox.MainActivity
+import com.perqa.byebox.R
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.Utils
-import java.lang.ref.SoftReference
 
 class ByeBoxTileService : TileService() {
-
     private var mMsgReceive: BroadcastReceiver? = null
-    private var currentState = 0 // 0=off, 1=connecting, 2=on
+    private var currentState = 0
+
+    private val mMsgReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            when (intent?.getIntExtra("key", 0)) {
+                AppConfig.MSG_STATE_RUNNING,
+                AppConfig.MSG_STATE_START_SUCCESS -> updateTileState(active = true)
+                AppConfig.MSG_STATE_NOT_RUNNING,
+                AppConfig.MSG_STATE_STOP_SUCCESS,
+                AppConfig.MSG_STATE_START_FAILURE -> updateTileState(active = false)
+            }
+        }
+    }
 
     override fun onStartListening() {
         super.onStartListening()
-        val running = isVpnServiceRunning(applicationContext)
+        val running = MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
         updateTileState(active = running)
 
-        mMsgReceive = ReceiveMessageHandler(this)
         val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY)
         ContextCompat.registerReceiver(
             applicationContext,
-            mMsgReceive,
+            mMsgReceiver,
             mFilter,
             Utils.receiverFlags()
         )
+        mMsgReceive = mMsgReceiver
     }
 
     override fun onStopListening() {
         super.onStopListening()
         try {
-            if (mMsgReceive != null) {
-                applicationContext.unregisterReceiver(mMsgReceive)
-                mMsgReceive = null
-            }
+            mMsgReceive?.let { applicationContext.unregisterReceiver(it) }
         } catch (_: Exception) {
         }
+        mMsgReceive = null
     }
 
     override fun onClick() {
         super.onClick()
         val context = applicationContext
         val tile = qsTile ?: return
-
-        if (currentState == 1) return // connecting – ignore touches
+        if (currentState == 1) return
 
         when (tile.state) {
             Tile.STATE_ACTIVE -> {
@@ -86,9 +95,9 @@ class ByeBoxTileService : TileService() {
         tile.label = "ByeBox"
 
         tile.icon = if (active) {
-            Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_on)
+            Icon.createWithResource(this, R.drawable.ic_notification_on)
         } else {
-            Icon.createWithResource(this, com.perqa.byebox.R.drawable.ic_notification_off)
+            Icon.createWithResource(this, R.drawable.ic_notification_off)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -97,8 +106,7 @@ class ByeBoxTileService : TileService() {
                 active -> {
                     val guid = MmkvManager.getSelectServer()
                     val config = guid?.let { MmkvManager.decodeServerConfig(it) }
-                    val serverName = config?.remarks.orEmpty()
-                    serverName.ifBlank { "Подключено" }
+                    config?.remarks.orEmpty().ifBlank { "Подключено" }
                 }
                 else -> "Отключено"
             }
@@ -108,38 +116,15 @@ class ByeBoxTileService : TileService() {
                 else -> "VPN выключен"
             }
         }
-
         tile.updateTile()
     }
 
     private fun openMainAndCollapse() {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        } ?: Intent(this, com.perqa.byebox.MainActivity::class.java).apply {
+        } ?: Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivityAndCollapse(launchIntent)
-    }
-
-    private fun isVpnServiceRunning(context: Context): Boolean {
-        return com.v2ray.ang.handler.MmkvManager.decodeSettingsBool(com.v2ray.ang.AppConfig.PREF_TILE_VPN_RUNNING, false)
-    }
-
-    private class ReceiveMessageHandler(service: ByeBoxTileService) : BroadcastReceiver() {
-        private val mReference = SoftReference(service)
-        override fun onReceive(ctx: Context?, intent: Intent?) {
-            val service = mReference.get() ?: return
-            when (intent?.getIntExtra("key", 0)) {
-                AppConfig.MSG_STATE_RUNNING,
-                AppConfig.MSG_STATE_START_SUCCESS -> {
-                    service.updateTileState(active = true)
-                }
-                AppConfig.MSG_STATE_NOT_RUNNING,
-                AppConfig.MSG_STATE_STOP_SUCCESS,
-                AppConfig.MSG_STATE_START_FAILURE -> {
-                    service.updateTileState(active = false)
-                }
-            }
-        }
     }
 }

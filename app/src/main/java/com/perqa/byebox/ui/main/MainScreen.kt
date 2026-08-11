@@ -6,8 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +49,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
-import com.perqa.byebox.theme.ByeBoxTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 
@@ -69,12 +69,10 @@ fun MainScreen(
         }
     }
 
-    // Dynamic M3 theme overriding inside MainScreen based on state.appTheme
-    ByeBoxTheme(appTheme = state.appTheme, darkThemeStyle = state.darkThemeStyle) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
             var selectedTab by remember { mutableIntStateOf(0) }
             var showBottomBar by remember { mutableStateOf(true) }
             var showImportDialog by remember { mutableStateOf(false) }
@@ -135,27 +133,38 @@ fun MainScreen(
                                 .weight(1f)
                                 .fillMaxWidth()
                         ) {
-                            Crossfade(
-                                targetState = selectedTab,
-                                label = "mainTabCrossfade"
-                            ) { tab ->
-                                when (tab) {
-                                    0 -> DashboardTab(
-                                        state = state,
-                                        viewModel = viewModel,
-                                        onTabSelected = { selectedTab = it },
-                                        onShowBottomBar = { showBottomBar = it }
-                                    )
-                                    1 -> ProxyTab(
-                                        state = state,
-                                        viewModel = viewModel
-                                    )
-                                    2 -> SettingsTab(
-                                        state = state,
-                                        viewModel = viewModel,
-                                        onShowBottomBar = { showBottomBar = it }
-                                    )
-                                }
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = selectedTab == 0,
+                                enter = fadeIn(animationSpec = tween(300)),
+                                exit = fadeOut(animationSpec = tween(300))
+                            ) {
+                                DashboardTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onTabSelected = { selectedTab = it },
+                                    onShowBottomBar = { showBottomBar = it }
+                                )
+                            }
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = selectedTab == 1,
+                                enter = fadeIn(animationSpec = tween(300)),
+                                exit = fadeOut(animationSpec = tween(300))
+                            ) {
+                                ProxyTab(
+                                    state = state,
+                                    viewModel = viewModel
+                                )
+                            }
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = selectedTab == 2,
+                                enter = fadeIn(animationSpec = tween(300)),
+                                exit = fadeOut(animationSpec = tween(300))
+                            ) {
+                                SettingsTab(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onShowBottomBar = { showBottomBar = it }
+                                )
                             }
                         }
                     }
@@ -301,6 +310,5 @@ fun MainScreen(
                     }
                 }
             }
-        }
     }
 }

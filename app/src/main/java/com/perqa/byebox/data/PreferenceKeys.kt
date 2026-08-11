@@ -1,0 +1,35 @@
+package com.perqa.byebox.data
+
+object PreferenceKeys {
+    const val BYEBOX_SETTINGS = "byebox_settings"
+    const val ACTIVE_PROFILE_ID = "pref_active_profile_id"
+    const val DYNAMIC_PROFILES = "pref_dynamic_profiles"
+    const val BASE_PROFILE_DATA = "pref_base_profile_data"
+    const val DARK_THEME_STYLE = "pref_dark_theme_style"
+    const val BLOCKING = "pref_blocking"
+    const val TAP_IMPACT_SCALE = "pref_tap_impact_scale"
+    const val CORNER_ROUNDNESS = "pref_corner_roundness"
+    const val PULSE_ENABLED = "pref_pulse_enabled"
+    const val GLASSMORPHIC_BAR = "pref_glassmorphic_bar"
+    const val MAX_BLUR = "pref_max_blur"
+    const val LANGUAGE = "pref_language"
+    const val COMPACT_LAYOUT = "pref_compact_layout"
+    const val SHOW_FLAGS = "pref_show_flags"
+
+    const val BASE_ROUTING_PROFILE = "base_routing_profile"
+    const val BASE_DNS_SERVER = "base_dns_server"
+    const val BASE_CUSTOM_DNS = "base_custom_dns"
+    const val BASE_APP_ROUTING_MODE = "base_app_routing_mode"
+    const val BASE_APP_ROUTING_PACKAGES_STR = "base_app_routing_packages_str"
+    const val BASE_APP_ROUTING_PACKAGES = "base_app_routing_packages"
+    const val BASE_TUN_STACK = "base_tun_stack"
+    const val BASE_FAKE_DNS_ENABLED = "base_fake_dns_enabled"
+    const val BASE_FRAGMENT_ENABLED = "base_fragment_enabled"
+    const val BASE_MUX_ENABLED = "base_mux_enabled"
+    const val BASE_SNIFFING_ENABLED = "base_sniffing_enabled"
+    const val BASE_CUSTOM_DIRECT_RULES = "base_custom_direct_rules"
+    const val BASE_CUSTOM_PROXY_RULES = "base_custom_proxy_rules"
+    const val BASE_SETTINGS_MIGRATED_V2 = "base_settings_migrated_v2"
+
+    const val LAST_SELECTED_SERVER_PROFILE = "last_selected_server_profile_"
+}

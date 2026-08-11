@@ -11,8 +11,8 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.7.1-Beta"
+        versionCode = 18
+        versionName = "8.5"
         multiDexEnabled = true
         ndk {
             abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
@@ -126,18 +126,20 @@ dependencies {
   implementation(libs.androidx.camera.view)
   implementation(libs.mlkit.barcode.scanning)
   implementation("dev.chrisbanes.haze:haze:0.7.3")
+  implementation(libs.kotlinx.serialization.json)
 }
 
 tasks.register("renameApks") {
+    val apkDir = layout.buildDirectory.dir("outputs/apk")
     doLast {
-        val apkDir = file("build/outputs/apk")
-        if (apkDir.exists()) {
-            apkDir.walk().forEach { file ->
-                if (file.isFile && file.name.endsWith(".apk") && file.name.startsWith("app-")) {
-                    val newName = file.name.replace("app-", "byebox-")
-                    val newFile = File(file.parentFile, newName)
-                    if (file.renameTo(newFile)) {
-                        println("Renamed: ${file.name} -> $newName")
+        val dir = apkDir.get().asFile
+        if (dir.exists()) {
+            dir.walk().forEach { f ->
+                if (f.isFile && f.name.endsWith(".apk") && f.name.startsWith("app-")) {
+                    val newName = f.name.replace("app-", "byebox-")
+                    val newFile = File(f.parentFile, newName)
+                    if (f.renameTo(newFile)) {
+                        println("Renamed: ${f.name} -> $newName")
                     }
                 }
             }
