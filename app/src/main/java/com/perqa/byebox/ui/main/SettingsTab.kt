@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.Home
@@ -1132,32 +1134,37 @@ fun SettingsTab(
                         }
 
                         SettingsGroup(title = Loc.get("settings_backup", state.language)) {
-                            SettingsChoiceRow(
-                                title = Loc.get("settings_export", state.language),
-                                subtitle = Loc.get("settings_export_sub", state.language),
-                                selected = false,
-                                top = true,
-                                bottom = false,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onClick = {
-                                    tactileFeedback()
-                                    viewModel.exportSettings()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        tactileFeedback()
+                                        viewModel.exportSettings()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(if (state.cornerRoundness == "expressive") 24.dp else 14.dp)
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(Loc.get("settings_export", state.language))
                                 }
-                            )
-                            SettingsChoiceRow(
-                                title = Loc.get("settings_import", state.language),
-                                subtitle = Loc.get("settings_import_sub", state.language),
-                                selected = false,
-                                top = false,
-                                bottom = true,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onClick = {
-                                    tactileFeedback()
-                                    importLauncher.launch(arrayOf("application/zip"))
+                                FilledTonalButton(
+                                    onClick = {
+                                        tactileFeedback()
+                                        importLauncher.launch(arrayOf("application/zip"))
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(if (state.cornerRoundness == "expressive") 24.dp else 14.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(Loc.get("settings_import", state.language))
                                 }
-                            )
+                            }
                         }
                     }
                     SettingsSubMenu.LOGS -> { /* handled above */ }
