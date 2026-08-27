@@ -30,10 +30,6 @@ class TProxyService(
         @JvmStatic
         @Suppress("FunctionName")
         private external fun TProxyGetStats(): LongArray?
-
-        init {
-            System.loadLibrary("hev-socks5-tunnel")
-        }
     }
 
     /**
@@ -52,7 +48,7 @@ class TProxyService(
         try {
 //            LogUtil.i(AppConfig.TAG, "TProxyStartService...")
             TProxyStartService(configFile.absolutePath, vpnInterface.fd)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel exception: ${e.message}")
         }
     }

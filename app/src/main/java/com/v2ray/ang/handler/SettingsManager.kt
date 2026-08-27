@@ -474,8 +474,23 @@ object SettingsManager {
      * Check if HEV TUN is being used.
      * @return True if HEV TUN is used, false otherwise.
      */
+    private var hevLibAvailable: Boolean? = null
+
+    private fun isHevLibAvailable(): Boolean {
+        if (hevLibAvailable == null) {
+            hevLibAvailable = try {
+                System.loadLibrary("hev-socks5-tunnel")
+                true
+            } catch (t: Throwable) {
+                LogUtil.e(AppConfig.TAG, "HEV tun library unavailable, falling back to xray tun: ${t.message}")
+                false
+            }
+        }
+        return hevLibAvailable!!
+    }
+
     fun isUsingHevTun(): Boolean {
-        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true)
+        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true) && isHevLibAvailable()
     }
 
     /**
