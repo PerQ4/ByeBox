@@ -19,17 +19,31 @@ class TProxyService(
     private val restartCallback: () -> Unit
 ) : Tun2SocksControl {
     companion object {
+        private var libLoaded = false
+
         @JvmStatic
-        @Suppress("FunctionName")
-        private external fun TProxyStartService(configPath: String, fd: Int)
+        fun ensureLibLoaded() {
+            if (!libLoaded) {
+                System.loadLibrary("hev-socks5-tunnel")
+                libLoaded = true
+            }
+        }
 
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyStopService()
+        private external fun TProxyStartService(configPath: String, fd: Int): Boolean
 
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyGetStats(): LongArray?
+        private external fun TProxyStopService(): Boolean
+
+        @JvmStatic
+        @Suppress("FunctionName")
+        private external fun TProxyIsRunning(): Boolean
+
+        @JvmStatic
+        @Suppress("FunctionName")
+        private external fun TProxyGetStats(): LongArray
     }
 
     /**
@@ -47,6 +61,7 @@ class TProxyService(
 
         try {
 //            LogUtil.i(AppConfig.TAG, "TProxyStartService...")
+            ensureLibLoaded()
             TProxyStartService(configFile.absolutePath, vpnInterface.fd)
         } catch (e: Throwable) {
             LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel exception: ${e.message}")
@@ -99,6 +114,7 @@ class TProxyService(
     override fun stopTun2Socks() {
         try {
             LogUtil.i(AppConfig.TAG, "TProxyStopService...")
+            ensureLibLoaded()
             TProxyStopService()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to stop hev-socks5-tunnel", e)
