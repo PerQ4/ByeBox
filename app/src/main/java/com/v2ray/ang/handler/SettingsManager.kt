@@ -491,7 +491,7 @@ object SettingsManager {
     }
 
     fun isUsingHevTun(): Boolean {
-        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, false) && isHevLibAvailable()
+        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true) && isHevLibAvailable()
     }
 
     /**
