@@ -110,6 +110,17 @@ import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.ui.main.dashboard.InfoChip
 import com.perqa.byebox.theme.DarkThemeStyle
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 enum class SettingsSubMenu {
     CONNECTION,
@@ -235,6 +246,7 @@ fun SettingsTab(
     }
     val scrollState = rememberScrollState()
     val tactileFeedback = rememberTactileFeedback()
+    val scope = rememberCoroutineScope()
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importSettings(it) } }
@@ -1098,10 +1110,18 @@ fun SettingsTab(
                                         )
                                         Button(
                                             onClick = {
-                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                                    data = android.net.Uri.parse(state.updateInfo?.downloadUrl)
+                                                val info = state.updateInfo ?: return@Button
+                                                scope.launch {
+                                                    try {
+                                                        downloadAndInstallApk(settingsContext, info.apkUrl)
+                                                    } catch (e: Exception) {
+                                                        android.widget.Toast.makeText(
+                                                            settingsContext,
+                                                            e.message ?: "update download failed",
+                                                            android.widget.Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
                                                 }
-                                                settingsContext.startActivity(intent)
                                             },
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
@@ -1314,6 +1334,31 @@ fun ThemeButton(
     }
 }
 
+private suspend fun downloadAndInstallApk(context: Context, apkUrl: String) {
+    withContext(Dispatchers.IO) {
+        val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 30000
+            setRequestProperty("Accept", "application/octet-stream")
+        }
+        conn.connect()
+        val dir = File(context.getExternalFilesDir(null), "updates").apply { mkdirs() }
+        val file = File(dir, "byebox-update.apk")
+        conn.inputStream.use { input ->
+            file.outputStream().use { output -> input.copyTo(output) }
+        }
+        conn.disconnect()
+
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+}
+
 @Composable
 private fun UpdateBanner(
     updateInfo: com.perqa.byebox.core.UpdateInfo,
@@ -1322,6 +1367,7 @@ private fun UpdateBanner(
     cornerRoundness: String,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
     val isExpressive = cornerRoundness == "expressive"
     val radius = if (isExpressive) 30.dp else 18.dp
@@ -1398,10 +1444,17 @@ private fun UpdateBanner(
 
             Button(
                 onClick = {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                        data = android.net.Uri.parse(updateInfo.downloadUrl)
+                    scope.launch {
+                        try {
+                            downloadAndInstallApk(context, updateInfo.apkUrl)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(
+                                context,
+                                e.message ?: "update download failed",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
-                    context.startActivity(intent)
                 },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = contentColor,

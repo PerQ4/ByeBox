@@ -8,6 +8,7 @@ import java.net.URL
 
 data class UpdateInfo(
     val latestVersion: String,
+    val apkUrl: String,
     val downloadUrl: String,
     val releaseNotes: String,
 )
@@ -37,9 +38,27 @@ object UpdateChecker {
 
             if (compareVersions(latest, current) <= 0) return@withContext null
 
+            val assets = release.optJSONArray("assets")
+            var apkUrl = ""
+            if (assets != null) {
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name", "")
+                    if (name.contains("universal", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true)) {
+                        apkUrl = asset.optString("browser_download_url", "")
+                        break
+                    }
+                }
+            }
+            if (apkUrl.isBlank()) {
+                apkUrl = "https://github.com/PerQ4/byebox/releases/latest/download/byebox-universal-release.apk"
+            }
+            val releaseUrl = "https://github.com/PerQ4/byebox/releases/tag/$tagName"
+
             UpdateInfo(
                 latestVersion = tagName,
-                downloadUrl = "https://github.com/PerQ4/byebox/releases/tag/$tagName",
+                apkUrl = apkUrl,
+                downloadUrl = releaseUrl,
                 releaseNotes = body,
             )
         } catch (_: Exception) {
