@@ -2,6 +2,8 @@ package com.perqa.byebox.ui.main
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -60,13 +62,18 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +102,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
@@ -225,6 +233,9 @@ fun SettingsTab(
     }
     val scrollState = rememberScrollState()
     val tactileFeedback = rememberTactileFeedback()
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.importSettings(it) } }
 
     var selectedSubMenu by remember { mutableStateOf<SettingsSubMenu?>(null) }
     
@@ -1034,6 +1045,120 @@ fun SettingsTab(
                                 language = state.language
                             )
                         }
+
+                        SettingsGroup(title = Loc.get("update_check", state.language)) {
+                            val settingsContext = LocalContext.current
+                            val isExpressive = state.cornerRoundness == "expressive"
+                            val radius = if (isExpressive) 24.dp else 14.dp
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(radius)),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                text = Loc.get("update_check", state.language),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = String.format(
+                                                    Loc.get("update_current_version", state.language),
+                                                    BuildConfig.VERSION_NAME
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    if (state.updateInfo != null) {
+                                        Text(
+                                            text = String.format(
+                                                Loc.get("update_available", state.language),
+                                                state.updateInfo.latestVersion
+                                            ),
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Button(
+                                            onClick = {
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                    data = android.net.Uri.parse(state.updateInfo?.downloadUrl)
+                                                }
+                                                settingsContext.startActivity(intent)
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(Loc.get("update_download", state.language))
+                                        }
+                                    } else {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                tactileFeedback()
+                                                viewModel.checkForUpdates(showLatest = true)
+                                            },
+                                            enabled = !state.isCheckingUpdate,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            if (state.isCheckingUpdate) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(18.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(Loc.get("update_checking", state.language))
+                                            } else {
+                                                Text(Loc.get("update_check", state.language))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsGroup(title = Loc.get("settings_backup", state.language)) {
+                            SettingsChoiceRow(
+                                title = Loc.get("settings_export", state.language),
+                                subtitle = Loc.get("settings_export_sub", state.language),
+                                selected = false,
+                                top = true,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onClick = {
+                                    tactileFeedback()
+                                    viewModel.exportSettings()
+                                }
+                            )
+                            SettingsChoiceRow(
+                                title = Loc.get("settings_import", state.language),
+                                subtitle = Loc.get("settings_import_sub", state.language),
+                                selected = false,
+                                top = false,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onClick = {
+                                    tactileFeedback()
+                                    importLauncher.launch(arrayOf("application/zip"))
+                                }
+                            )
+                        }
                     }
                     SettingsSubMenu.LOGS -> { /* handled above */ }
                     null -> {}
@@ -1190,13 +1315,19 @@ private fun UpdateBanner(
     cornerRoundness: String,
 ) {
     val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    val isExpressive = cornerRoundness == "expressive"
+    val radius = if (isExpressive) 30.dp else 18.dp
+    val containerColor = MaterialTheme.colorScheme.tertiaryContainer
+    val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp)),
-        color = MaterialTheme.colorScheme.tertiaryContainer
+            .clip(RoundedCornerShape(radius)),
+        color = containerColor
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
@@ -1205,31 +1336,73 @@ private fun UpdateBanner(
                     }
                     context.startActivity(intent)
                 }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Cloud,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = "Доступно обновление ${updateInfo.latestVersion}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(28.dp)
                 )
-                if (updateInfo.releaseNotes.isNotBlank()) {
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = String.format(Loc.get("update_available", language), updateInfo.latestVersion),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = contentColor
+                    )
+                    Text(
+                        text = String.format(Loc.get("update_current_version", language), BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            if (updateInfo.releaseNotes.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(
+                        onClick = { expanded = !expanded },
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = if (expanded) Loc.get("update_hide", language) else Loc.get("update_whats_new", language),
+                            color = contentColor
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                     Text(
                         text = updateInfo.releaseNotes,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
-                        maxLines = 2,
+                        color = contentColor.copy(alpha = 0.8f),
+                        maxLines = if (expanded) Int.MAX_VALUE else 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+
+            Button(
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        data = android.net.Uri.parse(updateInfo.downloadUrl)
+                    }
+                    context.startActivity(intent)
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = contentColor,
+                    contentColor = containerColor
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(Loc.get("update_download", language))
             }
         }
     }

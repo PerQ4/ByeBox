@@ -81,6 +81,7 @@ object AngConfigManager {
     fun shareNonCustomConfigsToClipboard(context: Context, serverList: List<String>): Int {
         try {
             val sb = StringBuilder()
+            var count = 0
             for (guid in serverList) {
                 val url = shareConfig(guid)
                 if (TextUtils.isEmpty(url)) {
@@ -88,11 +89,12 @@ object AngConfigManager {
                 }
                 sb.append(url)
                 sb.appendLine()
+                count++
             }
-            if (sb.count() > 0) {
+            if (count > 0) {
                 Utils.setClipboard(context, sb.toString())
             }
-            return sb.lines().count() - 1
+            return count
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to share non-custom configs to clipboard", e)
             return -1
@@ -255,10 +257,11 @@ object AngConfigManager {
 
             // Batch save all parsed configs (only one serverList read/write)
             if (configs.isNotEmpty()) {
-                if (!append) {
-                    MmkvManager.removeServerViaSubid(subid)
+                val keyToProfile = if (append) {
+                    batchSaveConfigs(configs, subid)
+                } else {
+                    batchReplaceConfigs(configs, subid)
                 }
-                val keyToProfile = batchSaveConfigs(configs, subid)
                 val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
                 matchKey?.let { MmkvManager.setSelectServer(it) }
             }
@@ -298,6 +301,75 @@ object AngConfigManager {
         // Write serverList once
         MmkvManager.encodeServerList(serverList, subid)
         return keyToProfile
+    }
+
+    /**
+     * Replaces a subscription's servers while preserving stable GUIDs for configs
+     * that still match (by server+port+password). This keeps profile references
+     * (selected server per profile) valid across subscription updates.
+     *
+     * @param configs The list of ProfileItem to save.
+     * @param subid The subscription ID.
+     * @return Map of generated keys to their corresponding ProfileItem.
+     */
+    private fun batchReplaceConfigs(configs: List<ProfileItem>, subid: String): Map<String, ProfileItem> {
+        // Read existing server list + configs once
+        val oldServerList = MmkvManager.decodeServerList(subid)
+        val oldBySignature = mutableMapOf<String, String>()
+        oldServerList.forEach { key ->
+            val old = MmkvManager.decodeServerConfig(key)
+            if (old != null) {
+                configSignature(old)?.let { sig -> oldBySignature.putIfAbsent(sig, key) }
+            }
+        }
+
+        val keyToProfile = mutableMapOf<String, ProfileItem>()
+        val newServerList = mutableListOf<String>()
+        val keptKeys = mutableSetOf<String>()
+
+        // Reuse existing GUIDs for configs that still match; mint new ones for new servers
+        configs.forEach { config ->
+            val signature = configSignature(config)
+            var key = signature?.let { oldBySignature[it] }.takeIf { it != null && it !in keptKeys }
+            if (key == null) {
+                key = Utils.getUuid()
+            }
+            keptKeys += key
+
+            MmkvManager.encodeProfileDirect(key, JsonUtil.toJson(config))
+
+            if (!newServerList.contains(key)) {
+                newServerList.add(0, key)
+            }
+            keyToProfile[key] = config
+        }
+
+        // Remove stale servers that no longer exist in the subscription
+        MmkvManager.removeServerViaSubidNotIn(subid, keptKeys)
+
+        // Replace the list with the new ordering
+        MmkvManager.encodeServerList(newServerList, subid)
+
+        // Restore a selected server if the old one was dropped
+        val selected = MmkvManager.getSelectServer()
+        if (selected == null || selected.isBlank()) {
+            newServerList.firstOrNull()?.let { MmkvManager.setSelectServer(it) }
+        }
+
+        return keyToProfile
+    }
+
+    /**
+     * Returns a stable signature identifying a server's identity:
+     * address + port + password (uuid). Two configs with the same signature
+     * are considered the "same server" across subscription refreshes.
+     */
+    private fun configSignature(config: ProfileItem): String? {
+        val server = config.server?.trim().orEmpty()
+        val port = config.serverPort?.trim().orEmpty()
+        val password = config.password?.trim().orEmpty()
+        if (server.isEmpty() && port.isEmpty()) return null
+        return "${server.lowercase()}|$port|$password"
     }
 
     /**

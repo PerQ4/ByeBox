@@ -19,13 +19,17 @@ object PingProbe {
         configs: List<ProxyConfig>,
         healthUrl: String,
         strictHealthCheck: Boolean = false,
+        onStart: (config: ProxyConfig) -> Unit = { _ -> },
         onResult: (config: ProxyConfig, ping: Int?) -> Unit = { _, _ -> }
     ): ProbeSummary = coroutineScope {
         var ok = 0
         var failed = 0
         configs.chunked(8).forEach { batch ->
             batch.map { config ->
-                async { config to probeConfigLatency(config, healthUrl, strictHealthCheck) }
+                async {
+                    onStart(config)
+                    config to probeConfigLatency(config, healthUrl, strictHealthCheck)
+                }
             }.awaitAll().forEach { (config, ping) ->
                 if (ping != null) {
                     ok += 1

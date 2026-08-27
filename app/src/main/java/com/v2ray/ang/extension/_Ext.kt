@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import com.perqa.byebox.ByeBoxApplication
 import com.v2ray.ang.enums.EConfigType
@@ -17,12 +19,25 @@ val Context.v2RayApplication: ByeBoxApplication?
     get() = applicationContext as? ByeBoxApplication
 
 /**
+ * Shows a toast on the main thread regardless of the calling thread.
+ */
+private fun Context.showToastSafe(message: CharSequence) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    } else {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+/**
  * Shows a toast message with the given resource ID.
  *
  * @param message The resource ID of the message to show.
  */
 fun Context.toast(message: Int) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(getString(message))
 }
 
 /**
@@ -31,7 +46,7 @@ fun Context.toast(message: Int) {
  * @param message The text of the message to show.
  */
 fun Context.toast(message: CharSequence) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(message)
 }
 
 /**
@@ -40,7 +55,7 @@ fun Context.toast(message: CharSequence) {
  * @param message The resource ID of the message to show.
  */
 fun Context.toastSuccess(message: Int) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(getString(message))
 }
 
 /**
@@ -49,7 +64,7 @@ fun Context.toastSuccess(message: Int) {
  * @param message The text of the message to show.
  */
 fun Context.toastSuccess(message: CharSequence) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(message)
 }
 
 /**
@@ -58,7 +73,7 @@ fun Context.toastSuccess(message: CharSequence) {
  * @param message The resource ID of the message to show.
  */
 fun Context.toastError(message: Int) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(getString(message))
 }
 
 /**
@@ -67,7 +82,7 @@ fun Context.toastError(message: Int) {
  * @param message The text of the message to show.
  */
 fun Context.toastError(message: CharSequence) {
-    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    showToastSafe(message)
 }
 
 const val THRESHOLD = 1000L

@@ -234,6 +234,32 @@ object MmkvManager {
     }
 
     /**
+     * Removes servers from a subscription that are not in the keep set.
+     * Used when refreshing a subscription with stable GUIDs so that stale
+     * servers (removed upstream) are cleaned up while live ones keep their keys.
+     *
+     * @param subscriptionId The subscription ID.
+     * @param keepKeys The set of server GUIDs that must be preserved.
+     */
+    fun removeServerViaSubidNotIn(subscriptionId: String?, keepKeys: Set<String>) {
+        val subId = getSubscriptionId(subscriptionId)
+        val serverList = decodeServerList(subId)
+
+        serverList.toList().forEach { guid ->
+            if (guid !in keepKeys) {
+                if (getSelectServer() == guid) {
+                    mainStorage.remove(KEY_SELECTED_SERVER)
+                }
+                profileFullStorage.remove(guid)
+                serverAffStorage.remove(guid)
+            }
+        }
+
+        val pruned = serverList.filter { it in keepKeys }.toMutableList()
+        encodeServerList(pruned, subId)
+    }
+
+    /**
      * Decodes the server affiliation information.
      *
      * @param guid The server GUID.

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
@@ -28,11 +30,41 @@ android {
         }
     }
 
+    val localProps = Properties().apply {
+        val localFile = rootProject.file("local.properties")
+        if (localFile.exists()) {
+            localFile.inputStream().use { load(it) }
+        }
+    }
+
+    val ksPath = localProps.getProperty("BYEBOX_KEYSTORE_PATH", "keystore/byebox.jks")
+    val ksPass = localProps.getProperty("BYEBOX_KEYSTORE_PASSWORD", "ByeBoxSign2024!")
+    val ksAlias = localProps.getProperty("BYEBOX_KEY_ALIAS", "byebox")
+    val kPass = localProps.getProperty("BYEBOX_KEY_PASSWORD", "ByeBoxSign2024!")
+
+    signingConfigs {
+        create("byebox") {
+            storeFile = rootProject.file(ksPath)
+            storePassword = ksPass
+            keyAlias = ksAlias
+            keyPassword = kPass
+        }
+        getByName("debug") {
+            storeFile = rootProject.file(ksPath)
+            storePassword = ksPass
+            keyAlias = ksAlias
+            keyPassword = kPass
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("byebox")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("byebox")
         }
     }
     compileOptions {

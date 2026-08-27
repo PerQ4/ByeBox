@@ -98,7 +98,6 @@ object AppLogger {
     fun clearLogs() {
         logBuffer.clear()
         flushPendingWrites()
-        mainHandler.post { _logs.value = listOf("[SYSTEM] Логи очищены.") }
         runCatching {
             appContext?.let { ctx ->
                 val internalFile = File(ctx.filesDir, "box_log.txt")
@@ -112,6 +111,7 @@ object AppLogger {
                 }
             }
         }
+        log("[SYSTEM] Логи очищены.")
     }
 
     private fun log(formattedMessage: String) {

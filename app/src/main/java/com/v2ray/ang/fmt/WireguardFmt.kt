@@ -25,7 +25,7 @@ object WireguardFmt : FmtBase() {
 
         config.remarks = Utils.decodeURIComponent(uri.fragment.orEmpty()).let { it.ifEmpty { "none" } }
         config.server = uri.idnHost
-        config.serverPort = uri.port.toString()
+        config.serverPort = if (uri.port > 0) uri.port.toString() else ""
 
         config.secretKey = uri.userInfo.orEmpty()
         config.localAddress = queryParam["address"] ?: AppConfig.WIREGUARD_LOCAL_ADDRESS_V4
@@ -84,14 +84,23 @@ object WireguardFmt : FmtBase() {
         config.publicKey = peerParams["publickey"].orEmpty()
         config.preSharedKey = peerParams["presharedkey"]?.nullIfBlank()
         val endpoint = peerParams["endpoint"].orEmpty()
-        val endpointParts = endpoint.split(":", limit = 2)
-        if (endpointParts.size == 2) {
-            config.server = endpointParts[0]
-            config.serverPort = endpointParts[1]
+        val (host, port) = if (endpoint.startsWith("[")) {
+            val close = endpoint.indexOf(']')
+            if (close > 0) {
+                endpoint.substring(1, close) to endpoint.substring(close + 2).removePrefix(":")
+            } else {
+                endpoint to ""
+            }
         } else {
-            config.server = endpoint
-            config.serverPort = ""
+            val idx = endpoint.lastIndexOf(':')
+            if (idx > 0) {
+                endpoint.substring(0, idx) to endpoint.substring(idx + 1)
+            } else {
+                endpoint to ""
+            }
         }
+        config.server = host
+        config.serverPort = port
         config.reserved = peerParams["reserved"] ?: "0,0,0"
 
         return config
