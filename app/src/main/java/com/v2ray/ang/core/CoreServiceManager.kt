@@ -33,7 +33,9 @@ import com.v2ray.ang.util.MessageUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.ProcessFinder
@@ -205,7 +207,7 @@ object CoreServiceManager {
     fun startCoreLoop(vpnInterface: ParcelFileDescriptor?): Boolean {
         if (coreController.isRunning) {
             LogUtil.w(AppConfig.TAG, "StartCore-Manager: Core already running")
-            return false
+            return true
         }
 
         val service = getService()
@@ -516,9 +518,19 @@ object CoreServiceManager {
 
                 AppConfig.MSG_STATE_RESTART -> {
                     LogUtil.i(AppConfig.TAG, "StartCore-Manager: Restart service")
+                    val svc = getService() ?: return
+                    MessageUtil.sendMsg2UI(svc, AppConfig.MSG_STATE_RESTART, "")
                     serviceControl.stopService()
-                    Thread.sleep(500L)
-                    startVService(serviceControl.getService())
+                    CoroutineScope(Dispatchers.IO).launch {
+                        var waited = 0
+                        while (coreController.isRunning && waited < 3000) {
+                            delay(100L)
+                            waited += 100
+                        }
+                        withContext(Dispatchers.Main) {
+                            startVService(serviceControl.getService())
+                        }
+                    }
                 }
 
                 AppConfig.MSG_MEASURE_DELAY -> {

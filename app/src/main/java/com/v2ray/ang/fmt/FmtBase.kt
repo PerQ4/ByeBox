@@ -28,7 +28,7 @@ open class FmtBase {
             "%s@%s:%s",
             Utils.encodeURIComponent(userInfo ?: ""),
             Utils.getIpv6Address(HttpUtil.toIdnDomain(config.server.orEmpty())),
-            config.serverPort
+            config.serverPort ?: ""
         )
 
         return "${url}${query}#${Utils.encodeURIComponent(config.remarks)}"
@@ -41,8 +41,17 @@ open class FmtBase {
      * @return a map of query parameters
      */
     fun getQueryParam(uri: URI): Map<String, String> {
-        return uri.rawQuery.split("&")
-            .associate { it.split("=").let { (k, v) -> k to Utils.decodeURIComponent(v) } }
+        val rawQuery = uri.rawQuery ?: return emptyMap()
+        return rawQuery.split("&")
+            .filter { it.isNotEmpty() }
+            .associate { pair ->
+                val idx = pair.indexOf('=')
+                if (idx < 0) {
+                    pair to ""
+                } else {
+                    pair.substring(0, idx) to Utils.decodeURIComponent(pair.substring(idx + 1))
+                }
+            }
     }
 
     /**
@@ -149,8 +158,14 @@ open class FmtBase {
                 config.xhttpExtra?.nullIfBlank()?.let { dicQuery["extra"] = it }
             }
 
-            NetworkType.HTTP, NetworkType.H2 -> {
+            NetworkType.HTTP -> {
                 dicQuery["type"] = "http"
+                config.host?.nullIfBlank()?.let { dicQuery["host"] = it }
+                config.path?.nullIfBlank()?.let { dicQuery["path"] = it }
+            }
+
+            NetworkType.H2 -> {
+                dicQuery["type"] = "h2"
                 config.host?.nullIfBlank()?.let { dicQuery["host"] = it }
                 config.path?.nullIfBlank()?.let { dicQuery["path"] = it }
             }

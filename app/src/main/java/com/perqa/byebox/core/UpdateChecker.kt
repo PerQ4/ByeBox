@@ -26,8 +26,9 @@ object UpdateChecker {
             val json = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
 
-            val tagName = json.substringAfter("\"tag_name\":\"").substringBefore("\"")
-            val body = json.substringAfter("\"body\":\"").substringBefore("\"")
+            val release = org.json.JSONObject(json)
+            val tagName = release.optString("tag_name", "").trim()
+            val body = release.optString("body", "")
 
             if (tagName.isBlank()) return@withContext null
 
@@ -39,7 +40,7 @@ object UpdateChecker {
             UpdateInfo(
                 latestVersion = tagName,
                 downloadUrl = "https://github.com/PerQ4/byebox/releases/tag/$tagName",
-                releaseNotes = body.take(500),
+                releaseNotes = body,
             )
         } catch (_: Exception) {
             null

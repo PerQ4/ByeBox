@@ -167,17 +167,11 @@ fun CockpitServerCard(
         }
 
         val ping = activeConfig.ping
-        val pillBg = when {
-            ping == null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-            ping < 60 -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-            ping < 120 -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
-            else -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-        }
-        val pillColor = when {
-            ping == null -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            ping < 60 -> MaterialTheme.colorScheme.primary
-            ping < 120 -> MaterialTheme.colorScheme.tertiary
-            else -> MaterialTheme.colorScheme.error
+        val (pillBg, pillColor) = when {
+            ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+            ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+            ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+            else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
         }
         Box(
             modifier = Modifier
@@ -388,17 +382,11 @@ fun StatusOverviewCard(
                     }
 
                     val ping = activeConfig.ping
-                    val pillBg = when {
-                        ping == null -> contentColor.copy(alpha = 0.08f)
-                        ping < 60 -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        ping < 120 -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
-                        else -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                    }
-                    val pillColor = when {
-                        ping == null -> contentColorVariant
-                        ping < 60 -> MaterialTheme.colorScheme.primary
-                        ping < 120 -> MaterialTheme.colorScheme.tertiary
-                        else -> MaterialTheme.colorScheme.error
+                    val (pillBg, pillColor) = when {
+                        ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+                        ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+                        ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+                        else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
                     }
                     Box(
                         modifier = Modifier

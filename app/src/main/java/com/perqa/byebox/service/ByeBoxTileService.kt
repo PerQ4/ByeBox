@@ -73,8 +73,12 @@ class ByeBoxTileService : TileService() {
                     openMainAndCollapse()
                     return
                 }
-                updateTileState(connecting = true)
-                CoreServiceManager.startVServiceFromToggle(context)
+                val started = CoreServiceManager.startVServiceFromToggle(context)
+                if (started) {
+                    updateTileState(connecting = true)
+                } else {
+                    updateTileState(active = false)
+                }
             }
         }
     }

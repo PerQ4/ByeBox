@@ -24,6 +24,7 @@ import com.perqa.byebox.core.HapticType
 import com.perqa.byebox.data.SettingsProfileData
 import com.perqa.byebox.data.ProfilePresetManager
 import com.perqa.byebox.core.PingProbe
+import com.perqa.byebox.core.SettingsBackup
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,6 +139,8 @@ data class MainUiState(
     val routingDomainStrategy: String = "AsIs",
     val outboundDomainResolveMethod: String = "0",
     val updateInfo: UpdateInfo? = null,
+    val isCheckingUpdate: Boolean = false,
+    val pingingConfigIds: Set<String> = emptySet(),
 )
 
 data class InstalledAppInfo(
@@ -198,6 +201,8 @@ class MainScreenViewModel(
     private val _routingDomainStrategy = MutableStateFlow("AsIs")
     private val _outboundDomainResolveMethod = MutableStateFlow("0")
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    private val _pingingConfigIds = MutableStateFlow<Set<String>>(emptySet())
     private val _logs = AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -217,6 +222,10 @@ class MainScreenViewModel(
                     startTrafficUpdates()
                     loadDataFromMmkv()
                     triggerHaptic(HapticType.SUCCESS)
+                }
+                AppConfig.MSG_STATE_RESTART -> {
+                    _connectionStatus.value = ConnectionStatus.RECONNECTING
+                    triggerHaptic(HapticType.MEDIUM)
                 }
                 AppConfig.MSG_STATE_NOT_RUNNING,
                 AppConfig.MSG_STATE_STOP_SUCCESS -> {
@@ -293,7 +302,9 @@ class MainScreenViewModel(
         _customProxyRules,
         _routingDomainStrategy,
         _outboundDomainResolveMethod,
-        _updateInfo
+        _updateInfo,
+        _isCheckingUpdate,
+        _pingingConfigIds
     ) { a ->
         val f = TypedFlows(a)
         MainUiState(
@@ -344,7 +355,9 @@ class MainScreenViewModel(
             customProxyRules = f.get(44),
             routingDomainStrategy = f.get(45),
             outboundDomainResolveMethod = f.get(46),
-            updateInfo = f.get(47)
+            updateInfo = f.get(47),
+            isCheckingUpdate = f.get(48),
+            pingingConfigIds = f.get(49)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -383,6 +396,52 @@ class MainScreenViewModel(
 
         viewModelScope.launch {
             _updateInfo.value = UpdateChecker.check()
+        }
+    }
+
+    fun checkForUpdates(showLatest: Boolean = false) {
+        if (_isCheckingUpdate.value) return
+        viewModelScope.launch {
+            _isCheckingUpdate.value = true
+            val result = UpdateChecker.check()
+            _updateInfo.value = result
+            _isCheckingUpdate.value = false
+            if (result == null && showLatest) {
+                showToast(Loc.get("update_latest", _language.value))
+            }
+        }
+    }
+
+    fun exportSettings() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val name = SettingsBackup.exportToDownloads(appContext)
+                if (name != null) {
+                    showToast(String.format(Loc.get("settings_export_success", _language.value), name))
+                } else {
+                    showToast(Loc.get("settings_export_fail", _language.value))
+                }
+            } catch (e: Exception) {
+                showToast(Loc.get("settings_export_fail", _language.value))
+            }
+        }
+    }
+
+    fun importSettings(uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = try {
+                SettingsBackup.importFromUri(appContext, uri)
+            } catch (e: Exception) {
+                false
+            }
+            if (ok) {
+                showToast(Loc.get("settings_import_success", _language.value))
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }, 1500)
+            } else {
+                showToast(Loc.get("settings_import_fail", _language.value))
+            }
         }
     }
 
@@ -466,11 +525,11 @@ class MainScreenViewModel(
     }
 
     fun selectBestConfig() {
-        val best = _configs.value
+        val responsive = _configs.value
             .filter { it.ping != null && it.ping < 999 && it.failureCount < 3 }
-            .minByOrNull { it.ping ?: Int.MAX_VALUE }
+        val best = responsive.minByOrNull { it.ping ?: Int.MAX_VALUE }
             ?: _configs.value
-                .filter { it.failureCount < 3 }
+                .filter { it.ping != null && it.ping < 999 }
                 .minByOrNull { it.ping ?: Int.MAX_VALUE }
             ?: _configs.value.firstOrNull()
 
@@ -630,21 +689,28 @@ class MainScreenViewModel(
             try {
                 addLog("[SYSTEM] Запуск тестирования задержки серверов...")
                 val healthUrl = _healthCheckUrl.value.trim()
-                val summary = PingProbe.probeConfigs(_configs.value, healthUrl) { config, ping ->
-                    if (ping != null) {
-                        MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
-                        addLog("[PING] ${config.name} -> $ping ms")
-                    } else {
-                        MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
-                        addLog("[PING] ${config.name} -> timeout")
+                val summary = PingProbe.probeConfigs(
+                    _configs.value,
+                    healthUrl,
+                    onStart = { config -> _pingingConfigIds.value = _pingingConfigIds.value + config.id },
+                    onResult = { config, ping ->
+                        _pingingConfigIds.value = _pingingConfigIds.value - config.id
+                        if (ping != null) {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
+                            addLog("[PING] ${config.name} -> $ping ms")
+                        } else {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
+                            addLog("[PING] ${config.name} -> timeout")
+                        }
                     }
-                }
+                )
                 addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
                 showToast(String.format(Loc.get("toast_ping_updated", _language.value), summary.ok, summary.total))
                 loadDataFromMmkv()
                 triggerHaptic(HapticType.SUCCESS)
             } finally {
                 _isPinging.value = false
+                _pingingConfigIds.value = emptySet()
             }
         }
     }
@@ -655,6 +721,7 @@ class MainScreenViewModel(
         viewModelScope.launch {
             if (_isPinging.value) return@launch
             _isPinging.value = true
+            _pingingConfigIds.value = _pingingConfigIds.value + activeId
             try {
                 addLog("[SYSTEM] Тестирование задержки активного сервера ${activeConfig.name}...")
                 val ping = PingProbe.probeTcpLatency(activeConfig) ?: 999
@@ -665,6 +732,7 @@ class MainScreenViewModel(
                 triggerHaptic(if (ping < 999) HapticType.SUCCESS else HapticType.ERROR)
             } finally {
                 _isPinging.value = false
+                _pingingConfigIds.value = emptySet()
             }
         }
     }
@@ -678,21 +746,28 @@ class MainScreenViewModel(
             try {
                 addLog("[SYSTEM] Пинг источника: $sourceName (${configs.size})")
                 val healthUrl = _healthCheckUrl.value.trim()
-                val summary = PingProbe.probeConfigs(configs, healthUrl) { config, ping ->
-                    if (ping != null) {
-                        MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
-                        addLog("[PING] ${config.name} -> $ping ms")
-                    } else {
-                        MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
-                        addLog("[PING] ${config.name} -> timeout")
+                val summary = PingProbe.probeConfigs(
+                    configs,
+                    healthUrl,
+                    onStart = { config -> _pingingConfigIds.value = _pingingConfigIds.value + config.id },
+                    onResult = { config, ping ->
+                        _pingingConfigIds.value = _pingingConfigIds.value - config.id
+                        if (ping != null) {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
+                            addLog("[PING] ${config.name} -> $ping ms")
+                        } else {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
+                            addLog("[PING] ${config.name} -> timeout")
+                        }
                     }
-                }
+                )
                 addLog("[SYSTEM] Пинг источника завершён: $sourceName, ${summary.ok} ok, ${summary.failed} timeout")
                 showToast(String.format(Loc.get("toast_ping_source_result", _language.value), summary.ok, summary.total))
                 loadDataFromMmkv()
                 triggerHaptic(HapticType.SUCCESS)
             } finally {
                 _isPinging.value = false
+                _pingingConfigIds.value = emptySet()
             }
         }
     }
@@ -727,7 +802,7 @@ class MainScreenViewModel(
         
         MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (enabled) "1" else "2")
         addLog("[SYSTEM] Обход локальных сетей: ${if (enabled) "включен" else "выключен"}")
-        showToast(Loc.get("toast_lan_bypass_on", _language.value))
+        showToggleToast("toast_lan_bypass_on", "toast_lan_bypass_off", enabled)
     }
 
     fun changeVpnModeEnabled(enabled: Boolean) {
@@ -751,7 +826,7 @@ class MainScreenViewModel(
         _proxySharingEnabled.value = enabled
         MmkvManager.encodeSettings(AppConfig.PREF_PROXY_SHARING, enabled)
         addLog("[SYSTEM] LAN Sharing: ${if (enabled) "разрешен" else "запрещен"}")
-        showToast(Loc.get("toast_lan_sharing_on", _language.value))
+        showToggleToast("toast_lan_sharing_on", "toast_lan_sharing_off", enabled)
     }
 
     fun changeMuxEnabled(enabled: Boolean) {
@@ -760,7 +835,7 @@ class MainScreenViewModel(
         writeBoolean("base_mux_enabled", enabled)
         propagateActiveProfile()
         addLog("[SYSTEM] Мультиплексирование (Mux): ${if (enabled) "включено" else "выключено"}")
-        showToast(Loc.get("toast_mux_on", _language.value))
+        showToggleToast("toast_mux_on", "toast_mux_off", enabled)
     }
 
     fun changeAppRoutingMode(mode: AppRoutingMode) {
@@ -824,7 +899,7 @@ class MainScreenViewModel(
         writeBoolean("base_fake_dns_enabled", enabled)
         propagateActiveProfile()
         addLog("[SYSTEM] Fake DNS: ${if (enabled) "включен" else "выключен"}")
-        showToast(Loc.get("toast_fake_dns_on", _language.value))
+        showToggleToast("toast_fake_dns_on", "toast_fake_dns_off", enabled)
     }
 
     fun changeFragmentEnabled(enabled: Boolean) {
@@ -833,28 +908,28 @@ class MainScreenViewModel(
         writeBoolean("base_fragment_enabled", enabled)
         propagateActiveProfile()
         addLog("[SYSTEM] Фрагментация (Fragment): ${if (enabled) "включена" else "выключена"}")
-        showToast(Loc.get("toast_fragment_on", _language.value))
+        showToggleToast("toast_fragment_on", "toast_fragment_off", enabled)
     }
 
     fun changeIpv6Enabled(enabled: Boolean) {
         _ipv6Enabled.value = enabled
         MmkvManager.encodeSettings(AppConfig.PREF_IPV6_ENABLED, enabled)
         addLog("[SYSTEM] Поддержка IPv6: ${if (enabled) "включена" else "выключена"}")
-        showToast(Loc.get("toast_ipv6_on", _language.value))
+        showToggleToast("toast_ipv6_on", "toast_ipv6_off", enabled)
     }
 
     fun changeStartOnBootEnabled(enabled: Boolean) {
         _startOnBootEnabled.value = enabled
         MmkvManager.encodeStartOnBoot(enabled)
         addLog("[SYSTEM] Автозапуск при загрузке: ${if (enabled) "включен" else "выключен"}")
-        showToast(Loc.get("toast_autostart_on", _language.value))
+        showToggleToast("toast_autostart_on", "toast_autostart_off", enabled)
     }
 
     fun changeBlockingEnabled(enabled: Boolean) {
         _blockingEnabled.value = enabled
         MmkvManager.encodeSettings("pref_blocking", enabled)
         addLog("[SYSTEM] Блокировка без VPN (Kill Switch): ${if (enabled) "включена" else "выключена"}")
-        showToast(Loc.get("toast_killswitch_on", _language.value))
+        showToggleToast("toast_killswitch_on", "toast_killswitch_off", enabled)
     }
 
     fun changeSniffingEnabled(enabled: Boolean) {
@@ -863,7 +938,7 @@ class MainScreenViewModel(
         writeBoolean("base_sniffing_enabled", enabled)
         propagateActiveProfile()
         addLog("[SYSTEM] Сниффинг трафика: ${if (enabled) "включен" else "выключен"}")
-        showToast(Loc.get("toast_sniffing_on", _language.value))
+        showToggleToast("toast_sniffing_on", "toast_sniffing_off", enabled)
     }
 
     fun changeConfirmRemoveEnabled(enabled: Boolean) {
@@ -875,7 +950,7 @@ class MainScreenViewModel(
         _preferIpv6Enabled.value = enabled
         MmkvManager.encodeSettings(AppConfig.PREF_PREFER_IPV6, enabled)
         addLog("[SYSTEM] Предпочитать IPv6: ${if (enabled) "включено" else "выключено"}")
-        showToast(Loc.get("toast_prefer_ipv6_on", _language.value))
+        showToggleToast("toast_prefer_ipv6_on", "toast_prefer_ipv6_off", enabled)
     }
 
     fun changeTapImpactScale(scale: Float) {
@@ -1119,6 +1194,10 @@ class MainScreenViewModel(
         _toastMessage.value = message
     }
 
+    private fun showToggleToast(onKey: String, offKey: String, enabled: Boolean) {
+        showToast(Loc.get(if (enabled) onKey else offKey, _language.value))
+    }
+
     fun clearToast() {
         _toastMessage.value = null
     }
@@ -1289,7 +1368,7 @@ class MainScreenViewModel(
         }
         // 6. tun_stack
         if (!prefs.contains("base_tun_stack")) {
-            val oldVal = prefs.getString("tun_stack", "SYSTEM")
+            val oldVal = prefs.getString("tun_stack", "GVISOR")
             editor.putString("base_tun_stack", oldVal)
         }
         // 7. fake dns

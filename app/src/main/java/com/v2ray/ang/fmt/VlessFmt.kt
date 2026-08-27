@@ -25,11 +25,14 @@ object VlessFmt : FmtBase() {
 
         config.remarks = Utils.decodeURIComponent(uri.fragment.orEmpty()).let { it.ifEmpty { "none" } }
         config.server = uri.idnHost
-        config.serverPort = uri.port.toString()
+        config.serverPort = if (uri.port > 0) uri.port.toString() else ""
         config.password = uri.userInfo
         config.method = queryParam["encryption"] ?: "none"
 
         getItemFormQuery(config, queryParam)
+        if (config.security.isNullOrEmpty()) {
+            config.security = queryParam["security"] ?: "none"
+        }
 
         return config
     }

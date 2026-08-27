@@ -185,7 +185,6 @@ object CoreConfigContextBuilder {
                 .filter { Utils.isPureIpAddress(it.server!!) || Utils.isValidUrl(it.server!!) }
                 .filter { !it.configType.isComplexType() }
                 .toList()
-                .reversed()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to resolve proxy chain profiles for '${config.remarks}'", e)
             return listOf(config)

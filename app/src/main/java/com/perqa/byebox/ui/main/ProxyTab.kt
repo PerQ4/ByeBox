@@ -15,6 +15,12 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateValue
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -93,8 +99,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -411,6 +422,7 @@ fun ProxyTab(
                         source = sourcesByName[sourceName],
                         configs = configs,
                         activeConfigId = state.activeConfigId,
+                        pingingConfigIds = state.pingingConfigIds,
                         onSelect = { viewModel.selectConfig(it) },
                         onDelete = { id ->
                             if (state.confirmRemoveEnabled) {
@@ -480,6 +492,7 @@ fun ProxyTab(
                             ServerItemCard(
                                 config = config,
                                 isActive = isActive,
+                                isPinging = config.id in state.pingingConfigIds,
                                 onSelect = { viewModel.selectConfig(config.id) },
                                 onDelete = {
                                     if (state.confirmRemoveEnabled) {
@@ -988,6 +1001,7 @@ fun SourceGroupCard(
     source: SubscriptionSource?,
     configs: List<ProxyConfig>,
     activeConfigId: String?,
+    pingingConfigIds: Set<String> = emptySet(),
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit,
     onRefreshSource: (String) -> Unit,
@@ -1164,6 +1178,7 @@ fun SourceGroupCard(
                         ServerItemCard(
                             config = config,
                             isActive = config.id == activeConfigId,
+                            isPinging = config.id in pingingConfigIds,
                             onSelect = { onSelect(config.id) },
                             onDelete = { onDelete(config.id) },
                             compactMode = compactMode,
@@ -1948,6 +1963,7 @@ private fun formatBytes(bytes: Long): String {
 fun ServerItemCard(
     config: ProxyConfig,
     isActive: Boolean,
+    isPinging: Boolean = false,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     onOpenSettings: () -> Unit = {},
@@ -2226,7 +2242,7 @@ fun ServerItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    PingPill(config.ping)
+                    PingPill(ping = config.ping, isPinging = isPinging)
                     IconButton(
                         onClick = {
                             tactileFeedback()
@@ -2287,30 +2303,89 @@ private fun ProxyConfig.endpointSummary(): String {
 }
 
 @Composable
-fun PingPill(ping: Int?) {
+fun PingPill(ping: Int?, isPinging: Boolean = false) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ping")
+    val pulseAlpha by infiniteTransition.animateValue(
+        initialValue = 0.15f,
+        targetValue = 0.55f,
+        typeConverter = Float.VectorConverter,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pingPulse"
+    )
+    val scanningFraction by infiniteTransition.animateValue(
+        initialValue = 0f,
+        targetValue = 1f,
+        typeConverter = Float.VectorConverter,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pingScan"
+    )
+
+    val accentColor = when {
+        ping == null -> MaterialTheme.colorScheme.error
+        ping < 60 -> MaterialTheme.colorScheme.primary
+        ping < 120 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.error
+    }
+
+    val (badgeContainer, badgeContent) = when {
+        ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+        ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+        ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+    }
+
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(
                 when {
-                    ping == null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-                    ping < 60 -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    ping < 120 -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
-                    else -> MaterialTheme.colorScheme.error.copy(alpha = 0.14f)
+                    isPinging -> accentColor.copy(alpha = if (ping == null) 0.4f else 0.3f)
+                    else -> badgeContainer
+                }
+            )
+            .then(
+                if (isPinging) {
+                    Modifier.graphicsLayer { alpha = 0.7f + pulseAlpha * 0.3f }
+                } else {
+                    Modifier
                 }
             )
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
+        if (isPinging) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(12.dp))
+                    .drawWithContent {
+                        drawContent()
+                        val sweep = scanningFraction * 360f
+                        drawArc(
+                            color = accentColor,
+                            startAngle = sweep - 90f,
+                            sweepAngle = 80f,
+                            useCenter = false,
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                            topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()),
+                            size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx())
+                        )
+                    }
+            )
+        }
         Text(
-            text = ping?.let { "$it ms" } ?: "N/A",
+            text = when {
+                isPinging && ping == null -> "..."
+                else -> ping?.let { "$it ms" } ?: "N/A"
+            },
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = when {
-                ping == null -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                ping < 60 -> MaterialTheme.colorScheme.primary
-                ping < 120 -> MaterialTheme.colorScheme.tertiary
-                else -> MaterialTheme.colorScheme.error
-            }
+            color = if (isPinging) MaterialTheme.colorScheme.onSurface else badgeContent
         )
     }
 }

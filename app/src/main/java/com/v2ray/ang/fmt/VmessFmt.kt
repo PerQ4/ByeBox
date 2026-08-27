@@ -22,7 +22,7 @@ object VmessFmt : FmtBase() {
      * @return the parsed ProfileItem object, or null if parsing fails
      */
     fun parse(str: String): ProfileItem? {
-        if (str.indexOf('?') > 0 && str.indexOf('&') > 0) {
+        if (str.indexOf('?') > 0 && str.contains("@")) {
             return parseVmessStd(str)
         }
 
@@ -161,7 +161,7 @@ object VmessFmt : FmtBase() {
 
         config.remarks = Utils.decodeURIComponent(uri.fragment.orEmpty()).let { it.ifEmpty { "none" } }
         config.server = uri.idnHost
-        config.serverPort = uri.port.toString()
+        config.serverPort = if (uri.port > 0) uri.port.toString() else ""
         config.password = uri.userInfo
         config.method = AppConfig.DEFAULT_SECURITY
 

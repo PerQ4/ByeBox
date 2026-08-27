@@ -22,7 +22,7 @@ object TrojanFmt : FmtBase() {
         val uri = URI(Utils.fixIllegalUrl(str))
         config.remarks = Utils.decodeURIComponent(uri.fragment.orEmpty()).let { it.ifEmpty { "none" } }
         config.server = uri.idnHost
-        config.serverPort = uri.port.toString()
+        config.serverPort = if (uri.port > 0) uri.port.toString() else ""
         config.password = uri.userInfo
 
         if (uri.rawQuery.isNullOrEmpty()) {

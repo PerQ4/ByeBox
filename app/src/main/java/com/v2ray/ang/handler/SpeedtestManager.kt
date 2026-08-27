@@ -46,18 +46,14 @@ object SpeedtestManager {
      * @return The connection time in milliseconds, or -1 if the connection failed.
      */
     fun socketConnectTime(url: String, port: Int): Long {
+        val socket = Socket()
+        synchronized(this) {
+            tcpTestingSockets.add(socket)
+        }
         try {
-            val socket = Socket()
-            synchronized(this) {
-                tcpTestingSockets.add(socket)
-            }
             val start = System.currentTimeMillis()
             socket.connect(InetSocketAddress(url, port), 3000)
             val time = System.currentTimeMillis() - start
-            synchronized(this) {
-                tcpTestingSockets.remove(socket)
-            }
-            socket.close()
             return time
         } catch (e: UnknownHostException) {
             LogUtil.e(AppConfig.TAG, "Unknown host: $url", e)
@@ -65,6 +61,11 @@ object SpeedtestManager {
             LogUtil.e(AppConfig.TAG, "socketConnectTime IOException: $e")
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to establish socket connection to $url:$port", e)
+        } finally {
+            synchronized(this) {
+                tcpTestingSockets.remove(socket)
+            }
+            runCatching { socket.close() }
         }
         return -1
     }

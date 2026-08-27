@@ -181,11 +181,16 @@ object SubscriptionUpdater {
                 "Updating ${sub.subscription.remarks}"
             )
 
-            LogUtil.i(AppConfig.TAG, "SubscriptionUpdater automatic update: ---${sub.subscription.remarks}")
-            AngConfigManager.updateConfigViaSub(sub)
-
-            // Clear notification
-            NotificationHelper.cancel(NotificationChannelType.SUBSCRIPTION_UPDATE, applicationContext)
+            try {
+                LogUtil.i(AppConfig.TAG, "SubscriptionUpdater automatic update: ---${sub.subscription.remarks}")
+                AngConfigManager.updateConfigViaSub(sub)
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "SubscriptionUpdater: failed to update subscription $subId", e)
+                return Result.failure()
+            } finally {
+                // Clear notification
+                NotificationHelper.cancel(NotificationChannelType.SUBSCRIPTION_UPDATE, applicationContext)
+            }
 
             return Result.success()
         }
