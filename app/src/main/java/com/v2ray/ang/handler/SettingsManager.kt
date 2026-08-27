@@ -483,6 +483,7 @@ object SettingsManager {
                 true
             } catch (t: Throwable) {
                 LogUtil.e(AppConfig.TAG, "HEV tun library unavailable, falling back to xray tun: ${t.message}")
+                MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, false)
                 false
             }
         }
@@ -490,7 +491,7 @@ object SettingsManager {
     }
 
     fun isUsingHevTun(): Boolean {
-        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true) && isHevLibAvailable()
+        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, false) && isHevLibAvailable()
     }
 
     /**
