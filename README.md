@@ -13,6 +13,10 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![Xray](https://img.shields.io/badge/core-Xray--core-0F9D58?style=for-the-badge)](https://github.com/XTLS/Xray-core)
 
+| **Version** | **Build** | **Released** | **Download** |
+|:---:|:---:|:---:|:---:|
+| **1.2.0** | `21` | 2026-09-21 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+
 [English](#english) · [Русский](#русский)
 
 </div>
@@ -77,7 +81,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> The current source line is **`1.2.0`** (`versionCode 21`). The universal APK targets `arm64-v8a`.
+> The current release is **`1.2.0`** (`versionCode 21`). The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -244,7 +248,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущая линия исходников — **`1.2.0`** (`versionCode 21`). Universal-APK рассчитан на `arm64-v8a`.
+> Текущий релиз — **`1.2.0`** (`versionCode 21`). Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 
