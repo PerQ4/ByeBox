@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -119,6 +120,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.MainActivity
+import com.perqa.byebox.core.UpdateDownloadState
 import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.AuroraPrimaryDark
@@ -442,9 +444,14 @@ fun SettingsTab(
                 if (updateInfo != null) {
                     UpdateBanner(
                         updateInfo = updateInfo,
+                        downloadState = state.updateDownload,
                         language = state.language,
                         scaleFactor = state.tapImpactScale,
                         cornerRoundness = state.cornerRoundness,
+                        onDownload = { viewModel.downloadUpdate() },
+                        onCancel = { viewModel.cancelUpdateDownload() },
+                        onSkip = { viewModel.skipUpdateVersion() },
+                        onRemind = { viewModel.remindUpdateLater() },
                     )
                 }
 
@@ -1291,7 +1298,6 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                         }
 
                         SettingsGroup(title = Loc.get("update_check", state.language)) {
-                            val settingsContext = LocalContext.current
                             val isExpressive = state.cornerRoundness == "expressive"
                             val radius = if (isExpressive) 24.dp else 14.dp
                             Surface(
@@ -1319,63 +1325,162 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = String.format(
-                                                    Loc.get("update_current_version", state.language),
-                                                    BuildConfig.VERSION_NAME
-                                                ),
+                                                text = versionLabel(state.language),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
 
-                                    if (state.updateInfo != null) {
-                                        Text(
-                                            text = String.format(
-                                                Loc.get("update_available", state.language),
-                                                state.updateInfo.latestVersion
-                                            ),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Button(
-                                            onClick = {
-                                                val info = state.updateInfo ?: return@Button
-                                                scope.launch {
-                                                    try {
-                                                        downloadAndInstallApk(settingsContext, info.apkUrl)
-                                                    } catch (e: Exception) {
-                                                        android.widget.Toast.makeText(
-                                                            settingsContext,
-                                                            e.message ?: "update download failed",
-                                                            android.widget.Toast.LENGTH_LONG
-                                                        ).show()
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(Loc.get("update_download", state.language))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                text = Loc.get("update_auto_check", state.language),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = Loc.get("update_auto_check_sub", state.language),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
-                                    } else {
-                                        FilledTonalButton(
-                                            onClick = {
+                                        Spacer(Modifier.width(12.dp))
+                                        Switch(
+                                            checked = state.autoCheckUpdates,
+                                            onCheckedChange = {
                                                 tactileFeedback()
-                                                viewModel.checkForUpdates(showLatest = true)
-                                            },
-                                            enabled = !state.isCheckingUpdate,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            if (state.isCheckingUpdate) {
+                                                viewModel.setAutoCheckUpdates(it)
+                                            }
+                                        )
+                                    }
+
+                                    val download = state.updateDownload
+                                    val info = state.updateInfo
+
+                                    when {
+                                        download is UpdateDownloadState.Downloading -> {
+                                            LinearProgressIndicator(
+                                                progress = { download.percent / 100f },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Text(
+                                                text = String.format(
+                                                    Loc.get("update_downloading", state.language),
+                                                    download.percent
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            TextButton(
+                                                onClick = { viewModel.cancelUpdateDownload() },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(Loc.get("update_cancel", state.language))
+                                            }
+                                        }
+
+                                        download is UpdateDownloadState.Verifying -> {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
                                                 CircularProgressIndicator(
                                                     modifier = Modifier.size(18.dp),
-                                                    strokeWidth = 2.dp,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    strokeWidth = 2.dp
                                                 )
                                                 Spacer(Modifier.width(8.dp))
-                                                Text(Loc.get("update_checking", state.language))
-                                            } else {
-                                                Text(Loc.get("update_check", state.language))
+                                                Text(
+                                                    text = Loc.get("update_verifying", state.language),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        download is UpdateDownloadState.Error -> {
+                                            Text(
+                                                text = Loc.get("update_download_failed", state.language),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    tactileFeedback()
+                                                    viewModel.downloadUpdate()
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(Loc.get("update_download", state.language))
+                                            }
+                                        }
+
+                                        info != null -> {
+                                            Text(
+                                                text = String.format(
+                                                    Loc.get("update_available", state.language),
+                                                    info.displayVersion
+                                                ),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            if (info.releaseNotes.isNotBlank()) {
+                                                Text(
+                                                    text = info.releaseNotes,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 6,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    tactileFeedback()
+                                                    viewModel.downloadUpdate()
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(Loc.get("update_download", state.language))
+                                            }
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                TextButton(
+                                                    onClick = { viewModel.skipUpdateVersion() },
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(Loc.get("update_skip", state.language))
+                                                }
+                                                TextButton(
+                                                    onClick = { viewModel.remindUpdateLater() },
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(Loc.get("update_remind_later", state.language))
+                                                }
+                                            }
+                                        }
+
+                                        else -> {
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    tactileFeedback()
+                                                    viewModel.checkForUpdates(showLatest = true)
+                                                },
+                                                enabled = !state.isCheckingUpdate,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                if (state.isCheckingUpdate) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(18.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(Loc.get("update_checking", state.language))
+                                                } else {
+                                                    Text(Loc.get("update_check", state.language))
+                                                }
                                             }
                                         }
                                     }
@@ -1586,40 +1691,30 @@ fun ThemeButton(
     }
 }
 
-private suspend fun downloadAndInstallApk(context: Context, apkUrl: String) {
-    withContext(Dispatchers.IO) {
-        val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 30000
-            setRequestProperty("Accept", "application/octet-stream")
-        }
-        conn.connect()
-        val dir = File(context.getExternalFilesDir(null), "updates").apply { mkdirs() }
-        val file = File(dir, "byebox-update.apk")
-        conn.inputStream.use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
-        }
-        conn.disconnect()
-
-        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
-    }
+/** Human readable version label, e.g. "Версия 1.2.0 · Сборка 260921 · 21". */
+private fun versionLabel(language: String): String {
+    val version = String.format(Loc.get("update_current_version", language), BuildConfig.VERSION_NAME)
+    val build = String.format(
+        Loc.get("update_build", language),
+        BuildConfig.BUILD_DATE,
+        BuildConfig.BUILD_NUMBER.toString()
+    )
+    return "$version · $build"
 }
 
 @Composable
 private fun UpdateBanner(
     updateInfo: com.perqa.byebox.core.UpdateInfo,
+    downloadState: UpdateDownloadState,
     language: String,
     scaleFactor: Float,
     cornerRoundness: String,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onSkip: () -> Unit,
+    onRemind: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
     val isExpressive = cornerRoundness == "expressive"
     val radius = if (isExpressive) 30.dp else 18.dp
@@ -1654,12 +1749,12 @@ private fun UpdateBanner(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = String.format(Loc.get("update_available", language), updateInfo.latestVersion),
+                        text = String.format(Loc.get("update_available", language), updateInfo.displayVersion),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = contentColor
                     )
                     Text(
-                        text = String.format(Loc.get("update_current_version", language), BuildConfig.VERSION_NAME),
+                        text = versionLabel(language),
                         style = MaterialTheme.typography.labelMedium,
                         color = contentColor.copy(alpha = 0.7f)
                     )
@@ -1694,27 +1789,80 @@ private fun UpdateBanner(
                 }
             }
 
-            Button(
-                onClick = {
-                    scope.launch {
-                        try {
-                            downloadAndInstallApk(context, updateInfo.apkUrl)
-                        } catch (e: Exception) {
-                            android.widget.Toast.makeText(
-                                context,
-                                e.message ?: "update download failed",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
+            when (downloadState) {
+                is UpdateDownloadState.Downloading -> {
+                    LinearProgressIndicator(
+                        progress = { downloadState.percent / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = contentColor
+                    )
+                    Text(
+                        text = String.format(Loc.get("update_downloading", language), downloadState.percent),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = contentColor.copy(alpha = 0.8f)
+                    )
+                    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                        Text(Loc.get("update_cancel", language), color = contentColor)
+                    }
+                }
+
+                is UpdateDownloadState.Verifying -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = contentColor
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = Loc.get("update_verifying", language),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor
+                        )
+                    }
+                }
+
+                is UpdateDownloadState.Error -> {
+                    Text(
+                        text = Loc.get("update_download_failed", language),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Button(
+                        onClick = onDownload,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = contentColor,
+                            contentColor = containerColor
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(Loc.get("update_download", language))
+                    }
+                }
+
+                UpdateDownloadState.Idle -> {
+                    Button(
+                        onClick = onDownload,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = contentColor,
+                            contentColor = containerColor
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(Loc.get("update_download", language))
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        TextButton(onClick = onSkip, modifier = Modifier.weight(1f)) {
+                            Text(Loc.get("update_skip", language), color = contentColor)
+                        }
+                        TextButton(onClick = onRemind, modifier = Modifier.weight(1f)) {
+                            Text(Loc.get("update_remind_later", language), color = contentColor)
                         }
                     }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = contentColor,
-                    contentColor = containerColor
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(Loc.get("update_download", language))
+                }
             }
         }
     }
