@@ -1,3 +1,6 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
 
 plugins {
@@ -6,6 +9,23 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
 }
 
+// Version is defined once in version.properties (see docs/version_naming_policy.md).
+val versionProps = Properties().apply {
+    val file = rootProject.file("version.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val vMajor = versionProps.getProperty("VERSION_MAJOR", "1").trim().toInt()
+val vMinor = versionProps.getProperty("VERSION_MINOR", "0").trim().toInt()
+val vPatch = versionProps.getProperty("VERSION_PATCH", "0").trim().toInt()
+val vStage = versionProps.getProperty("VERSION_STAGE", "").trim()
+val vStageNumber = versionProps.getProperty("VERSION_STAGE_NUMBER", "0").trim().toInt()
+val vCode = versionProps.getProperty("VERSION_CODE", "1").trim().toInt()
+val vName = buildString {
+    append(vMajor).append('.').append(vMinor).append('.').append(vPatch)
+    if (vStage.isNotEmpty()) append('-').append(vStage).append('.').append(vStageNumber)
+}
+val vBuildDate = SimpleDateFormat("yyMMdd", Locale.US).format(Date())
+
 android {
     namespace = "com.perqa.byebox"
     compileSdk = 36
@@ -13,8 +33,12 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "9.0"
+        versionCode = vCode
+        versionName = vName
+        buildConfigField("String", "VERSION_STAGE", "\"$vStage\"")
+        buildConfigField("int", "VERSION_STAGE_NUMBER", "$vStageNumber")
+        buildConfigField("String", "BUILD_DATE", "\"$vBuildDate\"")
+        buildConfigField("int", "BUILD_NUMBER", "$vCode")
         multiDexEnabled = true
         ndk {
             abiFilters += listOf("arm64-v8a")

@@ -1,23 +1,95 @@
 # ByeBox Version Naming Policy
 
-This document establishes version naming guidelines for coding assistant agents working on the ByeBox project. All agents modifying version configurations in `build.gradle.kts` MUST adhere to these rules.
+> Правила обязательны для всех, кто меняет версии и релизы ByeBox.
+> Документ описывает **новую публичную линию** (сброс с `9.0` на `1.2.0`).
 
-## 1. Structure
-All versions must follow Semantic Versioning (SemVer) format:
+## 1. Формат
+
+`versionName` (то, что видит пользователь и Android):
+
 ```
-MAJOR.MINOR.PATCH[-SUFFIX]
+MAJOR.MINOR.PATCH[-STAGE.N]
 ```
 
-* **MAJOR** (e.g., `1.0.0`): Bumped for large-scale changes, complete app redesigns, or backwards-incompatible API changes (e.g., replacement of core xray components).
-* **MINOR** (e.g., `0.7.0`): Bumped for new features, new screens, or additional configurations (e.g., adding dynamic profiles, DNS strategic options, or custom routing profiles).
-* **PATCH** (e.g., `0.7.1`): Bumped for bug fixes, code refactoring, optimizations, layout adjustments, and translation updates.
+| Пример | Что это |
+|---|---|
+| `1.2.0` | стабильный релиз |
+| `1.3.0-beta.1` | первая бета будущего `1.3.0` |
+| `1.3.0-rc.2` | второй release candidate |
 
-## 2. Suffix Guidelines
-* **`-alpha`**: Experimental, initially developed features that are highly unstable. Used only for private dev builds (e.g., `0.5.0-alpha`).
-* **`-Beta`**: Feature-complete builds containing new changes that are ready for testing (e.g., `0.7.0-Beta`).
-* **`-RC1`, `-RC2`**: Release Candidates for release validation.
-* **No Suffix**: Stable production-ready releases (e.g., `0.7.0`).
+Схема совместима с **SemVer 2.0.0**: `MAJOR.MINOR.PATCH` — приоритет, `-STAGE.N` — пре-релиз.
 
-## 3. versionCode Increment Rule
-The `versionCode` in `app/build.gradle.kts` is an integer that uniquely identifies the build.
-* **CRITICAL**: On **any** change to `versionName` or when compiling a new test/beta release build, `versionCode` **MUST be incremented by exactly 1** (e.g., from `11` to `12`) to ensure Android packages update correctly on physical devices.
+Метаданные сборки (`BUILD`) **не входят** в `versionName`, чтобы строка версии оставалась
+чистой. Дата и номер сборки хранятся отдельно в `BuildConfig.BUILD_DATE` / `BuildConfig.BUILD_NUMBER`,
+а также (при желании) в метаданных GitHub-релиза.
+
+## 2. Что означает каждая часть («каждый ноль под свою задачу»)
+
+| Часть | За что отвечает | Когда меняется |
+|---|---|---|
+| **MAJOR** | Поколение / эпоха | Ребрендинг, новая архитектура, смена ядра, несовместимые изменения |
+| **MINOR** | Новые возможности | Новые экраны, протоколы, крупные фичи (апдейтер v2, маршрутизация и т.п.) |
+| **PATCH** | Исправления | Багфиксы, переводы, полировка, оптимизации |
+| **STAGE** | Тип версии (жизненный цикл) | `alpha` → `beta` → `rc`; у стабильного релиза стадии нет |
+| **N** | Номер сборки внутри стадии | `beta.1`, `beta.2`, `rc.1` … |
+
+Единый источник истины — файл `version.properties` в корне проекта. `app/build.gradle.kts`
+читает его и сам собирает `versionName`/`versionCode`; руками версии не правятся.
+
+## 3. Стадии жизненного цикла (в духе старых версий Minecraft)
+
+| Стадия | Смысл | Кому | Пример |
+|---|---|---|---|
+| **Alpha** | Приватные, экспериментальные сборки; возможны поломки | только разработчику | `1.2.0-alpha.1` |
+| **Beta** | Функционально готово, публичное тестирование | желающим пораньше | `1.2.0-beta.3` |
+| **RC** | Кандидат в релиз, финальная проверка | тестировщикам | `1.2.0-rc.1` |
+| **Release** | Стабильный релиз | всем | `1.2.0` |
+
+В интерфейсе и названиях релизов стадия показывается человекочитаемо:
+`ByeBox 1.2.0` · `ByeBox 1.2.0 · Beta 1` · `ByeBox 1.2.0 · RC 2`.
+
+## 4. Точка отсчёта
+
+Публичная нумерация перезапускается с **`1.2.0`**:
+
+- `1` — новое, «уютное» поколение ByeBox;
+- `2` — второй крупный набор изменений поколения (апдейтер v2 и сопутствующее);
+- `0` — без патчей.
+
+Старая линия `0.5.0-alpha … 9.0` в новой **не продолжается**. Отдельные исправления к ней
+не выпускаются — только новое поколение.
+
+## 5. Теги и релизы на GitHub
+
+- Тег = `v` + `versionName`: `v1.2.0`, `v1.3.0-beta.1`.
+- Пре-релизы (alpha/beta/rc) публикуются с флагом **pre-release**.
+- Апдейтер ByeBox показывает **все** релизы (см. §7), поэтому пре-релизы тоже видны.
+
+## 6. versionCode
+
+- Целое, **строго возрастающее** — требование Android.
+- Продолжает старую линию без сброса: `20 → 21 → 22 …`, чтобы апдейт `9.0 → 1.2.0`
+  установился поверх (по имени это выглядело бы как откат).
+- Это **главный ключ сравнения** для апдейтера.
+- Публикуется в метаданных релиза:
+  - строка-маркер в описании релиза: `<!-- byebox:versionCode=21 -->`
+  - и, дополнительно, ассет `version.json` (`{ "versionCode": 21, "versionName": "1.2.0" }`)
+
+## 7. Как апдейтер решает, что есть обновление
+
+1. Забрать список релизов: `GET /repos/PerQ4/ByeBox/releases?per_page=30`
+   (черновики пропускаются, пре-релизы **учитываются**).
+2. Выбрать релиз с максимальным `versionCode` (из маркера; если маркера нет — по SemVer).
+3. Если `versionCode` новее установленного — предложить обновление.
+4. Сравнение пре-релизов — по приоритету SemVer (`1.3.0-beta.1 < 1.3.0-rc.1 < 1.3.0`).
+5. Перед установкой APK сверяется SHA-256 (ассет `digest` из GitHub), есть прогресс и отмена.
+6. Пользователь может **пропустить конкретную версию** или **напомнить позже** (24 ч),
+   а также отключить автопроверку.
+
+## 8. Правила для агентов и контрибьюторов
+
+- Любое изменение `versionName` ⇒ `versionCode` **+1** в `version.properties`.
+- Тег, `versionName` и метаданные релиза обязаны совпадать.
+- Нельзя выпускать два релиза с одинаковым `versionCode`.
+- `BUILD`-метаданные (`BuildConfig.BUILD_DATE` + `BuildConfig.BUILD_NUMBER`) генерируются
+  автоматически при сборке: `ГГММДД` + номер, равный `versionCode`.

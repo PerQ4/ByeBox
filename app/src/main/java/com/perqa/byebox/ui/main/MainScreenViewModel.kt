@@ -19,7 +19,10 @@ import com.v2ray.ang.util.MessageUtil
 import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.DarkThemeStyle
 import com.perqa.byebox.core.HapticFeedbackUtil
+import com.perqa.byebox.core.UpdateCheckResult
 import com.perqa.byebox.core.UpdateChecker
+import com.perqa.byebox.core.UpdateDownloadState
+import com.perqa.byebox.core.UpdateDownloader
 import com.perqa.byebox.core.UpdateInfo
 import com.perqa.byebox.core.HapticType
 import com.perqa.byebox.data.SettingsProfileData
@@ -191,6 +194,8 @@ data class MainUiState(
     val outboundDomainResolveMethod: String = "0",
     val updateInfo: UpdateInfo? = null,
     val isCheckingUpdate: Boolean = false,
+    val updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
+    val autoCheckUpdates: Boolean = true,
     val pingingConfigIds: Set<String> = emptySet(),
 )
 
@@ -284,6 +289,11 @@ class MainScreenViewModel(
     private val _outboundDomainResolveMethod = MutableStateFlow("0")
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     private val _isCheckingUpdate = MutableStateFlow(false)
+    private val _updateDownload = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
+    private val _autoCheckUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CHECK_UPDATES, true))
+    private var downloadJob: Job? = null
+    private var remindLaterUntil: Long = prefs.getLong(KEY_REMIND_LATER_UNTIL, 0L)
+    private var skippedVersionCode: Int = prefs.getInt(KEY_SKIPPED_VERSION_CODE, 0)
     private val _pingingConfigIds = MutableStateFlow<Set<String>>(emptySet())
     private val _logs = AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
@@ -386,7 +396,9 @@ class MainScreenViewModel(
         _outboundDomainResolveMethod,
         _updateInfo,
         _isCheckingUpdate,
-        _pingingConfigIds
+        _pingingConfigIds,
+        _updateDownload,
+        _autoCheckUpdates
     ) { a ->
         val f = TypedFlows(a)
         MainUiState(
@@ -439,7 +451,9 @@ class MainScreenViewModel(
             outboundDomainResolveMethod = f.get(46),
             updateInfo = f.get(47),
             isCheckingUpdate = f.get(48),
-            pingingConfigIds = f.get(49)
+            pingingConfigIds = f.get(49),
+            updateDownload = f.get(50),
+            autoCheckUpdates = f.get(51)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -477,7 +491,9 @@ class MainScreenViewModel(
         }
 
         viewModelScope.launch {
-            _updateInfo.value = UpdateChecker.check()
+            if (_autoCheckUpdates.value && System.currentTimeMillis() >= remindLaterUntil) {
+                applyUpdateResult(UpdateChecker.check())
+            }
         }
         viewModelScope.launch {
             if (_autoRefreshSubsOnStartup.value) refreshSubscriptions()
@@ -500,12 +516,76 @@ class MainScreenViewModel(
         viewModelScope.launch {
             _isCheckingUpdate.value = true
             val result = UpdateChecker.check()
-            _updateInfo.value = result
             _isCheckingUpdate.value = false
-            if (result == null && showLatest) {
-                showToast(Loc.get("update_latest", _language.value))
+            applyUpdateResult(result)
+            if (showLatest) {
+                when {
+                    result is UpdateCheckResult.Error ->
+                        showToast(Loc.get("update_check_fail", _language.value))
+                    result is UpdateCheckResult.Available && _updateInfo.value == null ->
+                        showToast(Loc.get("update_skipped", _language.value))
+                    _updateInfo.value == null ->
+                        showToast(Loc.get("update_latest", _language.value))
+                }
             }
         }
+    }
+
+    private fun applyUpdateResult(result: UpdateCheckResult) {
+        _updateInfo.value = when (result) {
+            is UpdateCheckResult.Available ->
+                if (result.info.latestVersionCode > skippedVersionCode) result.info else null
+            else -> null
+        }
+    }
+
+    /** Hides the current release until an even newer one appears. */
+    fun skipUpdateVersion() {
+        val info = _updateInfo.value ?: return
+        skippedVersionCode = info.latestVersionCode
+        prefs.edit().putInt(KEY_SKIPPED_VERSION_CODE, skippedVersionCode).apply()
+        _updateInfo.value = null
+        showToast(Loc.get("update_skipped", _language.value))
+    }
+
+    /** Hides the update banner for a while (24h). */
+    fun remindUpdateLater() {
+        remindLaterUntil = System.currentTimeMillis() + REMIND_LATER_MILLIS
+        prefs.edit().putLong(KEY_REMIND_LATER_UNTIL, remindLaterUntil).apply()
+        _updateInfo.value = null
+        showToast(Loc.get("update_remind_later_done", _language.value))
+    }
+
+    fun setAutoCheckUpdates(enabled: Boolean) {
+        _autoCheckUpdates.value = enabled
+        prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply()
+    }
+
+    fun downloadUpdate() {
+        val info = _updateInfo.value ?: return
+        if (downloadJob?.isActive == true) return
+        downloadJob = viewModelScope.launch {
+            _updateDownload.value = UpdateDownloadState.Downloading(0, info.apkSizeBytes)
+            try {
+                val file = UpdateDownloader.download(appContext, info) { done, total ->
+                    _updateDownload.value = UpdateDownloadState.Downloading(done, total)
+                }
+                _updateDownload.value = UpdateDownloadState.Verifying
+                UpdateDownloader.install(appContext, file)
+                _updateDownload.value = UpdateDownloadState.Idle
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _updateDownload.value = UpdateDownloadState.Idle
+                throw e
+            } catch (e: Exception) {
+                _updateDownload.value = UpdateDownloadState.Error(e.message ?: "download failed")
+            }
+        }
+    }
+
+    fun cancelUpdateDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        _updateDownload.value = UpdateDownloadState.Idle
     }
 
     fun exportSettings() {
@@ -1591,6 +1671,10 @@ class MainScreenViewModel(
         private const val KEY_HEALTH_CHECK_URL = "health_check_url"
         private const val KEY_TUN_STACK = "tun_stack"
         private const val KEY_DARK_THEME_STYLE = "pref_dark_theme_style"
+        private const val KEY_AUTO_CHECK_UPDATES = "auto_check_updates"
+        private const val KEY_SKIPPED_VERSION_CODE = "skipped_version_code"
+        private const val KEY_REMIND_LATER_UNTIL = "remind_later_until"
+        private const val REMIND_LATER_MILLIS = 24L * 60 * 60 * 1000
 
         suspend fun loadInstalledApps(context: Context): List<InstalledAppInfo> = withContext(Dispatchers.IO) {
             val pm = context.packageManager
