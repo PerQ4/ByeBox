@@ -78,6 +78,7 @@ curl -sS -X POST \
 - [ ] В описании релиза есть строка `<!-- byebox:versionCode=N -->`.
 - [ ] Для alpha/beta/rc выставлен флаг **pre-release**.
 - [ ] На релиз загружен `byebox-universal-release.apk`.
+- [ ] Блок версии в `README.md` (Version / Build / Released / Download) обновлён.
 
 ## 4. Важно про переход 9.0 → 1.2.0
 
