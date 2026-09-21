@@ -2,6 +2,7 @@ package com.perqa.byebox.ui.main
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -25,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -45,11 +45,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeDefaults
@@ -57,20 +62,32 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.delay
 
+fun tabMeta(id: String, language: String): Pair<String, ImageVector> = when (id) {
+    "main" -> Loc.get("title_main", language) to Icons.Default.Refresh
+    "proxies" -> Loc.get("title_proxies", language) to Icons.Default.List
+    else -> Loc.get("title_settings", language) to Icons.Default.Settings
+}
+
+fun isTabVisible(id: String, mode: String): Boolean = when (mode) {
+    "tgws" -> id != "proxies"
+    else -> true
+}
+
 @Composable
 fun MainTabBar(
-    selectedTab: Int,
-    onTabSelected: (Int) -> Unit,
+    selectedTab: String,
+    onTabSelected: (String) -> Unit,
     scaleFactor: Float = 0.90f,
     glassmorphic: Boolean = true,
     maxBlurEnabled: Boolean = true,
     hazeState: dev.chrisbanes.haze.HazeState? = null,
     language: String = "ru",
+    order: List<String> = listOf("main", "proxies", "settings"),
     modifier: Modifier = Modifier
 ) {
     val tactileFeedback = rememberTactileFeedback(scaleFactor)
     val containerColor = if (glassmorphic) {
-        val alpha = if (maxBlurEnabled) 0.48f else 0.86f
+        val alpha = if (maxBlurEnabled) 0.62f else 0.9f
         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha)
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
@@ -78,9 +95,44 @@ fun MainTabBar(
 
     val containerShape = RoundedCornerShape(Dimens.tabBarShape)
 
+    // Per-tab target widths: the active tab grows to fit icon+label, inactive
+    // tabs stay at a fixed compact width. Widths animate to these final values
+    // (instead of tracking content) which removes the accordion effect.
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val activeWidths = remember(order, language, density) {
+        order.associateWith { tabId ->
+            val label = tabMeta(tabId, language).first
+            val labelLayout = textMeasurer.measure(
+                text = AnnotatedString(label),
+                style = TextStyle(
+                    fontSize = Dimens.tabLabelFontSize,
+                    fontWeight = FontWeight.Black
+                ),
+                softWrap = false,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = 10000)
+            )
+            with(density) { labelLayout.size.width.toDp() }
+                .let { labelDp ->
+                    (Dimens.tabIconActive + Dimens.tabLabelPadding + labelDp * 1.2f + Dimens.tabPillPaddingH + Dimens.tabPillPaddingH)
+                        .coerceAtLeast(Dimens.tabInactiveWidth)
+                }
+        }
+    }
+    val containerTarget = order.fold(Dimens.tabPillInsetV) { acc, id ->
+        acc + (if (id == selectedTab) activeWidths[id] ?: Dimens.tabInactiveWidth else Dimens.tabInactiveWidth)
+    } + Dimens.tabPillInsetV
+    val containerWidth by animateDpAsState(
+        targetValue = containerTarget,
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = "dockWidth"
+    )
+
     Box(
         modifier = modifier
-            .width(Dimens.tabBarWidth)
+            .width(containerWidth)
+            .height(Dimens.tabBarHeight)
             .then(
                 if (glassmorphic && maxBlurEnabled) {
                     Modifier
@@ -138,18 +190,16 @@ fun MainTabBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(Dimens.tabPadding),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.tabSpacing),
+                .height(Dimens.tabBarHeight)
+                .padding(vertical = Dimens.tabPillInsetV),
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val tabs = listOf(
-                Pair(Loc.get("title_main", language), Icons.Default.Refresh),
-                Pair(Loc.get("title_proxies", language), Icons.Default.List),
-                Pair(Loc.get("title_settings", language), Icons.Default.Settings)
-            )
+            val tabs = order.map { tabMeta(it, language) }
 
             tabs.forEachIndexed { index, tab ->
-                val active = selectedTab == index
+                val id = order[index]
+                val active = selectedTab == id
                 val activeContainer = when (index) {
                     0 -> MaterialTheme.colorScheme.primaryContainer
                     1 -> MaterialTheme.colorScheme.secondaryContainer
@@ -160,42 +210,38 @@ fun MainTabBar(
                     1 -> MaterialTheme.colorScheme.onSecondaryContainer
                     else -> MaterialTheme.colorScheme.onTertiaryContainer
                 }
-                val tabWeight by animateFloatAsState(
-                    targetValue = if (active) Dimens.tabActiveWeight else Dimens.tabInactiveWeight,
-                    label = "tabWeight"
+                val activeContentColor by animateColorAsState(
+                    targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+                    label = "tabContent"
                 )
                 val activeBgColor by animateColorAsState(
                     targetValue = if (active) activeContainer else Color.Transparent,
                     label = "tabBg"
                 )
-                val activeContentColor by animateColorAsState(
-                    targetValue = if (active) activeOnContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
-                    label = "tabContent"
-                )
-                
-                val tabRadius by animateDpAsState(
-                    targetValue = if (active) Dimens.tabActiveRadius else Dimens.tabInactiveRadius,
-                    label = "tabCornerRadius"
+                val pillWidth by animateDpAsState(
+                    targetValue = if (active) activeWidths[id] ?: Dimens.tabInactiveWidth else Dimens.tabInactiveWidth,
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    label = "pillWidth"
                 )
 
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .weight(tabWeight)
                         .height(Dimens.tabHeight)
-                        .clip(RoundedCornerShape(Dimens.tabActiveRadius))
+                        .width(pillWidth)
+                        .clip(RoundedCornerShape(Dimens.tabBarShape))
                         .background(activeBgColor)
                         .clickable {
                             if (!active) {
                                 tactileFeedback()
                             }
-                            onTabSelected(index)
+                            onTabSelected(id)
                         }
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 7.dp)
+                        modifier = Modifier.padding(horizontal = Dimens.tabPillPaddingH)
                     ) {
                         Icon(
                             imageVector = tab.second,

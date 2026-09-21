@@ -13,11 +13,11 @@ android {
         applicationId = "com.perqa.byebox"
         minSdk = 24
         targetSdk = 36
-        versionCode = 18
-        versionName = "8.5"
+        versionCode = 20
+        versionName = "9.0"
         multiDexEnabled = true
         ndk {
-            abiFilters += listOf("x86_64", "armeabi-v7a", "arm64-v8a")
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
@@ -25,7 +25,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("x86_64", "armeabi-v7a", "arm64-v8a")
+            include("arm64-v8a")
             isUniversalApk = true
         }
     }
@@ -83,6 +83,9 @@ android {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
+      jniLibs {
+        useLegacyPackaging = false
+      }
     }
     testOptions {
       unitTests.isIncludeAndroidResources = true
@@ -104,6 +107,7 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)
+  implementation(libs.datastore.preferences)
 
   // Arch Components
   implementation(libs.androidx.lifecycle.runtime.compose)
@@ -157,8 +161,14 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.mlkit.barcode.scanning)
-  implementation("dev.chrisbanes.haze:haze:0.7.3")
-  implementation(libs.kotlinx.serialization.json)
+   implementation("dev.chrisbanes.haze:haze:0.7.3")
+   implementation(libs.kotlinx.serialization.json)
+
+   // TG WS Proxy (local Telegram MTProto/WS proxy, GPLv3 — kept as a separate module)
+   implementation(project(":tgwsproxy"))
+
+   // AndroidX graphics-path ships 16KB-aligned RELRO since 1.1.0; force beyond the transitive 1.0.1
+   implementation("androidx.graphics:graphics-path:1.1.0")
 }
 
 tasks.register("renameApks") {

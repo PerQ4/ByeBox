@@ -12,6 +12,7 @@ import android.system.OsConstants
 import androidx.core.content.ContextCompat
 import com.v2ray.ang.AppConfig
 import com.perqa.byebox.R
+import com.perqa.byebox.core.TrafficStatsManager
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.dto.OutboundTrafficStat
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -280,6 +281,7 @@ object CoreServiceManager {
 
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
         MmkvManager.encodeSettings(AppConfig.PREF_TILE_VPN_RUNNING, true)
+        TrafficStatsManager.start(result.content)
         NotificationManager.startSpeedNotification()
         LogUtil.i(AppConfig.TAG, "StartCore-Manager: Core started successfully")
     }
@@ -347,7 +349,7 @@ object CoreServiceManager {
                 )
             )
         }
-//        LogUtil.d(AppConfig.TAG, "Queried outbound traffic stats: $result")
+        //        LogUtil.d(AppConfig.TAG, "Queried outbound traffic stats: $result")
         return result
     }
 

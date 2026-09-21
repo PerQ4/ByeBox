@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- QUERY_ALL_PACKAGES is required for the per-app routing feature:
+         enumerating every installed app to include/bypass in the VPN tunnel. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -20,13 +22,17 @@
 
     <application
         android:name=".ByeBoxApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:windowSoftInputMode="adjustResize"
-        android:theme="@style/Theme.ByeBox">
+        android:theme="@style/Theme.ByeBox"
+        tools:targetApi="33">
 
         <activity
             android:name=".MainActivity"
@@ -153,7 +159,7 @@
 
         <service
             android:name=".service.ByeBoxProfileTileService"
-            android:label="Быстрое переключение ByeBox"
+            android:label="@string/qs_profile_tile_label"
             android:icon="@drawable/ic_quick_switch"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">

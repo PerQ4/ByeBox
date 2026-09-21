@@ -13,5 +13,9 @@ data class SubscriptionSource(
     val downloadBytes: Long? = null,
     val totalBytes: Long? = null,
     val expireAt: Long? = null,
-    val description: String? = null
+    val description: String? = null,
+    val announce: String? = null,
+    val supportUrl: String? = null,
+    val webPageUrl: String? = null,
+    val announceUrl: String? = null,
 )

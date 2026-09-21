@@ -26,7 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 fun DashboardTab(
     state: MainUiState,
     viewModel: MainScreenViewModel,
-    onTabSelected: (Int) -> Unit,
+    onTabSelected: (String) -> Unit,
     onShowBottomBar: (Boolean) -> Unit
 ) {
     var activeScreen by remember { mutableStateOf("dashboard") }
@@ -35,7 +35,6 @@ fun DashboardTab(
     var pendingProfileDeleteId by remember { mutableStateOf<String?>(null) }
 
     val activeConfig = state.configs.find { it.id == state.activeConfigId }
-    val activeProfileName = state.profiles.find { it.id == state.activeProfileId }?.name ?: Loc.get("default_profile", state.language)
     val context = LocalContext.current
     val activity = context.findActivity() as? MainActivity
 
@@ -103,14 +102,20 @@ fun DashboardTab(
                 state = state,
                 viewModel = viewModel,
                 activeConfig = activeConfig,
-                activeProfileName = activeProfileName,
                 activity = activity,
                 onNavigateToManager = { activeScreen = "manager" },
-                onNavigateToProxy = { onTabSelected(1) },
+                onNavigateToProxy = { onTabSelected("proxies") },
                 onEditProfile = { profile ->
                     editingProfile = profile
                     editorReferrer = "dashboard"
                     activeScreen = "editor"
+                },
+                onDeleteProfile = { id ->
+                    if (state.confirmRemoveEnabled) {
+                        pendingProfileDeleteId = id
+                    } else {
+                        viewModel.deleteProfile(id)
+                    }
                 }
             )
         }

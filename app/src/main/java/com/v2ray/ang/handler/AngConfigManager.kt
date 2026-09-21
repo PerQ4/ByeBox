@@ -3,6 +3,7 @@ package com.v2ray.ang.handler
 import android.content.Context
 import android.graphics.Bitmap
 import android.text.TextUtils
+import com.perqa.byebox.BuildConfig
 import com.v2ray.ang.AppConfig
 import com.perqa.byebox.R
 import com.v2ray.ang.core.CoreConfigManager
@@ -28,9 +29,49 @@ import com.v2ray.ang.util.QRCodeDecoder
 import com.v2ray.ang.util.Utils
 import java.net.URI
 import java.nio.charset.Charset
-import java.util.Base64
+import android.util.Base64
 
 object AngConfigManager {
+
+    // Remembers which server GUIDs were replaced by new ones during the last
+    // subscription refresh (old guideline -> new GUID). Consumed by callers to
+    // re-map profile server assignments so they survive subscription updates.
+    @Volatile
+    private var serverReplacementMap: Map<String, String> = emptyMap()
+
+    fun consumeServerReplacementMap(): Map<String, String> {
+        val consumed = serverReplacementMap
+        serverReplacementMap = emptyMap()
+        return consumed
+    }
+
+    /**
+     * After a subscription refresh, re-maps profile server assignments that
+     * referenced replaced GUIDs onto the new ones and re-applies the active
+     * profile so the currently selected server survives the update.
+     */
+    private fun reconcileProfileAssignmentsAfterRefresh() {
+        val replacementMap = consumeServerReplacementMap()
+        if (replacementMap.isEmpty()) return
+        try {
+            val context = com.perqa.byebox.ByeBoxApplication.instance
+            val changed = com.perqa.byebox.data.ProfilePresetManager.reconcileAssignments(
+                context,
+                replacementMap,
+                MmkvManager.decodeAllServerList().toSet()
+            )
+            if (changed) {
+                val manager = com.perqa.byebox.data.ProfilePresetManager
+                val activeId = manager.getActiveProfileId(context)
+                val activeProfile = manager.loadProfiles(context).find { it.id == activeId }
+                if (activeProfile != null) {
+                    manager.applyProfile(context, activeProfile)
+                }
+            }
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to reconcile profile assignments after refresh: ${e.message}", e)
+        }
+    }
 
     // Parser mapping for different config types (lazy initialized)
     private val configFmtParsers: Map<String, (String) -> ProfileItem?> by lazy {
@@ -264,6 +305,10 @@ object AngConfigManager {
                 }
                 val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
                 matchKey?.let { MmkvManager.setSelectServer(it) }
+
+                // Re-map profile server assignments whose GUIDs were replaced
+                // during this refresh, and re-apply the active profile if needed.
+                reconcileProfileAssignmentsAfterRefresh()
             }
 
             return configs.size
@@ -315,12 +360,12 @@ object AngConfigManager {
     private fun batchReplaceConfigs(configs: List<ProfileItem>, subid: String): Map<String, ProfileItem> {
         // Read existing server list + configs once
         val oldServerList = MmkvManager.decodeServerList(subid)
+        val oldProfiles = oldServerList.mapNotNull { key ->
+            MmkvManager.decodeServerConfig(key)?.let { key to it }
+        }
         val oldBySignature = mutableMapOf<String, String>()
-        oldServerList.forEach { key ->
-            val old = MmkvManager.decodeServerConfig(key)
-            if (old != null) {
-                configSignature(old)?.let { sig -> oldBySignature.putIfAbsent(sig, key) }
-            }
+        oldProfiles.forEach { (key, old) ->
+            configSignature(old)?.let { sig -> oldBySignature.putIfAbsent(sig, key) }
         }
 
         val keyToProfile = mutableMapOf<String, ProfileItem>()
@@ -356,7 +401,106 @@ object AngConfigManager {
             newServerList.firstOrNull()?.let { MmkvManager.setSelectServer(it) }
         }
 
+        // Record old GUID -> new GUID for replaced servers so profile
+        // server assignments can be re-mapped after the refresh.
+        serverReplacementMap = buildServerReplacementMap(oldProfiles, keptKeys, keyToProfile)
+
         return keyToProfile
+    }
+
+    /**
+     * Replaces a subscription's custom (JSON/wireguard) servers while preserving
+     * stable GUIDs for configs that still match, mirroring batchReplaceConfigs.
+     * Also keeps the raw payload per server.
+     *
+     * @param configs Pairs of parsed ProfileItem and their raw payload.
+     * @param subid The subscription ID.
+     * @return Map of generated keys to their corresponding ProfileItem.
+     */
+    private fun batchReplaceCustomConfigs(
+        configs: List<Pair<ProfileItem, String>>,
+        subid: String
+    ): Map<String, ProfileItem> {
+        val oldServerList = MmkvManager.decodeServerList(subid)
+        val oldProfiles = oldServerList.mapNotNull { key ->
+            MmkvManager.decodeServerConfig(key)?.let { key to it }
+        }
+        val oldBySignature = mutableMapOf<String, String>()
+        oldProfiles.forEach { (key, old) ->
+            configSignature(old)?.let { sig -> oldBySignature.putIfAbsent(sig, key) }
+        }
+
+        val keyToProfile = mutableMapOf<String, ProfileItem>()
+        val newServerList = mutableListOf<String>()
+        val keptKeys = mutableSetOf<String>()
+
+        configs.forEach { (config, raw) ->
+            val signature = configSignature(config)
+            var key = signature?.let { oldBySignature[it] }.takeIf { it != null && it !in keptKeys }
+            if (key == null) {
+                key = Utils.getUuid()
+            }
+            keptKeys += key
+
+            MmkvManager.encodeProfileDirect(key, JsonUtil.toJson(config))
+            if (raw.isNotBlank()) {
+                MmkvManager.encodeServerRaw(key, raw)
+            }
+
+            if (!newServerList.contains(key)) {
+                newServerList.add(0, key)
+            }
+            keyToProfile[key] = config
+        }
+
+        MmkvManager.removeServerViaSubidNotIn(subid, keptKeys)
+        MmkvManager.encodeServerList(newServerList, subid)
+
+        val selected = MmkvManager.getSelectServer()
+        if (selected == null || selected.isBlank()) {
+            newServerList.firstOrNull()?.let { MmkvManager.setSelectServer(it) }
+        }
+
+        serverReplacementMap = buildServerReplacementMap(oldProfiles, keptKeys, keyToProfile)
+
+        return keyToProfile
+    }
+
+    /**
+     * Builds a mapping from old server GUIDs (that were dropped during a
+     * subscription refresh) to the new GUIDs that now represent the same
+     * server. Only exact server+port matches are considered replacements, so a
+     * profile assignment is never silently pointed at a different endpoint.
+     */
+    private fun buildServerReplacementMap(
+        oldProfiles: List<Pair<String, ProfileItem>>,
+        keptKeys: Set<String>,
+        keyToProfile: Map<String, ProfileItem>
+    ): Map<String, String> {
+        val byServerPort = mutableMapOf<Pair<String, String>, String>()
+        keyToProfile.forEach { (key, cfg) ->
+            val server = cfg.server?.trim()?.lowercase()
+            val port = cfg.serverPort?.trim()
+            if (server != null && server.isNotEmpty() && port != null && port.isNotEmpty()) {
+                byServerPort.putIfAbsent(server to port, key)
+            }
+        }
+        if (byServerPort.isEmpty()) return emptyMap()
+
+        val used = mutableSetOf<String>()
+        val replacement = mutableMapOf<String, String>()
+        oldProfiles.forEach { (oldKey, old) ->
+            if (oldKey in keptKeys) return@forEach
+            val server = old.server?.trim()?.lowercase()
+            val port = old.serverPort?.trim()
+            if (server == null || server.isEmpty() || port == null || port.isEmpty()) return@forEach
+            val newKey = byServerPort[server to port]?.takeIf { it !in used }
+            if (newKey != null) {
+                replacement[oldKey] = newKey
+                used += newKey
+            }
+        }
+        return replacement
     }
 
     /**
@@ -473,25 +617,32 @@ object AngConfigManager {
 
                 if (serverList.isNotEmpty()) {
                     val removedSelected = getRemovedSelectedProfile(subid, append)
-                    if (!append) {
-                        MmkvManager.removeServerViaSubid(subid)
-                    }
-                    var count = 0
-                    val keyToProfile = mutableMapOf<String, ProfileItem>()
+                    val configs = mutableListOf<Pair<ProfileItem, String>>()
                     for (srv in serverList.reversed()) {
                         val config = CustomFmt.parse(JsonUtil.toJson(srv)) ?: continue
                         config.subscriptionId = subid
                         config.description = generateDescription(config)
-                        val key = MmkvManager.encodeServerConfig("", config)
-                        MmkvManager.encodeServerRaw(key, JsonUtil.toJsonPretty(srv) ?: "")
-                        keyToProfile[key] = config
-                        count += 1
+                        configs.add(config to (JsonUtil.toJsonPretty(srv) ?: ""))
                     }
-                    if (count > 0) {
+                    if (configs.isNotEmpty()) {
+                        val keyToProfile = if (append) {
+                            val ktp = mutableMapOf<String, ProfileItem>()
+                            configs.forEach { (config, raw) ->
+                                val key = MmkvManager.encodeServerConfig("", config)
+                                if (raw.isNotBlank()) {
+                                    MmkvManager.encodeServerRaw(key, raw)
+                                }
+                                ktp[key] = config
+                            }
+                            ktp
+                        } else {
+                            batchReplaceCustomConfigs(configs, subid)
+                        }
                         val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
                         matchKey?.let { MmkvManager.setSelectServer(it) }
+                        reconcileProfileAssignmentsAfterRefresh()
                     }
-                    return count
+                    return configs.size
                 }
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to parse custom config server JSON array", e)
@@ -503,10 +654,12 @@ object AngConfigManager {
                 config.subscriptionId = subid
                 config.description = generateDescription(config)
                 if (!append) {
-                    MmkvManager.removeServerViaSubid(subid)
+                    batchReplaceCustomConfigs(listOf(config to server), subid)
+                } else {
+                    val key = MmkvManager.encodeServerConfig("", config)
+                    MmkvManager.encodeServerRaw(key, server)
                 }
-                val key = MmkvManager.encodeServerConfig("", config)
-                MmkvManager.encodeServerRaw(key, server)
+                reconcileProfileAssignmentsAfterRefresh()
                 return 1
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to parse custom config server as single config", e)
@@ -517,10 +670,12 @@ object AngConfigManager {
                 val config = WireguardFmt.parseWireguardConfFile(server) ?: return 0
                 config.description = generateDescription(config)
                 if (!append) {
-                    MmkvManager.removeServerViaSubid(subid)
+                    batchReplaceCustomConfigs(listOf(config to server), subid)
+                } else {
+                    val key = MmkvManager.encodeServerConfig("", config)
+                    MmkvManager.encodeServerRaw(key, server)
                 }
-                val key = MmkvManager.encodeServerConfig("", config)
-                MmkvManager.encodeServerRaw(key, server)
+                reconcileProfileAssignmentsAfterRefresh()
                 return 1
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to parse WireGuard config file", e)
@@ -600,7 +755,7 @@ object AngConfigManager {
             val encoded = match.groupValues[3]
             try {
                 when (encoding) {
-                    "B" -> String(Base64.getDecoder().decode(encoded), Charset.forName(charset))
+                    "B" -> String(Base64.decode(encoded, Base64.NO_WRAP), Charset.forName(charset))
                     "Q" -> {
                         val decoded = encoded
                             .replace('_', ' ')
@@ -646,7 +801,10 @@ object AngConfigManager {
                 }
             }
         }
-        return Userinfo(upload, download, total, expire)
+        // Subscription headers commonly report expire in epoch SECONDS,
+        // while the rest of the app works with epoch milliseconds.
+        val normalize = { v: Long? -> v?.let { if (it < 100_000_000_000L) it * 1000L else it } }
+        return Userinfo(normalize(upload), normalize(download), normalize(total), normalize(expire))
     }
 
     private data class Userinfo(
@@ -742,6 +900,54 @@ object AngConfigManager {
             if (responsePair == null || responsePair.first.isEmpty()) {
                 return SubscriptionUpdateResult(failureCount = 1)
             }
+
+            // QRATOR/Mantaray panels report subscriptions-expand-now: 1 to signal that a
+            // full-content (JSON config array) form is available. Request it with an UA that
+            // the panel maps to an expanded-fetch client (e.g. " Happ"), so all profiles
+            // (including auto/policy-group nodes) are imported, not just the URI lines.
+            val expandNow = responsePair.second.entries
+                .firstOrNull { it.key.equals("subscriptions-expand-now", ignoreCase = true) }
+                ?.value
+                ?.trim()
+            if (!expandNow.isNullOrEmpty() && expandNow == "1") {
+                val finalUserAgent = if (userAgent.isNullOrBlank()) {
+                    "v2rayNG/${BuildConfig.VERSION_NAME}"
+                } else {
+                    userAgent
+                }
+                val expandedUserAgent = "$finalUserAgent Happ"
+                val expandedResponse = try {
+                    val httpPort = SettingsManager.getHttpPort()
+                    HttpUtil.getUrlContentAndHeaders(
+                        UrlContentRequest(
+                            url = url,
+                            userAgent = expandedUserAgent,
+                            timeout = 15000,
+                            httpPort = httpPort,
+                            proxyUsername = proxyUsername,
+                            proxyPassword = proxyPassword
+                        )
+                    )
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription: expanded fetch proxy not ready", e)
+                    null
+                } ?: try {
+                    HttpUtil.getUrlContentAndHeaders(
+                        UrlContentRequest(
+                            url = url,
+                            userAgent = expandedUserAgent,
+                            timeout = 15000
+                        )
+                    )
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "Update subscription: Failed to fetch expanded content", e)
+                    null
+                }
+                if (expandedResponse != null && expandedResponse.first.isNotEmpty()) {
+                    LogUtil.i(AppConfig.TAG, "Subscription expanded: ${expandedResponse.first.length} bytes")
+                    responsePair = expandedResponse
+                }
+            }
             val configText = responsePair.first
             val headers = responsePair.second
 
@@ -761,13 +967,13 @@ object AngConfigManager {
                     }
                     if (key == "profile-title") {
                         val newTitle = decodeHeaderValue(valStr)
-                        if (newTitle.isNotBlank() && (it.subscription.remarks == "import sub" || it.subscription.remarks.startsWith("http") || it.subscription.remarks == "Подписка")) {
+                        if (newTitle.isNotBlank() && shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
                             it.subscription.remarks = newTitle
                         }
                     }
                     if (key == "content-disposition") {
                         val filename = parseContentDispositionFilename(valStr)
-                        if (filename != null && filename.isNotBlank() && (it.subscription.remarks == "import sub" || it.subscription.remarks.startsWith("http") || it.subscription.remarks == "Подписка")) {
+                        if (filename != null && filename.isNotBlank() && shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
                             it.subscription.remarks = filename
                         }
                     }
@@ -775,6 +981,25 @@ object AngConfigManager {
                         val desc = decodeHeaderValue(valStr)
                         if (desc.isNotBlank()) {
                             it.subscription.description = desc
+                        }
+                    }
+                    if (key == "announce") {
+                        val announceText = decodeHeaderValue(valStr)
+                        if (announceText.isNotBlank()) {
+                            it.subscription.announce = announceText
+                            if (it.subscription.description.isNullOrBlank()) {
+                                it.subscription.description = announceText
+                            }
+                        }
+                    }
+                    if (key == "support-url" || key == "profile-web-page-url" || key == "announce-url") {
+                        val link = valStr.trim()
+                        if (link.isNotBlank()) {
+                            when (key) {
+                                "support-url" -> it.subscription.supportUrl = link
+                                "profile-web-page-url" -> it.subscription.webPageUrl = link
+                                "announce-url" -> it.subscription.announceUrl = link
+                            }
                         }
                     }
                 }
@@ -796,7 +1021,7 @@ object AngConfigManager {
                                         decodeRfc2047(commentVal).trim()
                                     }
                                     if (commentKey == "profile-title" || commentKey == "subscription-title") {
-                                        if (it.subscription.remarks == "import sub" || it.subscription.remarks.startsWith("http") || it.subscription.remarks == "Подписка") {
+                                        if (shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
                                             it.subscription.remarks = decodedVal
                                         }
                                     }
@@ -875,8 +1100,37 @@ object AngConfigManager {
         return 1
     }
 
+    /**
+     * True when the local subscription label is still a placeholder/derived value
+     * (template text, URL, host-derived domain, or a raw base64 summary), so a
+     * proper remote title from the panel should replace it.
+     */
+    private fun shouldUseRemoteTitle(remarks: String?, url: String?): Boolean {
+        val current = remarks.orEmpty()
+        if (current == "import sub" || current.startsWith("http") || current == "Подписка") {
+            return true
+        }
+        if (current.startsWith("base64:") || current.contains("%3D%3D") || current.contains("8J+Q") || current.contains("eyJ")) {
+            return true
+        }
+        val host = runCatching { URI(url.orEmpty()).host?.removePrefix("www.") }.getOrNull()
+        return host != null && current == host
+    }
+
     private fun decodeHeaderValue(value: String): String {
-        val decodedRfc = decodeRfc2047(value)
+        val trimmed = value.trim()
+            .removePrefix("\"")
+            .removeSuffix("\"")
+            .trim()
+        if (trimmed.startsWith("base64:", ignoreCase = true)) {
+            val payload = trimmed.substring("base64:".length).trim()
+            return try {
+                String(Base64.decode(payload, Base64.NO_WRAP), Charsets.UTF_8).trim()
+            } catch (_: Exception) {
+                trimmed
+            }
+        }
+        val decodedRfc = decodeRfc2047(trimmed)
         return try {
             java.net.URLDecoder.decode(decodedRfc, "UTF-8").trim()
         } catch (_: Exception) {

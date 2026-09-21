@@ -14,19 +14,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,7 +32,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +42,6 @@ import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.rememberTactileFeedback
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.sin
 
 @Composable
@@ -52,6 +49,7 @@ fun ConnectionButton(
     status: ConnectionStatus,
     pulseEnabled: Boolean = true,
     language: String = "ru",
+    centerContent: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val tactileFeedback = rememberTactileFeedback()
@@ -75,6 +73,8 @@ fun ConnectionButton(
         label = "wavePhase"
     )
 
+    val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
+
     val buttonBgColor by animateColorAsState(
         targetValue = when (status) {
             ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
@@ -84,18 +84,33 @@ fun ConnectionButton(
         },
         label = "buttonColor"
     )
-
+    val contentColor = when (status) {
+        ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.onPrimary
+        ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.onTertiary
+        ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.onError
+        ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.onSurface
+    }
+    val iconTint = if (status == ConnectionStatus.DISCONNECTED) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        contentColor
+    }
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-
-    val path1 = remember { Path() }
-    val path2 = remember { Path() }
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(200.dp)
-            .padding(10.dp)
+        modifier = Modifier.size(200.dp)
     ) {
+        if (isBusy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(188.dp),
+                color = buttonBgColor,
+                trackColor = buttonBgColor.copy(alpha = 0.12f),
+                strokeWidth = 3.dp,
+                strokeCap = StrokeCap.Round
+            )
+        }
+
         if (status == ConnectionStatus.CONNECTED) {
             val auraAlpha1 by infiniteTransition.animateFloat(
                 initialValue = 0.12f,
@@ -175,42 +190,13 @@ fun ConnectionButton(
             )
         }
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.size(188.dp)) {
             val center = center
             val baseRadius = 80.dp.toPx()
+            val ringRadius = 88.dp.toPx()
+            val ringStroke = 3.dp.toPx()
 
-            if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING) {
-                path1.reset()
-                val steps = 100
-                for (i in 0..steps) {
-                    val angle = (i.toFloat() / steps) * 2f * PI.toFloat()
-                    val r = baseRadius + 6.dp.toPx() * sin(5 * angle - wavePhase)
-                    val x = center.x + r * cos(angle)
-                    val y = center.y + r * sin(angle)
-                    if (i == 0) path1.moveTo(x, y) else path1.lineTo(x, y)
-                }
-                path1.close()
-                drawPath(
-                    path = path1,
-                    color = buttonBgColor.copy(alpha = 0.25f),
-                    style = Stroke(width = 3.dp.toPx())
-                )
-
-                path2.reset()
-                for (i in 0..steps) {
-                    val angle = (i.toFloat() / steps) * 2f * PI.toFloat()
-                    val r = baseRadius + 4.dp.toPx() * sin(7 * angle + wavePhase + 1.2f)
-                    val x = center.x + r * cos(angle)
-                    val y = center.y + r * sin(angle)
-                    if (i == 0) path2.moveTo(x, y) else path2.lineTo(x, y)
-                }
-                path2.close()
-                drawPath(
-                    path = path2,
-                    color = buttonBgColor.copy(alpha = 0.4f),
-                    style = Stroke(width = 2.dp.toPx())
-                )
-            } else if (status == ConnectionStatus.CONNECTED) {
+            if (status == ConnectionStatus.CONNECTED) {
                 if (pulseEnabled) {
                     val pulseScale = 1f + 0.04f * sin(wavePhase.toDouble()).toFloat()
                     drawCircle(
@@ -230,10 +216,22 @@ fun ConnectionButton(
                         style = Stroke(width = 3.dp.toPx())
                     )
                 }
-            } else {
+                val breatheAlpha = 0.10f + 0.12f * ((sin(wavePhase.toDouble()).toFloat() + 1f) * 0.5f)
+                val breatheRadius = ringRadius + 1.5.dp.toPx() * sin(wavePhase.toDouble()).toFloat()
+                drawCircle(
+                    color = buttonBgColor.copy(alpha = breatheAlpha),
+                    radius = breatheRadius,
+                    style = Stroke(width = ringStroke)
+                )
+            } else if (status == ConnectionStatus.DISCONNECTED) {
                 drawCircle(
                     color = onSurfaceColor.copy(alpha = 0.08f),
                     radius = baseRadius,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                drawCircle(
+                    color = onSurfaceColor.copy(alpha = 0.16f),
+                    radius = ringRadius,
                     style = Stroke(width = 2.dp.toPx())
                 )
             }
@@ -254,40 +252,36 @@ fun ConnectionButton(
                     onClick()
                 }
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    tint = if (status == ConnectionStatus.DISCONNECTED) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onPrimary
-                    },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .rotate(if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING) progressRotate else 0f)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = when (status) {
-                        ConnectionStatus.CONNECTED -> Loc.get("btn_connected", language)
-                        ConnectionStatus.CONNECTING -> Loc.get("btn_connecting", language)
-                        ConnectionStatus.RECONNECTING -> Loc.get("btn_reconnecting", language)
-                        ConnectionStatus.DISCONNECTED -> Loc.get("btn_disconnected", language)
-                    },
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp,
-                        color = if (status == ConnectionStatus.DISCONNECTED) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onPrimary
-                        }
+            if (centerContent != null) {
+                centerContent()
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .rotate(if (isBusy) progressRotate else 0f)
                     )
-                )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = when (status) {
+                            ConnectionStatus.CONNECTED -> Loc.get("btn_connected", language)
+                            ConnectionStatus.CONNECTING -> Loc.get("btn_connecting", language)
+                            ConnectionStatus.RECONNECTING -> Loc.get("btn_reconnecting", language)
+                            ConnectionStatus.DISCONNECTED -> Loc.get("btn_disconnected", language)
+                        },
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp,
+                            color = contentColor
+                        )
+                    )
+                }
             }
         }
     }
