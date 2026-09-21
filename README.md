@@ -6,7 +6,7 @@
 
 **A modern, Material You VPN / proxy client for Android — powered by Xray.**
 
-[![Release](https://img.shields.io/github/v/release/PerQ4/ByeBox?include_prereleases&style=for-the-badge&label=release)](https://github.com/PerQ4/ByeBox/releases)
+[![Release](https://img.shields.io/github/v/release/PerQ4/ByeBox?style=for-the-badge&label=release)](https://github.com/PerQ4/ByeBox/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Android-7.0%2B%20%C2%B7%20API%2024-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#building-from-source)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.x-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
