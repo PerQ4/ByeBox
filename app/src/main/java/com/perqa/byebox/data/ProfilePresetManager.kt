@@ -55,22 +55,20 @@ object ProfilePresetManager {
         val baseProfile = loadBaseProfile(context)
 
         val customProfiles = if (jsonStr.isNullOrBlank()) {
-            val defaults = createDefaultProfiles()
-            saveProfiles(context, defaults)
-            defaults
+            emptyList()
         } else {
             try {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<SettingsProfileData>()
                 for (i in 0 until arr.length()) {
                     val p = SettingsProfileData.fromJson(arr.getJSONObject(i))
-                    if (p.id != "base") {
+                    if (p.id != "base" && !p.id.startsWith("preset-")) {
                         list.add(p)
                     }
                 }
                 list
             } catch (_: Exception) {
-                createDefaultProfiles()
+                emptyList()
             }
         }
         return listOf(baseProfile) + customProfiles
@@ -82,6 +80,63 @@ object ProfilePresetManager {
         val arr = JSONArray()
         list.filter { it.id != "base" }.forEach { arr.put(it.toJson()) }
         prefs.edit().putString("pref_dynamic_profiles", arr.toString()).apply()
+    }
+
+    /**
+     * Re-maps profile server assignments that pointed to servers removed during a
+     * subscription refresh onto their replacement GUIDs (when the same server is
+     * still present under a new GUID). Returns true if any assignment was updated.
+     */
+    fun reconcileAssignments(
+        context: Context,
+        replacementMap: Map<String, String>,
+        aliveServerIds: Set<String>
+    ): Boolean {
+        if (replacementMap.isEmpty()) return false
+
+        val aliveIds = aliveServerIds.toMutableSet()
+        var changed = false
+
+        val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
+
+        // 1. Fix assignedConfigId on profiles pointing to removed servers.
+        val profiles = loadProfiles(context)
+        val updated = profiles.map { profile ->
+            val assigned = profile.assignedConfigId
+            if (assigned == null || assigned == "LAST_ACTIVE" || assigned == "FASTEST" || assigned in aliveIds) {
+                profile
+            } else {
+                val newId = replacementMap[assigned]?.takeIf { it in aliveIds }
+                if (newId != null) {
+                    changed = true
+                    aliveIds += newId
+                    profile.copy(assignedConfigId = newId)
+                } else {
+                    profile
+                }
+            }
+        }
+        if (changed) {
+            saveProfiles(context, updated)
+        }
+
+        // 2. Fix cached last-selected servers per profile (used by LAST_ACTIVE).
+        val editable = prefs.edit()
+        var prefsChanged = false
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith("last_selected_server_profile_") && value is String) {
+                val newId = replacementMap[value]?.takeIf { it in aliveIds }
+                if (newId != null) {
+                    editable.putString(key, newId)
+                    prefsChanged = true
+                }
+            }
+        }
+        if (prefsChanged) {
+            editable.apply()
+        }
+
+        return changed || prefsChanged
     }
 
     fun loadBaseProfile(context: Context): SettingsProfileData {
@@ -131,42 +186,6 @@ object ProfilePresetManager {
     fun setActiveProfileId(context: Context, id: String) {
         val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
         prefs.edit().putString("pref_active_profile_id", id).apply()
-    }
-
-    private fun createDefaultProfiles(): List<SettingsProfileData> {
-        return listOf(
-            SettingsProfileData(
-                id = "preset-work",
-                name = "Работа",
-                routingProfile = "BYPASS_LAN_CN_RU",
-                dnsServer = "CLOUDFLARE",
-                appRoutingMode = "ONLY_SELECTED"
-            ),
-            SettingsProfileData(
-                id = "preset-streaming",
-                name = "Стриминг",
-                routingProfile = "PROXY_ALL",
-                dnsServer = "GOOGLE",
-                muxEnabled = true
-            ),
-            SettingsProfileData(
-                id = "preset-security",
-                name = "Безопасность",
-                routingProfile = "PROXY_ALL",
-                dnsServer = "ADGUARD",
-                tunStack = "GVISOR",
-                fragmentEnabled = true
-            ),
-            SettingsProfileData(
-                id = "preset-regional",
-                name = "Обход блокировок",
-                routingProfile = "BYPASS_LAN_CN_RU",
-                dnsServer = "SYSTEM",
-                appRoutingMode = "BYPASS_SELECTED",
-                tunStack = "GVISOR",
-                fragmentEnabled = true
-            )
-        )
     }
 
     fun applyProfile(context: Context, profile: SettingsProfileData) {
@@ -316,13 +335,30 @@ object ProfilePresetManager {
     }
 
     private fun applyServerAssignment(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {
-        if (profile.assignedConfigId == "LAST_ACTIVE") {
-            val savedServerId = prefs.getString("last_selected_server_profile_${profile.id}", null)
-            if (!savedServerId.isNullOrBlank()) {
-                MmkvManager.setSelectServer(savedServerId)
+        when (profile.assignedConfigId) {
+            "LAST_ACTIVE" -> {
+                val savedServerId = prefs.getString("last_selected_server_profile_${profile.id}", null)
+                if (!savedServerId.isNullOrBlank()) {
+                    MmkvManager.setSelectServer(savedServerId)
+                }
             }
-        } else if (profile.assignedConfigId != null) {
-            MmkvManager.setSelectServer(profile.assignedConfigId)
+            "FASTEST" -> {
+                val fastestId = MmkvManager.decodeAllServerList()
+                    .mapNotNull { guid ->
+                        val pingMs = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis?.toInt()
+                        guid to (pingMs?.takeIf { it > 0 } ?: Int.MAX_VALUE)
+                    }
+                    .minByOrNull { it.second }
+                    ?.first
+                if (fastestId != null) {
+                    MmkvManager.setSelectServer(fastestId)
+                }
+            }
+            else -> {
+                if (profile.assignedConfigId != null) {
+                    MmkvManager.setSelectServer(profile.assignedConfigId)
+                }
+            }
         }
     }
 }

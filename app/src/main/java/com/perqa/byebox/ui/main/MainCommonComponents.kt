@@ -18,6 +18,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -41,6 +42,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
@@ -55,7 +58,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -72,13 +74,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -141,34 +149,53 @@ fun BottomEdgeFade(modifier: Modifier = Modifier) {
     )
 }
 
+fun Modifier.verticalOverflowFade(
+    fadeFraction: Float = 0.22f,
+    enabled: Boolean = true
+): Modifier = this
+    .clipToBounds()
+    .graphicsLayer {
+        compositingStrategy = CompositingStrategy.Offscreen
+    }
+    .drawWithContent {
+        drawContent()
+        if (enabled && size.height > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Black,
+                    (1f - fadeFraction).coerceIn(0f, 1f) to Color.Black,
+                    1f to Color.Transparent
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+    }
+
 @Composable
 fun FloatingContextAction(
-    selectedTab: Int,
+    selectedTabId: String,
     scaleFactor: Float = 0.90f,
     cornerRoundness: String = "expressive",
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tactileFeedback = rememberTactileFeedback()
-    val icon = when (selectedTab) {
-        0 -> Icons.Default.Star
-        1 -> Icons.Default.Add
-        2 -> Icons.Default.Settings
+    val icon = when (selectedTabId) {
+        "main" -> Icons.Default.Star
+        "proxies" -> Icons.Default.Add
         else -> Icons.Default.Share
     }
     val containerColor by animateColorAsState(
-        targetValue = when (selectedTab) {
-            0 -> MaterialTheme.colorScheme.primaryContainer
-            1 -> MaterialTheme.colorScheme.tertiaryContainer
-            2 -> MaterialTheme.colorScheme.secondaryContainer
+        targetValue = when (selectedTabId) {
+            "main" -> MaterialTheme.colorScheme.primaryContainer
+            "proxies" -> MaterialTheme.colorScheme.tertiaryContainer
             else -> MaterialTheme.colorScheme.errorContainer
         },
         label = "floatingActionColor"
     )
-    val contentColor = when (selectedTab) {
-        0 -> MaterialTheme.colorScheme.onPrimaryContainer
-        1 -> MaterialTheme.colorScheme.onTertiaryContainer
-        2 -> MaterialTheme.colorScheme.onSecondaryContainer
+    val contentColor = when (selectedTabId) {
+        "main" -> MaterialTheme.colorScheme.onPrimaryContainer
+        "proxies" -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onErrorContainer
     }
     val isExpressive = cornerRoundness == "expressive"
@@ -227,6 +254,29 @@ fun FloatingContextAction(
     }
 }
 
+@Composable
+fun rememberAppIconPainter(packageName: String): BitmapPainter? {
+    val context = LocalContext.current
+    return remember(packageName) {
+        val pm = context.packageManager
+        try {
+            val drawable = pm.getApplicationIcon(packageName)
+            val bitmap = Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888
+            )
+            Canvas(bitmap).apply {
+                drawable.setBounds(0, 0, width, height)
+                drawable.draw(this)
+            }
+            BitmapPainter(bitmap.asImageBitmap())
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppPickerSheet(
@@ -265,11 +315,18 @@ fun AppPickerSheet(
         }
     }
 
-    BackHandler(enabled = !showExitDialog) { attemptDismiss() }
+    val sheetScope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    fun keepEditing() {
+        showExitDialog = false
+        sheetScope.launch { sheetState.show() }
+    }
+
+    BackHandler { attemptDismiss() }
 
     if (showExitDialog) {
         AlertDialog(
-            onDismissRequest = { showExitDialog = false },
+            onDismissRequest = { keepEditing() },
             title = {
                 Text(
                     text = Loc.get("config_details_unsaved_title", language),
@@ -280,15 +337,12 @@ fun AppPickerSheet(
                 Text(Loc.get("config_details_unsaved_msg", language))
             },
             confirmButton = {
-                TextButton(onClick = {
-                    showExitDialog = false
-                    onDismiss()
-                }) {
+                TextButton(onClick = { onDismiss() }) {
                     Text(Loc.get("config_details_exit", language), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
+                TextButton(onClick = { keepEditing() }) {
                     Text(Loc.get("config_details_stay", language))
                 }
             },
@@ -299,17 +353,7 @@ fun AppPickerSheet(
 
     ModalBottomSheet(
         onDismissRequest = { attemptDismiss() },
-        sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = true,
-            confirmValueChange = { newValue ->
-                if (newValue == SheetValue.Hidden && hasChanges) {
-                    showExitDialog = true
-                    false
-                } else {
-                    true
-                }
-            }
-        ),
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = { PlainDragHandle() }
@@ -417,23 +461,7 @@ fun AppPickerSheet(
                     contentType = { "app" }
                 ) { app ->
                     val checked = app.packageName in localSelected
-                    val ctx = LocalContext.current
-                    val iconPainter = remember(app.packageName) {
-                        val pm = ctx.packageManager
-                        try {
-                            val drawable = pm.getApplicationIcon(app.packageName)
-                            val bitmap = Bitmap.createBitmap(
-                                drawable.intrinsicWidth.coerceAtLeast(1),
-                                drawable.intrinsicHeight.coerceAtLeast(1),
-                                Bitmap.Config.ARGB_8888
-                            )
-                            Canvas(bitmap).apply {
-                                drawable.setBounds(0, 0, width, height)
-                                drawable.draw(this)
-                            }
-                            BitmapPainter(bitmap.asImageBitmap())
-                        } catch (_: Exception) { null }
-                    }
+                    val iconPainter = rememberAppIconPainter(app.packageName)
 
                     val itemCornerRadius by animateDpAsState(
                         targetValue = if (checked) 24.dp else 12.dp,
@@ -569,6 +597,378 @@ fun AppPickerSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RoutingAppPickerSheet(
+    apps: List<InstalledAppInfo>,
+    channels: Map<String, RouteChannel>,
+    onSave: (Map<String, RouteChannel>) -> Unit,
+    onDismiss: () -> Unit,
+    language: String = "ru"
+) {
+    val tactileFeedback = rememberTactileFeedback()
+    var tab by remember { mutableStateOf(RouteChannel.VPN) }
+    var localChannels by remember { mutableStateOf(channels) }
+    var query by remember { mutableStateOf("") }
+    var hideSystem by remember { mutableStateOf(true) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val hasChanges by remember { derivedStateOf { localChannels != channels } }
+
+    val filteredApps = remember(apps, query, hideSystem) {
+        val q = query.trim()
+        apps.filter { app ->
+            val matchesQuery = q.isBlank() ||
+                app.label.contains(q, ignoreCase = true) ||
+                app.packageName.contains(q, ignoreCase = true)
+            val matchesSystem = !hideSystem || !app.isSystem
+            matchesQuery && matchesSystem
+        }
+    }
+
+    fun attemptDismiss() {
+        if (showExitDialog) return
+        if (hasChanges) showExitDialog = true else onDismiss()
+    }
+    fun keepEditing() {
+        showExitDialog = false
+        scope.launch { sheetState.show() }
+    }
+    BackHandler { attemptDismiss() }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { keepEditing() },
+            title = {
+                Text(
+                    text = Loc.get("config_details_unsaved_title", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+            },
+            text = { Text(Loc.get("config_details_unsaved_msg", language)) },
+            confirmButton = {
+                TextButton(onClick = { onDismiss() }) {
+                    Text(Loc.get("config_details_exit", language), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { keepEditing() }) {
+                    Text(Loc.get("config_details_stay", language))
+                }
+            },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { attemptDismiss() },
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { PlainDragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = Loc.get("routing_apps_title", language),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+            Text(
+                text = Loc.get("routing_picker_hint", language),
+                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+            )
+
+            RoutingChannelTabs(selected = tab, onSelect = { tab = it }, language = language)
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = String.format(Loc.get("app_picker_count", language), localChannels.size),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Text(
+                            text = String.format(Loc.get("app_picker_found", language), filteredApps.size),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = Loc.get("app_picker_hide_system", language),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Switch(checked = hideSystem, onCheckedChange = { hideSystem = it })
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text(Loc.get("app_picker_search", language)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = Loc.get("app_picker_clear", language),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            )
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(
+                    items = filteredApps,
+                    key = { it.packageName },
+                    contentType = { "app" }
+                ) { app ->
+                    val assigned = localChannels[app.packageName]
+                    val checked = assigned == tab
+                    val iconPainter = rememberAppIconPainter(app.packageName)
+
+                    val itemCornerRadius by animateDpAsState(
+                        targetValue = if (checked) 24.dp else 12.dp,
+                        label = "appItemCornerRadius"
+                    )
+                    val itemBgColor by animateColorAsState(
+                        targetValue = if (checked) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f)
+                        },
+                        label = "appItemBgColor"
+                    )
+                    val itemContentColor by animateColorAsState(
+                        targetValue = if (checked) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        label = "appItemContentColor"
+                    )
+                    val itemShape = RoundedCornerShape(itemCornerRadius)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(itemShape)
+                            .background(itemBgColor)
+                            .clickable {
+                                tactileFeedback()
+                                localChannels = when {
+                                    assigned == tab -> localChannels - app.packageName
+                                    else -> localChannels + (app.packageName to tab)
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (iconPainter != null) {
+                                Image(
+                                    painter = iconPainter,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = app.label.take(1).uppercase(),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Black,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = itemContentColor
+                                )
+                            )
+                            Text(
+                                text = app.packageName,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = itemContentColor.copy(alpha = 0.65f)
+                                )
+                            )
+                        }
+                        if (assigned != null && assigned != tab) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = routeChannelLabel(assigned, language),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = {
+                                tactileFeedback()
+                                localChannels = when {
+                                    assigned == tab -> localChannels - app.packageName
+                                    else -> localChannels + (app.packageName to tab)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = { onSave(localChannels) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(25.dp),
+                enabled = hasChanges,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            ) {
+                Text(Loc.get("app_picker_save", language), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun RoutingChannelTabs(selected: RouteChannel, onSelect: (RouteChannel) -> Unit, language: String) {
+    val options = listOf(
+        RouteChannel.VPN to Icons.AutoMirrored.Filled.CompareArrows,
+        RouteChannel.DIRECT to Icons.Default.OpenInBrowser
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            options.forEach { (ch, icon) ->
+                val isSel = ch == selected
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSel) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .clickable { onSelect(ch) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = routeChannelLabel(ch, language),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun routeChannelLabel(ch: RouteChannel, language: String): String = Loc.get(
+    when (ch) {
+        RouteChannel.VPN -> "channel_vpn"
+        RouteChannel.DIRECT -> "channel_direct"
+        else -> "channel_default"
+    },
+    language
+)
 
 @Composable
 fun SettingsChoiceRow(
@@ -835,6 +1235,138 @@ fun SettingsHealthRow(
         )
         IconButton(onClick = onTest) {
             Icon(Icons.Default.Search, contentDescription = Loc.get("health_check_cd", language))
+        }
+    }
+}
+
+@Composable
+fun ExpressiveTile(
+    title: String,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainer,
+    contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    cornerRoundness: String = "expressive",
+    scaleFactor: Float = 0.90f,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tactileFeedback = rememberTactileFeedback()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isExpressive = cornerRoundness == "expressive"
+    val baseRadius = if (isExpressive) 28.dp else 16.dp
+    val targetRadius = if (isPressed) baseRadius + 6.dp else baseRadius
+    val cornerRadius by animateDpAsState(targetValue = targetRadius, label = "expressiveTileCorner")
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) scaleFactor else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "expressiveTileScale"
+    )
+    val shape = RoundedCornerShape(cornerRadius)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current
+            ) {
+                tactileFeedback()
+                onClick()
+            },
+        shape = shape,
+        color = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(if (isExpressive) 16.dp else 10.dp))
+                        .background(contentColor.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor
+                    )
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ZoneCard(
+    title: String? = null,
+    trailing: @Composable RowScope.() -> Unit = {},
+    cornerRoundness: String = "expressive",
+    contentPadding: PaddingValues = PaddingValues(vertical = 14.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val isExpressive = cornerRoundness == "expressive"
+    val radius = if (isExpressive) 28.dp else 18.dp
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (title != null) Modifier.padding(top = 14.dp) else Modifier)
+                .padding(contentPadding)
+        ) {
+            if (title != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    )
+                    trailing()
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            content()
         }
     }
 }

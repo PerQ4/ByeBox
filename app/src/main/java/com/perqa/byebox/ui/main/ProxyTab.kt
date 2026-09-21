@@ -2,7 +2,14 @@ package com.perqa.byebox.ui.main
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.FileProvider
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.io.File
+import java.io.FileOutputStream
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +34,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,12 +67,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -138,6 +148,7 @@ fun ProxyTab(
     viewModel: MainScreenViewModel
 ) {
     val tactileFeedback = rememberTactileFeedback()
+    val context = LocalContext.current
     var importUrl by remember { mutableStateOf("") }
     var importUrlError by remember { mutableStateOf(false) }
     var nodeSearchQuery by remember { mutableStateOf("") }
@@ -417,9 +428,10 @@ fun ProxyTab(
                 )
 
                 stickyHeader(key = "source-$sourceName", contentType = "source") {
+                    val subSource = sourcesByName[sourceName]
                     SourceGroupCard(
                         sourceName = sourceName,
-                        source = sourcesByName[sourceName],
+                        source = subSource,
                         configs = configs,
                         activeConfigId = state.activeConfigId,
                         pingingConfigIds = state.pingingConfigIds,
@@ -453,7 +465,10 @@ fun ProxyTab(
                         shape = headerShape,
                         compactMode = state.compactLayoutEnabled,
                         showFlags = state.showFlagsEnabled,
-                        language = state.language
+                        language = state.language,
+                        onInfo = subSource?.webPageUrl?.let { url ->
+                            { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
                     )
                 }
 
@@ -801,7 +816,7 @@ fun ProxySearchField(
             )
             IconButton(
                 onClick = onOpenFilters,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
@@ -1014,29 +1029,202 @@ fun SourceGroupCard(
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp),
     compactMode: Boolean = false,
     showFlags: Boolean = true,
-    language: String = "ru"
+    language: String = "ru",
+    onInfo: (() -> Unit)? = null,
+    headerActionIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Info,
+    showNodeCount: Boolean = true,
+    showAvgPing: Boolean = true,
+    onSwipeOffsetChanged: (Float) -> Unit = {},
+    onSwipingChanged: (Boolean) -> Unit = {}
 ) {
     val tactileFeedback = rememberTactileFeedback()
+    val context = LocalContext.current
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
+    var showShareDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = shape,
-        color = if (activeCount > 0) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        enabled = !isRenaming,
-        onClick = {
-            tactileFeedback()
-            onToggleExpanded()
+    var swipeOffsetX by remember(source?.id) { mutableFloatStateOf(0f) }
+    var actionThresholdFeedbackSent by remember(source?.id) { mutableStateOf(false) }
+    val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
+    val detachStartPx = remember(density) { with(density) { 14.dp.toPx() } }
+    val detachEndPx = remember(density) { with(density) { 58.dp.toPx() } }
+    val detachProgress by remember {
+        derivedStateOf {
+            smoothStep(((kotlin.math.abs(swipeOffsetX) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
         }
-    ) {
+    }
+    val displayOffsetX by remember {
+        derivedStateOf {
+            val resisted = swipeOffsetX * 0.48f
+            resisted + (swipeOffsetX - resisted) * detachProgress
+        }
+    }
+    val swipeDeleteFraction by remember {
+        derivedStateOf { (-displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
+    }
+    val swipeInfoFraction by remember {
+        derivedStateOf { (displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
+    }
+
+    val bgShape = RoundedCornerShape(28.dp)
+    val containerColor = if (activeCount > 0) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val errorContainer = MaterialTheme.colorScheme.errorContainer
+    val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
+    val tertiaryContainer = MaterialTheme.colorScheme.tertiaryContainer
+    val onTertiaryContainer = MaterialTheme.colorScheme.onTertiaryContainer
+    val canSwipe = source != null && !isRenaming
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(bgShape)
+                .background(tertiaryContainer.copy(alpha = swipeInfoFraction)),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (swipeInfoFraction > 0.08f) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = Loc.get("manage_cd", language),
+                    tint = onTertiaryContainer.copy(alpha = (swipeInfoFraction * 2.5f).coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .padding(start = 20.dp)
+                        .size(22.dp)
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(bgShape)
+                .background(errorContainer.copy(alpha = swipeDeleteFraction)),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            if (swipeDeleteFraction > 0.08f) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = Loc.get("delete_cd", language),
+                    tint = onErrorContainer.copy(alpha = (swipeDeleteFraction * 2.5f).coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .padding(end = 20.dp)
+                        .size(22.dp)
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(displayOffsetX.toInt(), 0) }
+                .clip(shape)
+                .pointerInput(source?.id) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            if (!canSwipe) return@detectHorizontalDragGestures
+                            actionThresholdFeedbackSent = false
+                            tactileFeedback()
+                            onSwipingChanged(true)
+                            onSwipeOffsetChanged(swipeOffsetX)
+                        },
+                        onDragEnd = {
+                            if (!canSwipe) return@detectHorizontalDragGestures
+                            scope.launch {
+                                if (-displayOffsetX >= actionThresholdPx) {
+                                    tactileFeedback()
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
+                                        -size.width.toFloat(),
+                                        animationSpec = tween(260)
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
+                                    swipeOffsetX = 0f
+                                    onSwipeOffsetChanged(0f)
+                                    onSwipingChanged(false)
+                                    source.id?.let(onDeleteSource)
+                                } else if (displayOffsetX >= actionThresholdPx && onInfo != null) {
+                                    tactileFeedback()
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
+                                        0f,
+                                        animationSpec = tween(220)
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
+                                    onSwipingChanged(false)
+                                    onInfo()
+                                } else {
+                                    val anim = Animatable(swipeOffsetX)
+                                    anim.animateTo(
+                                        0f,
+                                        animationSpec = tween(260)
+                                    ) {
+                                        swipeOffsetX = value
+                                        onSwipeOffsetChanged(value)
+                                    }
+                                    onSwipingChanged(false)
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            if (!canSwipe) return@detectHorizontalDragGestures
+                            scope.launch {
+                                val anim = Animatable(swipeOffsetX)
+                                anim.animateTo(0f, animationSpec = tween(220)) {
+                                    swipeOffsetX = value
+                                    onSwipeOffsetChanged(value)
+                                }
+                            }
+                            onSwipingChanged(false)
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            if (!canSwipe) {
+                                change.consume()
+                            } else {
+                                val newOffset = (swipeOffsetX + dragAmount)
+                                    .coerceIn(-size.width.toFloat(), size.width.toFloat())
+                                val displayNewOffset = run {
+                                    val progress = smoothStep(((kotlin.math.abs(newOffset) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
+                                    val resisted = newOffset * 0.48f
+                                    resisted + (newOffset - resisted) * progress
+                                }
+                                if (kotlin.math.abs(displayNewOffset) >= actionThresholdPx && !actionThresholdFeedbackSent) {
+                                    actionThresholdFeedbackSent = true
+                                    tactileFeedback()
+                                }
+                                swipeOffsetX = newOffset
+                                onSwipeOffsetChanged(newOffset)
+                            }
+                        }
+                    )
+                }
+                .pointerInput(source?.id) {
+                    detectTapGestures(
+                        onLongPress = {
+                            tactileFeedback()
+                            onInfo?.invoke()
+                        }
+                    )
+                }
+                .clickable(enabled = !isRenaming) {
+                    tactileFeedback()
+                    onToggleExpanded()
+                },
+            shape = shape,
+            color = containerColor
+        ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
                 modifier = Modifier
@@ -1075,41 +1263,58 @@ fun SourceGroupCard(
                             maxLines = 1
                         )
                     }
-                    Text(
-                        text = sourceSubtitle(sourceUrl, source, language),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
-                        Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Medium
-                            ),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    source?.let {
+                        val sub = sourceSubtitle(it, language)
+                        if (sub.isNotBlank()) {
+                            Text(
+                                text = sub,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Black
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showNodeCount) {
+                        Text(
+                            text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Black
+                            )
                         )
-                    )
-                    Text(
-                        text = averagePing?.let { "~$it ms" } ?: "N/A",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                            fontWeight = FontWeight.Bold
+                    }
+                    if (source?.webPageUrl != null || onInfo != null) {
+                        IconButton(
+                            onClick = {
+                                tactileFeedback()
+                                onInfo?.invoke()
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = headerActionIcon,
+                                contentDescription = Loc.get("manage_cd", language),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    if (showAvgPing) {
+                        Text(
+                            text = averagePing?.let { "~$it ms" } ?: "N/A",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
+                    }
                     source?.let {
                         val expireColor = subscriptionExpireColor(it, MaterialTheme.colorScheme)
                         Text(
@@ -1123,11 +1328,25 @@ fun SourceGroupCard(
                         )
                     }
                 }
+                Spacer(modifier = Modifier.width(12.dp))
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp).padding(2.dp)
+                )
+            }
+
+            source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                Text(
+                    text = desc,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
                 )
             }
 
@@ -1165,7 +1384,41 @@ fun SourceGroupCard(
                         destructive = true,
                         modifier = Modifier.weight(1f)
                     )
+                    SourceActionButton(
+                        label = Loc.get("share", language),
+                        icon = Icons.Default.Share,
+                        onClick = { showShareDialog = true },
+                        enabled = sourceUrl != null,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
+            }
+
+            if (showShareDialog && sourceUrl != null) {
+                AlertDialog(
+                    onDismissRequest = { showShareDialog = false },
+                    title = {
+                        Text(
+                            text = Loc.get("share_title", language),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                        )
+                    },
+                    text = { Text(Loc.get("share_sub_desc", language)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showShareDialog = false
+                            shareText(context, sourceUrl, Loc.get("share_title", language))
+                        }) { Text(Loc.get("share_link", language)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showShareDialog = false
+                            shareQr(context, sourceUrl, Loc.get("share_title", language))
+                        }) { Text(Loc.get("share_qr", language)) }
+                    },
+                    shape = RoundedCornerShape(28.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
             }
 
             AnimatedVisibility(
@@ -1188,6 +1441,7 @@ fun SourceGroupCard(
                     }
                 }
             }
+            }
         }
     }
 }
@@ -1198,19 +1452,20 @@ fun SourceActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    destructive: Boolean = false
+    destructive: Boolean = false,
+    enabled: Boolean = true
 ) {
     val tactileFeedback = rememberTactileFeedback()
     val containerColor = when {
         destructive -> MaterialTheme.colorScheme.errorContainer
-        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.secondaryContainer
-        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.tertiaryContainer
+        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.tertiaryContainer
+        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceContainer
     }
     val contentColor = when {
         destructive -> MaterialTheme.colorScheme.onErrorContainer
-        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.onSecondaryContainer
-        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.onTertiaryContainer
+        icon == Icons.Default.Refresh -> MaterialTheme.colorScheme.onTertiaryContainer
+        icon == Icons.Default.Settings -> MaterialTheme.colorScheme.onSecondaryContainer
         else -> MaterialTheme.colorScheme.onSurface
     }
 
@@ -1219,6 +1474,7 @@ fun SourceActionButton(
             tactileFeedback()
             onClick()
         },
+        enabled = enabled,
         modifier = modifier.height(34.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
@@ -1447,6 +1703,42 @@ fun ImportConfigDialog(
     }
 }
 
+private fun generateQrBitmap(content: String, sizePx: Int = 512): Bitmap {
+    val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
+    for (x in 0 until sizePx) {
+        for (y in 0 until sizePx) {
+            bitmap.setPixel(
+                x,
+                y,
+                if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+            )
+        }
+    }
+    return bitmap
+}
+
+private fun shareText(context: Context, text: String, chooserTitle: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, chooserTitle))
+}
+
+private fun shareQr(context: Context, content: String, chooserTitle: String) {
+    val bitmap = generateQrBitmap(content)
+    val file = File(context.cacheDir, "byebox_qr_${System.currentTimeMillis()}.png")
+    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, chooserTitle))
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigDetailsSheet(
@@ -1457,6 +1749,7 @@ fun ConfigDetailsSheet(
 ) {
     var isEditing by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
 
     var name by remember(config) { mutableStateOf(config.name) }
     var address by remember(config) { mutableStateOf(config.address) }
@@ -1538,6 +1831,33 @@ fun ConfigDetailsSheet(
     val tactileFeedback = rememberTactileFeedback()
     val context = LocalContext.current
 
+    if (showShareDialog) {
+        AlertDialog(
+            onDismissRequest = { showShareDialog = false },
+            title = {
+                Text(
+                    text = Loc.get("share_title", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+            },
+            text = { Text(Loc.get("share_config_desc", language)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showShareDialog = false
+                    shareText(context, config.toConfigLink(), Loc.get("share_title", language))
+                }) { Text(Loc.get("share_link", language)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showShareDialog = false
+                    shareQr(context, config.toConfigLink(), Loc.get("share_title", language))
+                }) { Text(Loc.get("share_qr", language)) }
+            },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = { attemptDismiss() },
         sheetState = rememberModalBottomSheetState(
@@ -1597,8 +1917,8 @@ fun ConfigDetailsSheet(
                         )
                     )
                 }
-                IconButton(onClick = ::attemptDismiss) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = Loc.get("config_details_close", language))
+                IconButton(onClick = { showShareDialog = true }) {
+                    Icon(Icons.Default.Share, contentDescription = Loc.get("share_cd", language))
                 }
             }
 
@@ -1896,11 +2216,9 @@ private fun ConfigDetailLine(
     }
 }
 
-private fun sourceSubtitle(sourceUrl: String?, source: SubscriptionSource?, language: String = "ru"): String {
+private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String = "ru"): String {
     val parts = mutableListOf<String>()
-    val url = sourceUrl ?: Loc.get("local_import", language)
-    parts.add(url)
-    source?.lastUpdatedAt?.let { timestamp ->
+    sourceSource?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
         parts.add(formatter.format(java.util.Date(timestamp)))
     }
@@ -1974,6 +2292,7 @@ fun ServerItemCard(
     onSwipingChanged: (Boolean) -> Unit = {},
     compactMode: Boolean = false,
     showFlags: Boolean = true,
+    statusText: String? = null,
     language: String = "ru"
 ) {
     val context = LocalContext.current
@@ -1982,6 +2301,7 @@ fun ServerItemCard(
     val scope = rememberCoroutineScope()
     val protocolDetails = remember(config) { config.protocolSummary() }
     val endpointDetails = remember(config) { config.endpointSummary() }
+    val hasEndpoint = config.address.isNotBlank() && config.port > 0
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
@@ -2164,6 +2484,14 @@ fun ServerItemCard(
                         }
                     )
                 }
+                .pointerInput(config.id) {
+                    detectTapGestures(
+                        onLongPress = {
+                            tactileFeedback()
+                            onOpenSettings()
+                        }
+                    )
+                }
                 .clickable {
                     tactileFeedback()
                     onSelect()
@@ -2209,7 +2537,18 @@ fun ServerItemCard(
                         ),
                         maxLines = 1
                     )
-                    if (!compactMode) {
+                    if (!compactMode && statusText != null && statusText.isNotBlank()) {
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.55f)
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (!compactMode && hasEndpoint) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -2238,26 +2577,28 @@ fun ServerItemCard(
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    PingPill(ping = config.ping, isPinging = isPinging)
-                    IconButton(
-                        onClick = {
-                            tactileFeedback()
-                            val link = config.toConfigLink()
-                            if (link.isNotBlank()) {
-                                clipboardManager.setText(AnnotatedString(link))
-                                Toast.makeText(context, Loc.get("link_copied", language), Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.size(30.dp)
+                if (hasEndpoint) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        CopyIcon(
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                        )
+                        PingPill(ping = config.ping, isPinging = isPinging)
+                        IconButton(
+                            onClick = {
+                                tactileFeedback()
+                                val link = config.toConfigLink()
+                                if (link.isNotBlank()) {
+                                    clipboardManager.setText(AnnotatedString(link))
+                                    Toast.makeText(context, Loc.get("link_copied", language), Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            CopyIcon(
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }

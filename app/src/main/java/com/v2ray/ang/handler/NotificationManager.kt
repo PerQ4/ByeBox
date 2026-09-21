@@ -17,6 +17,7 @@ import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.toSpeedString
 import com.perqa.byebox.MainActivity
+import com.perqa.byebox.core.TrafficStatsManager
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -199,25 +200,20 @@ object NotificationManager {
         var proxyUplink = 0L
         var proxyDownlink = 0L
 
-        CoreServiceManager.queryAllOutboundTrafficStats().forEach { stat ->
-            if (stat.tag.startsWith(AppConfig.TAG_PROXY)) {
-                when (stat.direction) {
-                    AppConfig.UPLINK -> proxyUplink += stat.value
-                    AppConfig.DOWNLINK -> proxyDownlink += stat.value
-                }
-            }
-        }
+        // Single-shared-owner fix: the v2ray counters are RESET on every queryGPIO, and the
+        // shared TrafficStatsManager is the only component allowed to query-and-reset them
+        // (it is started once when the core loop starts). Quering them again here would race
+        // with the manager's poller and both readouts would flicker between 0 and the real
+        // speed — exactly the bug this manager fixes. So we consume its StateFlows instead.
+        val uplinkSpeedBps = TrafficStatsManager.uploadSpeedBps.value
+        val downlinkSpeedBps = TrafficStatsManager.downloadSpeedBps.value
 
-        val uplinkSpeed = (proxyUplink / sinceLastQueryInSeconds).toLong()
-        val downlinkSpeed = (proxyDownlink / sinceLastQueryInSeconds).toLong()
-
-        val uplinkStr = formatSpeed(uplinkSpeed)
-        val downlinkStr = formatSpeed(downlinkSpeed)
+        val uplinkStr = formatSpeed(uplinkSpeedBps)
+        val downlinkStr = formatSpeed(downlinkSpeedBps)
         val speedText = "↑ $uplinkStr   ↓ $downlinkStr"
         updateNotification(speedText)
 
-        lastQueryTime = queryTime
-        return proxyUplink + proxyDownlink == 0L
+        return uplinkSpeedBps + downlinkSpeedBps == 0L
     }
 
     /**

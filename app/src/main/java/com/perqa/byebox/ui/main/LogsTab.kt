@@ -21,12 +21,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.amurcanov.tgwsproxy.LogEntry
+import com.amurcanov.tgwsproxy.LogManager
 
 @Composable
 fun LogsTab(
@@ -49,13 +54,34 @@ fun LogsTab(
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    // 0 = VPN, 1 = Telegram
+    var source by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
-    val filteredLogs = remember(searchQuery, state.logs) {
-        if (searchQuery.isBlank()) {
-            state.logs
-        } else {
-            state.logs.filter { it.contains(searchQuery, ignoreCase = true) }
+
+    val tgwsLogs by LogManager.logs.collectAsStateWithLifecycle(initialValue = emptyList())
+    val telegramLogs = source == 1
+
+    DisposableEffect(source) {
+        if (source == 1) LogManager.startListening()
+        onDispose { if (source == 1) LogManager.stopListening() }
+    }
+
+    val vpnLogs = state.logs
+    val tgwsLines = tgwsLogs.map { entry ->
+        val base = if (entry.count > 1) "${entry.message} ×${entry.count}" else entry.message
+        when {
+            entry.isError -> "[ERROR] $base"
+            entry.priority == 5 -> "[WARNING] $base"
+            entry.priority == 3 -> "[DEBUG] $base"
+            else -> base
         }
+    }
+
+    val filteredVpn = remember(searchQuery, vpnLogs) {
+        if (searchQuery.isBlank()) vpnLogs else vpnLogs.filter { it.contains(searchQuery, ignoreCase = true) }
+    }
+    val filteredTgws = remember(searchQuery, tgwsLines) {
+        if (searchQuery.isBlank()) tgwsLines else tgwsLines.filter { it.contains(searchQuery, ignoreCase = true) }
     }
 
     Column(
@@ -77,7 +103,7 @@ fun LogsTab(
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
@@ -95,32 +121,48 @@ fun LogsTab(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
-                    onClick = { viewModel.exportLogs(context) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .height(42.dp)
-                        .weight(1f)
-                ) {
-                    Text(Loc.get("logs_export", state.language), fontWeight = FontWeight.Bold, maxLines = 1)
-                }
+                FilterChip(
+                    selected = source == 0,
+                    onClick = { source = 0 },
+                    label = { Text(Loc.get("title_main", state.language), fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.height(40.dp)
+                )
+                FilterChip(
+                    selected = source == 1,
+                    onClick = { source = 1 },
+                    label = { Text(Loc.get("title_telegram", state.language), fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.height(40.dp)
+                )
 
-                Button(
-                    onClick = { viewModel.clearLogs() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .height(42.dp)
-                        .weight(1f)
-                ) {
-                    Text(Loc.get("logs_clear", state.language), fontWeight = FontWeight.Bold, maxLines = 1)
+                if (source == 0) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Button(
+                        onClick = { viewModel.exportLogs(context) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .height(42.dp)
+                            .weight(1f)
+                    ) {
+                        Text(Loc.get("logs_export", state.language), fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+
+                    Button(
+                        onClick = { viewModel.clearLogs() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .height(42.dp)
+                            .weight(1f)
+                    ) {
+                        Text(Loc.get("logs_clear", state.language), fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
                 }
             }
         }
@@ -133,13 +175,17 @@ fun LogsTab(
                 .weight(1f)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
-                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f))
+                .background(Color.Black.copy(alpha = 0.85f))
                 .padding(14.dp)
         ) {
-            if (filteredLogs.isEmpty()) {
+            val lines = when (source) {
+                1 -> filteredTgws
+                else -> filteredVpn
+            }
+            if (lines.isEmpty()) {
                 Text(
                     text = Loc.get("logs_empty", state.language),
-                    color = androidx.compose.ui.graphics.Color.Gray,
+                    color = Color.Gray,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.Center)
@@ -152,15 +198,15 @@ fun LogsTab(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(
-                        items = filteredLogs,
+                        items = lines,
                         contentType = { "log" }
                     ) { log ->
                         val textColor = when {
-                            log.contains("[ERROR]", ignoreCase = true) -> androidx.compose.ui.graphics.Color(0xFFEF4444)
-                            log.contains("[WARNING]", ignoreCase = true) -> androidx.compose.ui.graphics.Color(0xFFFBBF24)
-                            log.contains("[INFO]", ignoreCase = true) -> androidx.compose.ui.graphics.Color(0xFF60A5FA)
-                            log.contains("[DEBUG]", ignoreCase = true) -> androidx.compose.ui.graphics.Color(0xFF10B981)
-                            else -> androidx.compose.ui.graphics.Color(0xFFE2E8F0)
+                            log.contains("[ERROR]", ignoreCase = true) -> Color(0xFFEF4444)
+                            log.contains("[WARNING]", ignoreCase = true) -> Color(0xFFFBBF24)
+                            log.contains("[INFO]", ignoreCase = true) -> Color(0xFF60A5FA)
+                            log.contains("[DEBUG]", ignoreCase = true) -> Color(0xFF10B981)
+                            else -> Color(0xFFE2E8F0)
                         }
                         Text(
                             text = log,

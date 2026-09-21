@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ByeBox</string>
+    <string name="qs_profile_tile_label">Быстрое переключение ByeBox</string>
+</resources>

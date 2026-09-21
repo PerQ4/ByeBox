@@ -3,6 +3,8 @@ package com.v2ray.ang.core
 import android.content.Context
 import android.text.TextUtils
 import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
 import com.v2ray.ang.dto.CoreConfigContext
@@ -82,11 +84,16 @@ object CoreConfigManager {
         val raw = MmkvManager.decodeServerRaw(configContext.guid)
             ?: return ConfigResult(status = false, guid = configContext.guid, errorMessage = "Custom config is empty")
         val result = ConfigResult(true, configContext.guid, raw)
-        if (!needTun()) {
-            return result
-        }
+        val json = JsonUtil.parseString(raw) ?: return result
 
-        val json = JsonUtil.parseString(raw)?.takeIf { it.isJsonObject }?.asJsonObject ?: return result
+        // Custom profiles bypass the generated templates, so the traffic statistics
+        // section has to be injected here — otherwise the core counts no outbound
+        // bytes and every speed readout stays at zero.
+        applyCustomTrafficStats(json)
+
+        if (!needTun()) {
+            return ConfigResult(true, configContext.guid, JsonUtil.toJsonPretty(json) ?: raw)
+        }
 
         // Check whether package names need to be replaced with UIDs
         if (SettingsManager.canUseProcessRouting()) {
@@ -116,11 +123,31 @@ object CoreConfigManager {
         }
 
         if (tunNotExists) {
-            // add tun inbound from template
+            // Detect the inbound tag referenced by routing rules (e.g. "tun-in", "tun")
+            // so the injected tun inbound matches what the config expects.
+            val rulesJson = json.get("routing")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray
+            val referencedInboundTags = rulesJson?.mapNotNull { elem ->
+                val rule = elem as? JsonObject ?: return@mapNotNull null
+                (rule.get("inboundTag") as? JsonArray)
+                    ?.mapNotNull { it.takeIf { t -> t.isJsonPrimitive }?.asJsonPrimitive?.asString }
+            }?.flatten().orEmpty()
+
+            val tunTag = referencedInboundTags
+                .firstOrNull { it.contains("tun", ignoreCase = true) }
+                ?: referencedInboundTags.firstOrNull()
+                ?: "tun"
+
             val templateConfig = initV2rayConfig(configContext)
             templateConfig.inbounds.firstOrNull { it.tag == "tun" }?.let { inboundTun ->
                 inboundTun.settings?.mtu = SettingsManager.getVpnMtu()
-                inboundsJson.add(JsonUtil.parseString(JsonUtil.toJson(inboundTun)))
+                val jsonInbound = JsonUtil.toJson(inboundTun).let { raw ->
+                    val obj = JsonUtil.parseString(raw)!!.asJsonObject
+                    obj.addProperty("tag", tunTag)
+                    obj.toString()
+                }
+                inboundsJson.add(JsonUtil.parseString(jsonInbound))
             }
         }
 
@@ -630,6 +657,31 @@ object CoreConfigManager {
             v2rayConfig.stats = null
             v2rayConfig.policy = null
         }
+    }
+
+    /**
+     * Ensure custom configurations collect per-outbound traffic statistics.
+     *
+     * The generated templates already ship with `stats` and
+     * `policy.system.statsOutboundUplink/Downlink`, but custom profiles are passed
+     * through verbatim. Without those blocks the core never records outbound bytes,
+     * so the dashboard speed counters stay at zero. The feature flag is honored the
+     * same way as [applySpeedDisabled].
+     */
+    private fun applyCustomTrafficStats(json: JsonObject) {
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED, true) != true) {
+            json.remove("stats")
+            json.getAsJsonObject("policy")?.remove("system")
+            return
+        }
+
+        if (json.get("stats")?.isJsonObject != true) {
+            json.add("stats", JsonObject())
+        }
+        val policy = json.getAsJsonObject("policy") ?: JsonObject().also { json.add("policy", it) }
+        val system = policy.getAsJsonObject("system") ?: JsonObject().also { policy.add("system", it) }
+        system.addProperty("statsOutboundUplink", true)
+        system.addProperty("statsOutboundDownlink", true)
     }
 
     /**

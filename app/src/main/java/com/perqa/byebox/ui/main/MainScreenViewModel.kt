@@ -2,6 +2,7 @@ package com.perqa.byebox.ui.main
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.perqa.byebox.data.ProxyConfig
@@ -76,7 +77,7 @@ enum class DnsServer(val label: String, val address: String) {
     CLOUDFLARE("Cloudflare DNS", "1.1.1.1"),
     GOOGLE("Google DNS", "8.8.8.8"),
     ADGUARD("AdGuard DNS (фильтр)", "94.140.14.14"),
-    CUSTOM("Свой DNS", "custom")
+    CUSTOM("Свой вариант", "custom")
 }
 
 enum class AppRoutingMode(val label: String, val description: String) {
@@ -88,6 +89,56 @@ enum class AppRoutingMode(val label: String, val description: String) {
 enum class TunStack(val label: String, val description: String, val xrayValue: String) {
     GVISOR("gVisor", "Изоляция стека — максимальная совместимость", "gvisor"),
     SYSTEM("System", "Системный стек — максимальная скорость", "system")
+}
+
+fun RoutingProfile.localizedName(language: String): String = Loc.get(
+    when (this) {
+        RoutingProfile.BYPASS_LAN_CN_RU -> "routing_bypass"
+        RoutingProfile.PROXY_ALL -> "routing_proxy_all"
+        RoutingProfile.DIRECT -> "routing_direct"
+    },
+    language
+)
+
+fun DnsServer.localizedName(language: String): String = Loc.get(
+    when (this) {
+        DnsServer.SYSTEM -> "dns_system"
+        DnsServer.CLOUDFLARE -> "dns_cloudflare"
+        DnsServer.GOOGLE -> "dns_google"
+        DnsServer.ADGUARD -> "dns_adguard"
+        DnsServer.CUSTOM -> "dns_custom"
+    },
+    language
+)
+
+fun AppRoutingMode.localizedName(language: String): String = Loc.get(
+    when (this) {
+        AppRoutingMode.OFF -> "app_routing_all"
+        AppRoutingMode.ONLY_SELECTED -> "app_routing_selected"
+        AppRoutingMode.BYPASS_SELECTED -> "app_routing_bypass"
+    },
+    language
+)
+
+fun TunStack.localizedName(language: String): String = Loc.get(
+    when (this) {
+        TunStack.GVISOR -> "tun_gvisor"
+        TunStack.SYSTEM -> "tun_system"
+    },
+    language
+)
+
+fun TunStack.localizedDescription(language: String): String = Loc.get(
+    when (this) {
+        TunStack.GVISOR -> "tun_gvisor_desc"
+        TunStack.SYSTEM -> "tun_system_desc"
+    },
+    language
+)
+
+fun DnsServer.localizedAddress(language: String): String = when (this) {
+    DnsServer.SYSTEM -> Loc.get("dns_system_default", language)
+    else -> address
 }
 
 data class MainUiState(
@@ -149,9 +200,15 @@ data class InstalledAppInfo(
     val isSystem: Boolean,
 )
 
+data class ImportOutcome(
+    val count: Int,
+    val isSubscription: Boolean,
+)
+
 class MainScreenViewModel(
     private val appContext: Context
 ) : ViewModel() {
+
     private val prefs = appContext.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
 
     private val _configs = MutableStateFlow<List<ProxyConfig>>(emptyList())
@@ -169,6 +226,7 @@ class MainScreenViewModel(
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
     private val _tunStack = MutableStateFlow(readEnum(KEY_TUN_STACK, TunStack.GVISOR))
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
+    val installedApps: List<InstalledAppInfo> get() = _installedApps.value
     private val _healthCheckUrl = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204")
     private val _vpnModeEnabled = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN")
     private val _socksPort = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808")
@@ -178,6 +236,30 @@ class MainScreenViewModel(
     private val _fragmentEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false))
     private val _ipv6Enabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false))
     private val _startOnBootEnabled = MutableStateFlow(MmkvManager.decodeStartOnBoot())
+
+    private val _autoRefreshSubsOnStartup = MutableStateFlow(prefs.getBoolean("pref_auto_refresh_subs_startup", true))
+    val autoRefreshSubsOnStartup: StateFlow<Boolean> get() = _autoRefreshSubsOnStartup
+    private val _autoPingOnStartup = MutableStateFlow(prefs.getBoolean("pref_auto_ping_startup", true))
+    val autoPingOnStartup: StateFlow<Boolean> get() = _autoPingOnStartup
+    private val _periodicPingEnabled = MutableStateFlow(prefs.getBoolean("pref_periodic_ping_enabled", false))
+    val periodicPingEnabled: StateFlow<Boolean> get() = _periodicPingEnabled
+    private val _periodicPingIntervalSec = MutableStateFlow(prefs.getInt("pref_periodic_ping_interval", 60))
+    val periodicPingIntervalSec: StateFlow<Int> get() = _periodicPingIntervalSec
+
+    private val _tabOrder = MutableStateFlow(
+        run {
+            val saved = prefs.getString("pref_tab_order", null)
+                ?.split(",")
+                ?.filter { it in setOf("main", "proxies", "settings") }
+            saved?.takeIf { it.isNotEmpty() }
+                ?: listOf("main", "proxies", "settings")
+        }
+    )
+    val tabOrder: StateFlow<List<String>> get() = _tabOrder
+    private val _defaultTabId = MutableStateFlow(prefs.getString("pref_default_tab_id", "main") ?: "main")
+    val defaultTabId: StateFlow<String> get() = _defaultTabId
+    private val _appMode = MutableStateFlow(prefs.getString("pref_app_mode", "") ?: "")
+    val appMode: StateFlow<String> get() = _appMode
     private val _logLevel = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, "warning") ?: "warning")
     private val _blockingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool("pref_blocking", false))
     private val _sniffingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true))
@@ -384,7 +466,7 @@ class MainScreenViewModel(
         } else {
             0
         }
-        appContext.registerReceiver(mMsgReceiver, filter, flags)
+        androidx.core.content.ContextCompat.registerReceiver(appContext, mMsgReceiver, filter, flags)
         MessageUtil.sendMsg2Service(appContext, AppConfig.MSG_REGISTER_CLIENT, "")
 
         _connectionStatus.value = if (CoreServiceManager.isRunning()) {
@@ -396,6 +478,20 @@ class MainScreenViewModel(
 
         viewModelScope.launch {
             _updateInfo.value = UpdateChecker.check()
+        }
+        viewModelScope.launch {
+            if (_autoRefreshSubsOnStartup.value) refreshSubscriptions()
+            if (_autoPingOnStartup.value) testPings(silent = true)
+        }
+        startPeriodicPing()
+    }
+
+    private fun startPeriodicPing() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay((_periodicPingIntervalSec.value.coerceAtLeast(5)) * 1000L)
+                if (_periodicPingEnabled.value) testPings(silent = true)
+            }
         }
     }
 
@@ -462,33 +558,16 @@ class MainScreenViewModel(
     private fun startTrafficUpdates() {
         trafficJob?.cancel()
         trafficJob = viewModelScope.launch(Dispatchers.IO) {
-            var lastQueryTime = System.currentTimeMillis()
             while (isActive) {
                 delay(1000)
                 if (_connectionStatus.value != ConnectionStatus.CONNECTED) continue
-                
-                val queryTime = System.currentTimeMillis()
-                val sinceLastQuery = queryTime - lastQueryTime
-                if (sinceLastQuery <= 0) continue
-                val seconds = sinceLastQuery / 1000.0
-                
-                var proxyUplink = 0L
-                var proxyDownlink = 0L
-                
-                CoreServiceManager.queryAllOutboundTrafficStats().forEach { stat ->
-                    if (stat.tag.startsWith(AppConfig.TAG_PROXY)) {
-                        when (stat.direction) {
-                            AppConfig.UPLINK -> proxyUplink += stat.value
-                            AppConfig.DOWNLINK -> proxyDownlink += stat.value
-                        }
-                    }
-                }
-                
-                lastQueryTime = queryTime
-                
+
+                val downloadBps = MmkvManager.decodeSettingsLong(AppConfig.PREF_SPEED_DOWNLOAD_BPS, 0L)
+                val uploadBps = MmkvManager.decodeSettingsLong(AppConfig.PREF_SPEED_UPLOAD_BPS, 0L)
+
                 withContext(Dispatchers.Main) {
-                    _downloadSpeed.value = formatBytesPerSec((proxyDownlink / seconds).toLong())
-                    _uploadSpeed.value = formatBytesPerSec((proxyUplink / seconds).toLong())
+                    _downloadSpeed.value = formatBytesPerSec(downloadBps)
+                    _uploadSpeed.value = formatBytesPerSec(uploadBps)
                 }
             }
         }
@@ -547,53 +626,71 @@ class MainScreenViewModel(
         viewModelScope.launch {
             val trimmedUrl = url.trim()
             if (trimmedUrl.startsWith("http://", ignoreCase = true) || trimmedUrl.startsWith("https://", ignoreCase = true)) {
-                addLog("[INFO] Добавление подписки по ссылке: $trimmedUrl")
                 showToast(Loc.get("toast_adding_subscription", _language.value))
-                
-                val result = withContext(Dispatchers.IO) {
-                    val subscriptions = MmkvManager.decodeSubscriptions()
-                    var existingSub = subscriptions.find { it.subscription.url == trimmedUrl }
-                    val subId = existingSub?.guid ?: Utils.getUuid()
-
-                    if (existingSub == null) {
-                        val uri = try { URI(Utils.fixIllegalUrl(trimmedUrl)) } catch(e: Exception) { null }
-                        val host = uri?.host ?: Loc.get("fallback_subscription", _language.value)
-                        val remarks = uri?.fragment ?: host
-                        
-                        val subItem = SubscriptionItem().apply {
-                            this.remarks = remarks
-                            this.url = trimmedUrl
-                            this.enabled = true
-                        }
-                        MmkvManager.encodeSubscription(subId, subItem)
-                        existingSub = SubscriptionCache(subId, subItem)
-                    }
-                    
-                    AngConfigManager.updateConfigViaSub(existingSub)
-                }
-                
-                if (result.configCount > 0) {
-                    addLog("[SYSTEM] Подписка успешно обновлена. Импортировано узлов: ${result.configCount}")
-                    showToast(String.format(Loc.get("toast_imported_servers", _language.value), result.configCount))
-                    loadDataFromMmkv()
-                } else {
-                    addLog("[ERROR] Не удалось загрузить сервера из подписки.")
-                    showToast(Loc.get("toast_loaded_zero", _language.value))
-                    loadDataFromMmkv()
-                }
-            } else {
-                val (configCount, _) = withContext(Dispatchers.IO) {
-                    AngConfigManager.importBatchConfig(trimmedUrl, "", true)
-                }
-                if (configCount > 0) {
-                    addLog("[SYSTEM] Успешно добавлена новая конфигурация по ссылке.")
-                    showToast(Loc.get("toast_server_added", _language.value))
-                    loadDataFromMmkv()
-                } else {
-                    addLog("[ERROR] Не удалось распарсить ссылку!")
-                    showToast(Loc.get("toast_invalid_link", _language.value))
-                }
             }
+            val outcome = importSubscriptionFromUrl(trimmedUrl)
+            if (outcome.count > 0) {
+                showToast(
+                    if (outcome.isSubscription) {
+                        String.format(Loc.get("toast_imported_servers", _language.value), outcome.count)
+                    } else {
+                        Loc.get("toast_server_added", _language.value)
+                    }
+                )
+            } else {
+                showToast(
+                    if (outcome.isSubscription) Loc.get("toast_loaded_zero", _language.value)
+                    else Loc.get("toast_invalid_link", _language.value)
+                )
+            }
+        }
+    }
+
+    suspend fun importSubscriptionFromUrl(url: String): ImportOutcome {
+        val trimmedUrl = url.trim()
+        val isSubscription = trimmedUrl.startsWith("http://", ignoreCase = true) ||
+            trimmedUrl.startsWith("https://", ignoreCase = true)
+        if (isSubscription) {
+            addLog("[INFO] Добавление подписки по ссылке: $trimmedUrl")
+            val result = withContext(Dispatchers.IO) {
+                val subscriptions = MmkvManager.decodeSubscriptions()
+                var existingSub = subscriptions.find { it.subscription.url == trimmedUrl }
+                val subId = existingSub?.guid ?: Utils.getUuid()
+
+                if (existingSub == null) {
+                    val uri = try { URI(Utils.fixIllegalUrl(trimmedUrl)) } catch (e: Exception) { null }
+                    val host = uri?.host ?: Loc.get("fallback_subscription", _language.value)
+                    val remarks = uri?.fragment ?: host
+
+                    val subItem = SubscriptionItem().apply {
+                        this.remarks = remarks
+                        this.url = trimmedUrl
+                        this.enabled = true
+                    }
+                    MmkvManager.encodeSubscription(subId, subItem)
+                    existingSub = SubscriptionCache(subId, subItem)
+                }
+
+                AngConfigManager.updateConfigViaSub(existingSub)
+            }
+            loadDataFromMmkv()
+            if (result.configCount > 0) {
+                addLog("[SYSTEM] Подписка успешно обновлена. Импортировано узлов: ${result.configCount}")
+            } else {
+                addLog("[ERROR] Не удалось загрузить сервера из подписки.")
+            }
+            return ImportOutcome(result.configCount, isSubscription = true)
+        } else {
+            val (configCount, _) = withContext(Dispatchers.IO) {
+                AngConfigManager.importBatchConfig(trimmedUrl, "", true)
+            }
+            loadDataFromMmkv()
+            if (configCount > 0) {
+                addLog("[SYSTEM] Успешно добавлена новая конфигурация по ссылке.")
+            } else {
+                addLog("[ERROR] Не удалось распарсить ссылку!")
+            }
+            return ImportOutcome(configCount, isSubscription = false)
         }
     }
 
@@ -682,7 +779,7 @@ class MainScreenViewModel(
         }
     }
 
-    fun testPings() {
+    fun testPings(silent: Boolean = false) {
         viewModelScope.launch {
             if (_isPinging.value) return@launch
             _isPinging.value = true
@@ -705,9 +802,11 @@ class MainScreenViewModel(
                     }
                 )
                 addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
-                showToast(String.format(Loc.get("toast_ping_updated", _language.value), summary.ok, summary.total))
+                if (!silent) {
+                    showToast(String.format(Loc.get("toast_ping_updated", _language.value), summary.ok, summary.total))
+                    triggerHaptic(HapticType.SUCCESS)
+                }
                 loadDataFromMmkv()
-                triggerHaptic(HapticType.SUCCESS)
             } finally {
                 _isPinging.value = false
                 _pingingConfigIds.value = emptySet()
@@ -783,16 +882,16 @@ class MainScreenViewModel(
         _routingProfile.value = profile
         writeString("base_routing_profile", profile.name)
         propagateActiveProfile()
-        addLog("[SYSTEM] Профиль маршрутизации изменен: ${profile.label}")
-        showToast(String.format(Loc.get("toast_routing_changed", _language.value), profile.label))
+        addLog("[SYSTEM] Профиль маршрутизации изменен: ${profile.localizedName(_language.value)}")
+        showToast(String.format(Loc.get("toast_routing_changed", _language.value), profile.localizedName(_language.value)))
     }
 
     fun changeDnsServer(dns: DnsServer) {
         _dnsServer.value = dns
         writeString("base_dns_server", dns.name)
         propagateActiveProfile()
-        addLog("[SYSTEM] Выбран DNS-сервер: ${dns.label}")
-        showToast(String.format(Loc.get("toast_dns_changed", _language.value), dns.label))
+        addLog("[SYSTEM] Выбран DNS-сервер: ${dns.localizedName(_language.value)}")
+        showToast(String.format(Loc.get("toast_dns_changed", _language.value), dns.localizedName(_language.value)))
     }
 
     fun changeLanBypassEnabled(enabled: Boolean) {
@@ -843,8 +942,8 @@ class MainScreenViewModel(
         _appRoutingMode.value = mode
         writeString("base_app_routing_mode", mode.name)
         propagateActiveProfile()
-        addLog("[SYSTEM] Профиль приложений VPN: ${mode.label}")
-        showToast(String.format(Loc.get("toast_app_routing", _language.value), mode.label))
+        addLog("[SYSTEM] Профиль приложений VPN: ${mode.localizedName(_language.value)}")
+        showToast(String.format(Loc.get("toast_app_routing", _language.value), mode.localizedName(_language.value)))
     }
 
     fun changeAppRoutingPackages(value: String) {
@@ -870,6 +969,21 @@ class MainScreenViewModel(
         propagateActiveProfile()
     }
 
+    fun setTgwsBypass(enabled: Boolean, packageName: String) {
+        if (packageName.isBlank()) return
+        val packages = parsePackageText(_appRoutingPackages.value).toMutableSet()
+        val present = packages.contains(packageName)
+        if (enabled && !present) packages.add(packageName)
+        if (!enabled && present) packages.remove(packageName)
+        if (packages.isEmpty()) {
+            changeAppRoutingMode(AppRoutingMode.OFF)
+            changeAppRoutingPackages("")
+        } else {
+            changeAppRoutingMode(AppRoutingMode.BYPASS_SELECTED)
+            changeAppRoutingPackages(packages.sorted().joinToString("\n"))
+        }
+    }
+
     fun clearAppRoutingPackages() {
         _appRoutingPackages.value = ""
         writeString("base_app_routing_packages_str", "")
@@ -883,8 +997,8 @@ class MainScreenViewModel(
         _tunStack.value = stack
         writeString("base_tun_stack", stack.name)
         propagateActiveProfile()
-        addLog("[SYSTEM] TUN стек: ${stack.label}")
-        showToast(String.format(Loc.get("toast_tun_stack", _language.value), stack.label))
+        addLog("[SYSTEM] TUN стек: ${stack.localizedName(_language.value)}")
+        showToast(String.format(Loc.get("toast_tun_stack", _language.value), stack.localizedName(_language.value)))
     }
 
     fun changeHealthCheckUrl(value: String) {
@@ -923,6 +1037,48 @@ class MainScreenViewModel(
         MmkvManager.encodeStartOnBoot(enabled)
         addLog("[SYSTEM] Автозапуск при загрузке: ${if (enabled) "включен" else "выключен"}")
         showToggleToast("toast_autostart_on", "toast_autostart_off", enabled)
+    }
+
+    fun setAutoRefreshSubsOnStartup(enabled: Boolean) {
+        _autoRefreshSubsOnStartup.value = enabled
+        prefs.edit().putBoolean("pref_auto_refresh_subs_startup", enabled).apply()
+        addLog("[SYSTEM] Автообновление подписок при старте: ${if (enabled) "включено" else "выключено"}")
+    }
+
+    fun setAutoPingOnStartup(enabled: Boolean) {
+        _autoPingOnStartup.value = enabled
+        prefs.edit().putBoolean("pref_auto_ping_startup", enabled).apply()
+        addLog("[SYSTEM] Авто-пинг при старте: ${if (enabled) "включён" else "выключен"}")
+    }
+
+    fun setPeriodicPingEnabled(enabled: Boolean) {
+        _periodicPingEnabled.value = enabled
+        prefs.edit().putBoolean("pref_periodic_ping_enabled", enabled).apply()
+        addLog("[SYSTEM] Периодический пинг: ${if (enabled) "включён" else "выключен"}")
+    }
+
+    fun setPeriodicPingIntervalSec(seconds: Int) {
+        val v = seconds.coerceIn(5, 3600)
+        _periodicPingIntervalSec.value = v
+        prefs.edit().putInt("pref_periodic_ping_interval", v).apply()
+    }
+
+    fun setDefaultTabId(id: String) {
+        if (id !in setOf("main", "proxies", "settings")) return
+        _defaultTabId.value = id
+        prefs.edit().putString("pref_default_tab_id", id).apply()
+    }
+
+    fun setTabOrder(order: List<String>) {
+        if (order.size != 3 || order.toSet() != setOf("main", "proxies", "settings")) return
+        _tabOrder.value = order
+        prefs.edit().putString("pref_tab_order", order.joinToString(",")).apply()
+    }
+
+    fun setAppMode(mode: String) {
+        if (mode !in setOf("", "vpn", "tgws", "both")) return
+        _appMode.value = mode
+        prefs.edit().putString("pref_app_mode", mode).apply()
     }
 
     fun changeBlockingEnabled(enabled: Boolean) {
@@ -1019,7 +1175,7 @@ class MainScreenViewModel(
         } finally {
             isApplyingProfilePreset = false
         }
-        addLog("[SYSTEM] Активирован профиль настроек: ${profile.name}")
+        addLog("[SYSTEM] Активирован пресет настроек: ${profile.name}")
         showToast(String.format(Loc.get("toast_profile_selected", _language.value), profile.name))
     }
 
@@ -1027,7 +1183,7 @@ class MainScreenViewModel(
         val newList = _profiles.value + profile
         _profiles.value = newList
         ProfilePresetManager.saveProfiles(appContext, newList)
-        addLog("[SYSTEM] Создан новый профиль: ${profile.name}")
+        addLog("[SYSTEM] Создан новый пресет: ${profile.name}")
         showToast(String.format(Loc.get("toast_profile_created", _language.value), profile.name))
     }
 
@@ -1069,7 +1225,7 @@ class MainScreenViewModel(
             val nextId = newList.firstOrNull()?.id ?: ""
             changeActiveProfileId(nextId)
         }
-        addLog("[SYSTEM] Удален профиль: ${target.name}")
+        addLog("[SYSTEM] Удален пресет: ${target.name}")
         showToast(String.format(Loc.get("toast_profile_deleted", _language.value), target.name))
     }
 
@@ -1284,7 +1440,11 @@ class MainScreenViewModel(
                 downloadBytes = subCache.subscription.downloadBytes,
                 totalBytes = subCache.subscription.totalBytes,
                 expireAt = subCache.subscription.expireAt,
-                description = subCache.subscription.description
+                description = subCache.subscription.description,
+                announce = subCache.subscription.announce,
+                supportUrl = subCache.subscription.supportUrl,
+                webPageUrl = subCache.subscription.webPageUrl,
+                announceUrl = subCache.subscription.announceUrl,
             )
         }
 
@@ -1431,6 +1591,25 @@ class MainScreenViewModel(
         private const val KEY_HEALTH_CHECK_URL = "health_check_url"
         private const val KEY_TUN_STACK = "tun_stack"
         private const val KEY_DARK_THEME_STYLE = "pref_dark_theme_style"
+
+        suspend fun loadInstalledApps(context: Context): List<InstalledAppInfo> = withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val launcherIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+            pm.queryIntentActivities(launcherIntent, 0)
+                .filter { it.activityInfo?.packageName != context.packageName }
+                .distinctBy { it.activityInfo?.packageName }
+                .map { ri ->
+                    val packageName = ri.activityInfo?.packageName.orEmpty()
+                    val label = ri.loadLabel(pm).toString().ifBlank { packageName }
+                    val appInfo = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
+                    val isSystem = appInfo?.flags?.and(ApplicationInfo.FLAG_SYSTEM) != 0
+                    InstalledAppInfo(label = label, packageName = packageName, isSystem = isSystem)
+                }
+                .sortedWith(
+                    compareBy<InstalledAppInfo> { it.label.lowercase(Locale.getDefault()) }
+                        .thenBy { it.packageName }
+                )
+        }
     }
 }
 

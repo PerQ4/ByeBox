@@ -51,6 +51,8 @@ class ByeBoxProfileTileService : TileService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val desc = "DNS: ${profile.dnsServer}"
             tile.subtitle = desc.take(20) + if (desc.length > 20) "…" else ""
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             tile.stateDescription = "Быстрое переключение ByeBox: ${profile.name}"
         }
 

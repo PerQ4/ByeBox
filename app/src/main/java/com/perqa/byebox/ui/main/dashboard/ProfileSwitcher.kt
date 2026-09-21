@@ -77,6 +77,7 @@ import com.perqa.byebox.ui.main.SettingsRowSurface
 import com.perqa.byebox.ui.main.SettingsRowText
 import com.perqa.byebox.ui.main.TunStack
 import com.perqa.byebox.ui.main.AppPickerSheet
+import com.perqa.byebox.ui.main.localizedName
 import com.perqa.byebox.ui.main.rememberTactileFeedback
 import androidx.compose.foundation.basicMarquee
 
@@ -121,7 +122,7 @@ fun QuickSwitchManagerScreen(
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainer)
                 ) {
@@ -301,7 +302,7 @@ fun QuickSwitchManagerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = profile.name,
+                                    text = profile.localizedProfileName(state.language),
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     maxLines = 1,
                                     modifier = Modifier
@@ -329,7 +330,12 @@ fun QuickSwitchManagerScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = assignedServer?.let { "${it.countryFlag} ${it.name}" } ?: Loc.get("no_assigned_server", state.language),
+                                text = when (profile.assignedConfigId) {
+                                    "FASTEST" -> "\u26A1 ${Loc.get("fastest_server", state.language)}"
+                                    "LAST_ACTIVE" -> "\uD83D\uDD04 ${Loc.get("last_active_server", state.language)}"
+                                    null -> Loc.get("dont_change_server", state.language)
+                                    else -> assignedServer?.let { "${it.countryFlag} ${it.name}" } ?: Loc.get("no_assigned_server", state.language)
+                                },
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = contentColor.copy(alpha = 0.6f)
                                 ),
@@ -485,7 +491,7 @@ fun QuickSwitchEditScreen(
                     }
                 },
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainer)
             ) {
@@ -541,6 +547,7 @@ fun QuickSwitchEditScreen(
 
                 val selectedServerName = when (assignedConfigId) {
                     "LAST_ACTIVE" -> Loc.get("last_active_server", state.language)
+                    "FASTEST" -> Loc.get("fastest_server", state.language)
                     null -> Loc.get("dont_change_server", state.language)
                     else -> assignedServer?.let { "${it.countryFlag} ${it.name} (${it.protocol})" } ?: Loc.get("use_current_server", state.language)
                 }
@@ -600,7 +607,7 @@ fun QuickSwitchEditScreen(
                         else -> dns.address
                     }
                     SettingsChoiceRow(
-                        title = dns.label,
+                        title = dns.localizedName(state.language),
                         subtitle = dnsSub,
                         selected = dnsServer == dns.name,
                         top = false,
@@ -654,7 +661,7 @@ fun QuickSwitchEditScreen(
                         else -> stack.description
                     }
                     SettingsChoiceRow(
-                        title = stack.label,
+                        title = stack.localizedName(state.language),
                         subtitle = stackSub,
                         selected = tunStack == stack.name,
                         top = false,
@@ -1097,6 +1104,38 @@ fun ProfileServerPickerSheet(
                     }
                 }
 
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect("FASTEST") },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedConfigId == "FASTEST") MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "\u26A1",
+                                fontSize = 24.sp,
+                                modifier = Modifier.padding(end = 12.dp)
+                            )
+                            Text(
+                                text = Loc.get("fastest_server_picker", language),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedConfigId == "FASTEST") MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
+                    }
+                }
+
                 items(configs) { config ->
                     val isSelected = config.id == selectedConfigId
                     Card(
@@ -1146,3 +1185,12 @@ fun ProfileServerPickerSheet(
         }
     }
 }
+
+/**
+ * The base ("default") preset is seeded with a hard-coded Russian label by
+ * [com.perqa.byebox.data.ProfilePresetManager] and is not stored per language,
+ * so resolve its label from the active UI language at display time.
+ * Any other name — including a user rename of the base preset — is shown as-is.
+ */
+internal fun SettingsProfileData.localizedProfileName(language: String): String =
+    if (id == "base" && name == "По умолчанию") Loc.get("default_profile", language) else name

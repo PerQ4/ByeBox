@@ -1,5 +1,6 @@
 package com.perqa.byebox.data
 
+import android.app.Application
 import com.perqa.byebox.core.XrayConfigGenerator
 import com.perqa.byebox.core.XrayOptions
 import org.json.JSONArray
@@ -13,7 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+@Config(sdk = [33], application = Application::class)
 class XrayConfigGeneratorTest {
 
     private val baseVless = ProxyConfig(
@@ -136,7 +137,7 @@ class XrayConfigGeneratorTest {
 
     @Test
     fun generate_trojanOutbound() {
-        val trojan = baseVless.copy(protocol = "Trojan", uuid = "trojanpass", sni = "sni.tr.com")
+        val trojan = baseVless.copy(protocol = "Trojan", uuid = "trojanpass", sni = "sni.tr.com", security = "tls")
         val json = JSONObject(XrayConfigGenerator.generate(trojan, defaultOptions()))
         val proxy = findProxyOutbound(json)
         assertEquals("trojan", proxy.getString("protocol"))

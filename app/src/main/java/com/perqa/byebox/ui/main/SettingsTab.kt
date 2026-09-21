@@ -32,11 +32,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
@@ -51,13 +53,16 @@ import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueryBuilder
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
@@ -79,7 +84,9 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -88,6 +95,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -99,6 +107,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -108,8 +121,11 @@ import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
-import com.perqa.byebox.ui.main.dashboard.InfoChip
+import com.perqa.byebox.theme.AuroraPrimaryDark
 import com.perqa.byebox.theme.DarkThemeStyle
+import com.perqa.byebox.theme.ForestPrimaryDark
+import com.perqa.byebox.theme.SolarPrimaryDark
+import com.perqa.byebox.ui.main.dashboard.InfoChip
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -126,8 +142,11 @@ enum class SettingsSubMenu {
     CONNECTION,
     ROUTING,
     APPEARANCE,
+    TAB_ORDER,
     SYSTEM,
-    LOGS
+    LOGS,
+    TGWS,
+    TILES
 }
 
 @Composable
@@ -231,6 +250,7 @@ fun SettingsCategoryCard(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun SettingsTab(
     state: MainUiState,
     viewModel: MainScreenViewModel,
@@ -247,12 +267,14 @@ fun SettingsTab(
     val scrollState = rememberScrollState()
     val tactileFeedback = rememberTactileFeedback()
     val scope = rememberCoroutineScope()
+    val appCtx = LocalContext.current
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importSettings(it) } }
 
     var selectedSubMenu by remember { mutableStateOf<SettingsSubMenu?>(null) }
-    
+    var showTabOrderSheet by remember { mutableStateOf(false) }
+
     LaunchedEffect(selectedSubMenu) {
         onShowBottomBar(selectedSubMenu == null)
     }
@@ -265,13 +287,45 @@ fun SettingsTab(
         AppPickerSheet(
             apps = state.installedApps,
             selectedPackages = selectedAppPackages,
-            onSave = { newPackages ->
-                val joined = newPackages.sorted().joinToString("\n")
-                viewModel.changeAppRoutingPackages(joined)
+            onSave = { packages ->
+                viewModel.changeAppRoutingPackages(packages.sorted().joinToString("\n"))
                 showAppPicker = false
             },
-            onDismiss = { showAppPicker = false }
+            onDismiss = { showAppPicker = false },
+            language = state.language
         )
+    }
+
+    if (showTabOrderSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showTabOrderSheet = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.background,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = Loc.get("tab_order_title", state.language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                val tabOrder by viewModel.tabOrder.collectAsStateWithLifecycle()
+                TabReorderList(
+                    order = tabOrder,
+                    onReorder = { viewModel.setTabOrder(it) },
+                    language = state.language,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
     }
 
     Column(
@@ -296,14 +350,6 @@ fun SettingsTab(
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.padding(horizontal = 4.dp)
-                )
-                
-                SettingsHeroCard(
-                    status = state.connectionStatus,
-                    routingProfile = state.routingProfile,
-                    dnsServer = state.dnsServer,
-                    appRoutingMode = state.appRoutingMode,
-                    language = state.language
                 )
                 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -368,6 +414,30 @@ fun SettingsTab(
                     }
                 )
 
+                SettingsCategoryCard(
+                    title = Loc.get("tiles_title", state.language),
+                    description = Loc.get("tiles_desc", state.language),
+                    icon = Icons.Default.Add,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.TILES
+                    }
+                )
+
+                SettingsCategoryCard(
+                    title = Loc.get("title_telegram", state.language),
+                    description = Loc.get("tgws_desc", state.language),
+                    icon = Icons.Default.Send,
+                    scaleFactor = state.tapImpactScale,
+                    cornerRoundness = state.cornerRoundness,
+                    onClick = {
+                        tactileFeedback()
+                        selectedSubMenu = SettingsSubMenu.TGWS
+                    }
+                )
+
                 val updateInfo = state.updateInfo
                 if (updateInfo != null) {
                     UpdateBanner(
@@ -392,9 +462,15 @@ fun SettingsTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { selectedSubMenu = null },
+                    onClick = {
+                        selectedSubMenu = if (selectedSubMenu == SettingsSubMenu.TAB_ORDER) {
+                            SettingsSubMenu.APPEARANCE
+                        } else {
+                            null
+                        }
+                    },
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainer)
                 ) {
@@ -415,6 +491,9 @@ fun SettingsTab(
                         SettingsSubMenu.APPEARANCE -> Loc.get("submenu_appearance", state.language)
                         SettingsSubMenu.SYSTEM -> Loc.get("submenu_system", state.language)
                         SettingsSubMenu.LOGS -> Loc.get("title_logs", state.language)
+SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
+                SettingsSubMenu.TAB_ORDER -> Loc.get("tab_order_title", state.language)
+                        SettingsSubMenu.TILES -> Loc.get("tiles_title", state.language)
                         else -> ""
                     },
                     style = MaterialTheme.typography.titleLarge.copy(
@@ -435,6 +514,14 @@ fun SettingsTab(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 when (selectedSubMenu) {
+                    SettingsSubMenu.TGWS -> {
+                        TgWsProxySettingsContent(
+                            scaleFactor = state.tapImpactScale,
+                            cornerRoundness = state.cornerRoundness,
+                            language = state.language,
+                            viewModel = viewModel
+                        )
+                    }
                     SettingsSubMenu.CONNECTION -> {
                         SettingsGroup(title = Loc.get("submenu_connection", state.language)) {
                             SettingsSwitchRow(
@@ -488,8 +575,8 @@ fun SettingsTab(
                                     DnsServer.CUSTOM -> Icons.Default.Settings
                                 }
                                 SettingsChoiceRow(
-                                    title = dns.label,
-                                    subtitle = if (dns == DnsServer.CUSTOM) state.customDnsServer.ifBlank { Loc.get("press_to_enter_ip", state.language) } else dns.address,
+                                    title = dns.localizedName(state.language),
+                                    subtitle = if (dns == DnsServer.CUSTOM) state.customDnsServer.ifBlank { Loc.get("press_to_enter_ip", state.language) } else dns.localizedAddress(state.language),
                                     selected = state.dnsServer == dns,
                                     icon = dnsIcon,
                                     top = index == 0,
@@ -576,8 +663,8 @@ fun SettingsTab(
                                     TunStack.SYSTEM -> Icons.Default.Build
                                 }
                                 SettingsChoiceRow(
-                                    title = stack.label,
-                                    subtitle = stack.description,
+                                    title = stack.localizedName(state.language),
+                                    subtitle = stack.localizedDescription(state.language),
                                     selected = state.tunStack == stack,
                                     icon = stackIcon,
                                     top = index == 0,
@@ -588,6 +675,72 @@ fun SettingsTab(
                                 )
                             }
                         }
+
+                        SettingsGroup(title = Loc.get("automation", state.language)) {
+                            val autoRefreshSubs by viewModel.autoRefreshSubsOnStartup.collectAsStateWithLifecycle()
+                            val autoPingStart by viewModel.autoPingOnStartup.collectAsStateWithLifecycle()
+                            val periodicPing by viewModel.periodicPingEnabled.collectAsStateWithLifecycle()
+                            val periodicPingInterval by viewModel.periodicPingIntervalSec.collectAsStateWithLifecycle()
+                            SettingsSwitchRow(
+                                title = Loc.get("auto_refresh_subs", state.language),
+                                subtitle = Loc.get("auto_refresh_subs_sub", state.language),
+                                checked = autoRefreshSubs,
+                                icon = Icons.Default.Refresh,
+                                top = true,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::setAutoRefreshSubsOnStartup
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("auto_ping_start", state.language),
+                                subtitle = Loc.get("auto_ping_start_sub", state.language),
+                                checked = autoPingStart,
+                                icon = Icons.Default.QueryBuilder,
+                                top = false,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::setAutoPingOnStartup
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("periodic_ping", state.language),
+                                subtitle = Loc.get("periodic_ping_sub", state.language),
+                                checked = periodicPing,
+                                icon = Icons.Default.Cloud,
+                                top = false,
+                                bottom = !periodicPing,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::setPeriodicPingEnabled
+                            )
+                            if (periodicPing) {
+                                SettingsRowSurface {
+                                    SettingsRowText(
+                                        title = Loc.get("periodic_ping_interval", state.language),
+                                        subtitle = Loc.get("periodic_ping_interval_sub", state.language),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        IconButton(onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval - 5) }) {
+                                            Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Text(
+                                            text = periodicPingInterval.toString(),
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        IconButton(onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval + 5) }) {
+                                            Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                     }
 
                     SettingsSubMenu.ROUTING -> {
@@ -599,7 +752,7 @@ fun SettingsTab(
                                     RoutingProfile.DIRECT -> Icons.Default.Navigation
                                 }
                                 SettingsChoiceRow(
-                                    title = profile.label,
+                                    title = profile.localizedName(state.language),
                                     subtitle = when (profile) {
                                         RoutingProfile.BYPASS_LAN_CN_RU -> Loc.get("routing_bypass_desc", state.language)
                                         RoutingProfile.PROXY_ALL -> Loc.get("routing_proxy_all_desc", state.language)
@@ -682,41 +835,65 @@ fun SettingsTab(
                             }
                         }
 
-                        SettingsGroup(title = Loc.get("app_profile", state.language)) {
-                            AppRoutingMode.values().forEachIndexed { index, mode ->
-                                val modeIcon = when (mode) {
-                                    AppRoutingMode.OFF -> Icons.Default.Language
-                                    AppRoutingMode.ONLY_SELECTED -> Icons.Default.CheckCircle
-                                    AppRoutingMode.BYPASS_SELECTED -> Icons.Default.DoNotDisturbOn
-                                }
-                                SettingsChoiceRow(
-                                    title = mode.label,
-                                    subtitle = mode.description,
-                                    selected = state.appRoutingMode == mode,
-                                    icon = modeIcon,
-                                    top = index == 0,
-                                    bottom = false,
-                                    scaleFactor = state.tapImpactScale,
-                                    cornerRoundness = state.cornerRoundness,
-                                    onClick = {
-                                        tactileFeedback()
-                                        viewModel.changeAppRoutingMode(mode)
-                                    }
-                                )
-                            }
-                            SettingsActionRow(
-                                title = Loc.get("selected_apps", state.language),
-                                subtitle = String.format(Loc.get("packages_selected", state.language), selectedAppPackages.size),
-                                button = Loc.get("select_btn", state.language),
-                                enabled = state.appRoutingMode != AppRoutingMode.OFF,
+                        // Маршрутизация приложений: обход выбранных / только выбранные / все приложения
+                        SettingsGroup(title = Loc.get("app_routing_title", state.language)) {
+                            SettingsChoiceRow(
+                                title = Loc.get("app_routing_all", state.language),
+                                subtitle = Loc.get("app_routing_all_sub", state.language),
+                                selected = state.appRoutingMode == AppRoutingMode.OFF,
+                                icon = Icons.Default.Language,
+                                top = true,
+                                bottom = false,
                                 scaleFactor = state.tapImpactScale,
                                 cornerRoundness = state.cornerRoundness,
                                 onClick = {
                                     tactileFeedback()
-                                    showAppPicker = true
-                                },
-                                bottom = true
+                                    viewModel.changeAppRoutingMode(AppRoutingMode.OFF)
+                                }
                             )
+                            SettingsChoiceRow(
+                                title = Loc.get("app_routing_selected", state.language),
+                                subtitle = Loc.get("app_routing_selected_sub", state.language),
+                                selected = state.appRoutingMode == AppRoutingMode.ONLY_SELECTED,
+                                icon = Icons.Default.List,
+                                top = false,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onClick = {
+                                    tactileFeedback()
+                                    viewModel.changeAppRoutingMode(AppRoutingMode.ONLY_SELECTED)
+                                }
+                            )
+                            SettingsChoiceRow(
+                                title = Loc.get("app_routing_bypass", state.language),
+                                subtitle = Loc.get("app_routing_bypass_sub", state.language),
+                                selected = state.appRoutingMode == AppRoutingMode.BYPASS_SELECTED,
+                                icon = Icons.Default.DoNotDisturbOn,
+                                top = false,
+                                bottom = state.appRoutingMode == AppRoutingMode.OFF,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onClick = {
+                                    tactileFeedback()
+                                    viewModel.changeAppRoutingMode(AppRoutingMode.BYPASS_SELECTED)
+                                }
+                            )
+                            if (state.appRoutingMode != AppRoutingMode.OFF) {
+                                SettingsActionRow(
+                                    title = Loc.get("app_routing_select_title", state.language),
+                                    subtitle = String.format(Loc.get("app_routing_select_sub", state.language), selectedAppPackages.size),
+                                    button = Loc.get("app_routing_select_btn", state.language),
+                                    enabled = true,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = {
+                                        tactileFeedback()
+                                        showAppPicker = true
+                                    },
+                                    bottom = true
+                                )
+                            }
                         }
 
                         SettingsGroup(title = Loc.get("xray_features", state.language)) {
@@ -760,14 +937,14 @@ fun SettingsTab(
                             )
                         }
 
-                        // Domain Strategy
-                        val domainStrategyOptions = listOf(
+                        // Разрешение доменов (объединено: Domain Strategy + Outbound Resolve)
+                        val domainResolutionOptions = listOf(
                             "AsIs" to (Loc.get("domain_strategy_as_is", state.language) to Loc.get("domain_strategy_as_is_desc", state.language)),
                             "IPOnDemand" to (Loc.get("domain_strategy_ip_on_demand", state.language) to Loc.get("domain_strategy_ip_on_demand_desc", state.language)),
                             "IPIfNonMatch" to (Loc.get("domain_strategy_ip_if_non_match", state.language) to Loc.get("domain_strategy_ip_if_non_match_desc", state.language))
                         )
-                        SettingsGroup(title = Loc.get("routing_domain_strategy", state.language)) {
-                            domainStrategyOptions.forEachIndexed { index, (value, labels) ->
+                        SettingsGroup(title = Loc.get("domain_resolution", state.language)) {
+                            domainResolutionOptions.forEachIndexed { index, (value, labels) ->
                                 val strategyIcon = when (value) {
                                     "AsIs" -> Icons.Default.Forward
                                     "IPOnDemand" -> Icons.Default.QueryBuilder
@@ -779,7 +956,7 @@ fun SettingsTab(
                                     selected = state.routingDomainStrategy == value,
                                     icon = strategyIcon,
                                     top = index == 0,
-                                    bottom = index == domainStrategyOptions.lastIndex,
+                                    bottom = false,
                                     scaleFactor = state.tapImpactScale,
                                     cornerRoundness = state.cornerRoundness,
                                     onClick = {
@@ -788,15 +965,11 @@ fun SettingsTab(
                                     }
                                 )
                             }
-                        }
-
-                        // Outbound Resolve Method
-                        val outboundResolveOptions = listOf(
-                            "0" to (Loc.get("outbound_resolve_default", state.language) to Loc.get("outbound_resolve_default_desc", state.language)),
-                            "1" to (Loc.get("outbound_resolve_use_ip", state.language) to Loc.get("outbound_resolve_use_ip_desc", state.language)),
-                            "2" to (Loc.get("outbound_resolve_replace", state.language) to Loc.get("outbound_resolve_replace_desc", state.language))
-                        )
-                        SettingsGroup(title = Loc.get("outbound_domain_resolve_method", state.language)) {
+                            val outboundResolveOptions = listOf(
+                                "0" to (Loc.get("outbound_resolve_default", state.language) to Loc.get("outbound_resolve_default_desc", state.language)),
+                                "1" to (Loc.get("outbound_resolve_use_ip", state.language) to Loc.get("outbound_resolve_use_ip_desc", state.language)),
+                                "2" to (Loc.get("outbound_resolve_replace", state.language) to Loc.get("outbound_resolve_replace_desc", state.language))
+                            )
                             outboundResolveOptions.forEachIndexed { index, (value, labels) ->
                                 val resolveIcon = when (value) {
                                     "0" -> Icons.Default.Dns
@@ -808,7 +981,7 @@ fun SettingsTab(
                                     subtitle = labels.second,
                                     selected = state.outboundDomainResolveMethod == value,
                                     icon = resolveIcon,
-                                    top = index == 0,
+                                    top = false,
                                     bottom = index == outboundResolveOptions.lastIndex,
                                     scaleFactor = state.tapImpactScale,
                                     cornerRoundness = state.cornerRoundness,
@@ -934,6 +1107,63 @@ fun SettingsTab(
                                 )
                             }
                         }
+
+                        SettingsGroup(title = Loc.get("tab_appearance_title", state.language)) {
+                            val appMode by viewModel.appMode.collectAsStateWithLifecycle()
+
+                            val modeOptions = listOf(
+                                "vpn" to Loc.get("mode_vpn", state.language),
+                                "tgws" to Loc.get("mode_tgws", state.language),
+                                "both" to Loc.get("mode_both", state.language)
+                            )
+                            modeOptions.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = if (index == 0) Loc.get("mode_sub", state.language) else "",
+                                    selected = (if (appMode.isEmpty()) "both" else appMode) == value,
+                                    icon = when (value) {
+                                        "vpn" -> Icons.Default.CompareArrows
+                                        "tgws" -> Icons.Default.Send
+                                        else -> Icons.Default.Category
+                                    },
+                                    top = index == 0,
+                                    bottom = index == modeOptions.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.setAppMode(value) }
+                                )
+                            }
+                        }
+
+                        SettingsGroup(title = Loc.get("tab_default_title", state.language)) {
+                            val tabOrder by viewModel.tabOrder.collectAsStateWithLifecycle()
+                            val defaultTabId by viewModel.defaultTabId.collectAsStateWithLifecycle()
+                            tabOrder.forEachIndexed { index, id ->
+                                val (label, icon) = tabMeta(id, state.language)
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = if (id == defaultTabId) Loc.get("tab_default_mark", state.language) else "",
+                                    selected = id == defaultTabId,
+                                    icon = icon,
+                                    top = index == 0,
+                                    bottom = index == tabOrder.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.setDefaultTabId(id) }
+                                )
+                            }
+                        }
+
+                        SettingsActionRow(
+                            title = Loc.get("tab_order_open", state.language),
+                            subtitle = Loc.get("tab_order_open_desc", state.language),
+                            button = Loc.get("open_btn", state.language),
+                            enabled = true,
+                            scaleFactor = state.tapImpactScale,
+                            cornerRoundness = state.cornerRoundness,
+                            onClick = { showTabOrderSheet = true },
+                            bottom = true
+                        )
 
                         SettingsGroup(title = Loc.get("display_params_title", state.language)) {
                             SettingsSwitchRow(
@@ -1187,7 +1417,29 @@ fun SettingsTab(
                             }
                         }
                     }
+                    SettingsSubMenu.TAB_ORDER -> {
+                        SettingsGroup(title = Loc.get("tab_order_title", state.language)) {
+                            val tabOrder by viewModel.tabOrder.collectAsStateWithLifecycle()
+                            TabReorderList(
+                                order = tabOrder,
+                                onReorder = { viewModel.setTabOrder(it) },
+                                language = state.language,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness
+                            )
+                        }
+                    }
                     SettingsSubMenu.LOGS -> { /* handled above */ }
+                    SettingsSubMenu.TILES -> {
+                        val appModePref = appCtx.getSharedPreferences("byebox_settings", android.content.Context.MODE_PRIVATE)
+                            .getString("pref_app_mode", "")
+                        QuickSettingsTilesPage(
+                            scaleFactor = state.tapImpactScale,
+                            cornerRoundness = state.cornerRoundness,
+                            language = state.language,
+                            showTgws = appModePref == "tgws" || appModePref == "both"
+                        )
+                    }
                     null -> {}
                 }
 
@@ -1247,10 +1499,10 @@ private fun SettingsHeroCard(
                 )
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(text = routingProfile.label, textColor = contentColor, modifier = Modifier.weight(1f))
-                InfoChip(text = dnsServer.label, textColor = contentColor, modifier = Modifier.weight(1f))
+                InfoChip(text = routingProfile.localizedName(language), textColor = contentColor, modifier = Modifier.weight(1f))
+                InfoChip(text = dnsServer.localizedName(language), textColor = contentColor, modifier = Modifier.weight(1f))
             }
-            InfoChip(text = appRoutingMode.label, textColor = contentColor, modifier = Modifier.fillMaxWidth())
+            InfoChip(text = appRoutingMode.localizedName(language), textColor = contentColor, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -1261,10 +1513,10 @@ private fun SettingsThemeGrid(
     viewModel: MainScreenViewModel
 ) {
     val themes = listOf(
-        Triple("System", AppTheme.SYSTEM_DYNAMIC, MaterialTheme.colorScheme.primary),
-        Triple("Slate", AppTheme.MIDNIGHT_AURORA, Color(0xFFB4C6E7)),
-        Triple("Desert", AppTheme.SOLAR_FLARE, Color(0xFFE2B697)),
-        Triple("Sage", AppTheme.FOREST_CYBER, Color(0xFFA3B899))
+        Triple(Loc.get("theme_system", state.language), AppTheme.SYSTEM_DYNAMIC, MaterialTheme.colorScheme.primary),
+        Triple(Loc.get("theme_slate", state.language), AppTheme.MIDNIGHT_AURORA, AuroraPrimaryDark),
+        Triple(Loc.get("theme_desert", state.language), AppTheme.SOLAR_FLARE, SolarPrimaryDark),
+        Triple(Loc.get("theme_sage", state.language), AppTheme.FOREST_CYBER, ForestPrimaryDark)
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         themes.chunked(2).forEach { row ->
@@ -1465,5 +1717,40 @@ private fun UpdateBanner(
                 Text(Loc.get("update_download", language))
             }
         }
+    }
+}
+
+@Composable
+private fun TabReorderList(
+    order: List<String>,
+    onReorder: (List<String>) -> Unit,
+    language: String,
+    scaleFactor: Float,
+    cornerRoundness: String
+) {
+    ReorderableList(
+        items = order,
+        key = { it },
+        onReorder = onReorder,
+        cardColor = { _, isDragged ->
+            if (isDragged) MaterialTheme.colorScheme.surfaceContainerHighest
+            else MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) { id, _ ->
+        val (label, icon) = tabMeta(id, language)
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

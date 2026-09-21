@@ -307,6 +307,10 @@ class CoreVpnService : VpnService(), ServiceControl {
     private fun configurePerAppProxy(builder: Builder) {
         val selfPackageName = BuildConfig.APPLICATION_ID
 
+        // Per-app filtering is driven by the app routing setting
+        // (Все приложения / Только выбранные / Обход выбранных) via MMKV,
+        // kept in sync by ProfilePresetManager when the active profile is applied.
+
         // If per-app proxy is not enabled, disallow the VPN service's own package and return
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY) == false) {
             builder.addDisallowedApplication(selfPackageName)

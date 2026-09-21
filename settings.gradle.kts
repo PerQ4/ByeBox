@@ -30,4 +30,5 @@ plugins {
 }
 
 rootProject.name = "ByeBox"
-include(":app")
+include(":app", ":tgwsproxy")
+project(":tgwsproxy").projectDir = file("tgwsproxy/app")

@@ -1,6 +1,12 @@
 package com.perqa.byebox.ui.main.dashboard
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,8 +45,7 @@ import com.perqa.byebox.data.ProxyConfig
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.DnsServer
 import com.perqa.byebox.ui.main.Loc
-import com.perqa.byebox.ui.main.RoutingProfile
-import androidx.compose.foundation.basicMarquee
+import com.perqa.byebox.ui.main.localizedName
 
 @Composable
 fun TelemetrySpeedCard(
@@ -94,13 +101,14 @@ fun CockpitServerCard(
     activeConfig: ProxyConfig,
     onPingRefresh: () -> Unit,
     onNavigateToProxy: () -> Unit,
-    language: String = "ru"
+    language: String = "ru",
+    cornerRoundness: String = "expressive"
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .clip(RoundedCornerShape(if (cornerRoundness == "expressive") 22.dp else 16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable { onNavigateToProxy() }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -154,9 +162,8 @@ fun CockpitServerCard(
             onClick = { onPingRefresh() },
             modifier = Modifier
                 .padding(end = 6.dp)
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
         ) {
             Icon(
                 imageVector = Icons.Default.Refresh,
@@ -192,98 +199,78 @@ fun CockpitServerCard(
 }
 
 @Composable
-fun StatusOverviewCard(
+fun StatusPillBar(
     status: ConnectionStatus,
-    activeConfig: ProxyConfig?,
-    routingProfile: RoutingProfile,
-    dnsServer: DnsServer,
-    activeProfileName: String,
     downloadSpeed: String,
     uploadSpeed: String,
+    dnsServer: DnsServer,
     language: String = "ru",
-    modifier: Modifier = Modifier,
-    onPingRefresh: () -> Unit,
-    onNavigateToProxy: () -> Unit
+    cornerRoundness: String = "expressive",
+    modifier: Modifier = Modifier
 ) {
-    val containerColor by animateColorAsState(
+    val statusColor by animateColorAsState(
         targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiaryContainer
-            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.errorContainer
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceContainerHigh
+            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
+            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
+            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
+            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
         },
-        label = "statusOverviewColor"
+        label = "statusPillColor"
     )
-    val contentColor by animateColorAsState(
-        targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.onPrimaryContainer
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.onTertiaryContainer
-            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.onErrorContainer
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.onSurface
-        },
-        label = "statusOverviewContentColor"
+    val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
+    val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
+    val dotAlpha by dotPulse.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotAlpha"
     )
-    val contentColorVariant = contentColor.copy(alpha = 0.6f)
-    val shape = RoundedCornerShape(topStart = 34.dp, topEnd = 18.dp, bottomEnd = 34.dp, bottomStart = 18.dp)
 
     Card(
-        modifier = modifier
-            .fillMaxWidth(0.92f)
-            .clip(shape),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 32.dp else 20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = when (status) {
-                    ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
-                    ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
-                    ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
-                    ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
-                },
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    color = contentColor
-                )
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(text = "${Loc.get("profile_label", language)}: $activeProfileName", textColor = contentColor, modifier = Modifier.weight(1f))
-                InfoChip(text = routingProfile.label, textColor = contentColor, modifier = Modifier.weight(1f))
-                InfoChip(text = dnsServer.label, textColor = contentColor, modifier = Modifier.weight(1f))
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 12.dp)
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.28f))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .graphicsLayer { alpha = if (isBusy) dotAlpha else 1f }
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = when (status) {
+                        ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
+                        ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
+                        ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
+                        ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
+                    },
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Black,
+                        color = statusColor
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    Text(
-                        text = "↑ $uploadSpeed",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -292,127 +279,54 @@ fun StatusOverviewCard(
                             .background(MaterialTheme.colorScheme.secondary)
                     )
                     Text(
-                        text = "↓ $downloadSpeed",
-                        style = MaterialTheme.typography.bodyMedium.copy(
+                        text = "↑ $uploadSpeed",
+                        style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = contentColor,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                    Text(
+                        text = "↓ $downloadSpeed",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                         )
                     )
                 }
             }
-
-            if (activeConfig != null) {
-                Spacer(modifier = Modifier.height(14.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(contentColor.copy(alpha = 0.12f))
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.size(14.dp)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { onNavigateToProxy() }
-                        .padding(vertical = 4.dp)
-                ) {
-                    Text(
-                        text = activeConfig.countryFlag,
-                        fontSize = 32.sp,
-                        modifier = Modifier.padding(end = 12.dp)
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = activeConfig.name,
-                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = contentColor
-                            ),
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(contentColor.copy(alpha = 0.12f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = activeConfig.protocol,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Black,
-                                        color = contentColor
-                                    )
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "${activeConfig.address}:${activeConfig.port}",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = contentColorVariant,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = { onPingRefresh() },
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(contentColor.copy(alpha = 0.08f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = Loc.get("ping_cd", language),
-                            tint = contentColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    val ping = activeConfig.ping
-                    val (pillBg, pillColor) = when {
-                        ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
-                        ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-                        ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-                        else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(pillBg)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (ping != null) "${ping} ms" else "N/A",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                color = pillColor,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
-                        )
-                    }
-                }
-            } else {
-                Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = Loc.get("status_no_server", language),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = contentColorVariant,
-                        fontWeight = FontWeight.Medium
+                    text = dnsServer.localizedName(language),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        fontWeight = FontWeight.SemiBold
                     ),
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
