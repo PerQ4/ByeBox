@@ -68,15 +68,31 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 - Live traffic statistics, latency testing (manual / periodic) and logs
 - **Quick Settings tiles**: connection toggle and profile switcher
 - Settings export / import
-- **In-app updater** — downloads and installs new builds from GitHub Releases
+- **In-app updater** — finds every release (pre-releases included), verifies the APK's
+  **SHA-256**, shows download progress with cancel, and lets you **skip a version** or be
+  **reminded later**; auto-check can be turned off
 
 ### 📥 Download
 
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
-> ℹ️ The current build (`9.0`) is published as a **pre-release**. The universal APK targets `arm64-v8a`.
+> ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
+> The current source line is **`1.2.0`** (`versionCode 21`). The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
+
+### 🔢 Versioning
+
+ByeBox uses **SemVer** `MAJOR.MINOR.PATCH[-stage.N]` with Minecraft-style lifecycle stages
+(`alpha → beta → rc → release`). Every part has a clear meaning, the build date/number live
+separately from the version string, and the in-app updater compares builds by the Android
+`versionCode` — so it keeps working even across a public renaming.
+
+- 📐 Policy: [docs/version_naming_policy.md](docs/version_naming_policy.md)
+- 🚀 Release process: [docs/release_process.md](docs/release_process.md)
+
+> ⚠️ Builds from the old `9.0` line compared versions by name, so they won't auto-update to
+> `1.2.0`. Install `1.2.0` once manually — later builds update themselves.
 
 ### 🚀 Building from source
 
@@ -130,7 +146,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 | `app/src/main/jniLibs/` | Prebuilt `libhev-socks5-tunnel.so` (HevTun) |
 | `gomobile-patch/` | gomobile patch used to build the Xray AAR |
 | `tgwsproxy/` | Telegram WS proxy module — cloned separately (see above) |
-| `docs/` | Documentation, incl. the version-naming policy |
+| `docs/` | Versioning policy, release process, mascot brief |
 
 ### 🧱 Tech stack
 
@@ -219,15 +235,31 @@ that apply to you. The software is provided "as is", without warranty of any kin
 - Статистика трафика в реальном времени, проверка задержки (вручную / периодически), логи
 - **Плитки быстрых настроек**: включение VPN и переключение профилей
 - Экспорт / импорт настроек
-- **Обновление из приложения** — загрузка и установка новых сборок с GitHub Releases
+- **Обновление из приложения** — находит все релизы (включая пре-релизы), проверяет
+  **SHA-256** APK, показывает прогресс загрузки с отменой и позволяет **пропустить версию**
+  или **напомнить позже**; автопроверку можно отключить
 
 ### 📥 Загрузка
 
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
-> ℹ️ Текущая сборка (`9.0`) опубликована как **pre-release**. Universal-APK рассчитан на `arm64-v8a`.
+> ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
+> Текущая линия исходников — **`1.2.0`** (`versionCode 21`). Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
+
+### 🔢 Версионирование
+
+ByeBox использует **SemVer** `MAJOR.MINOR.PATCH[-стадия.N]` со стадиями жизненного цикла
+в духе старых Minecraft (`alpha → beta → rc → release`). Каждая часть имеет чёткий смысл,
+дата и номер сборки хранятся отдельно от строки версии, а апдейтер сравнивает сборки по
+Android-`versionCode` — поэтому он работает даже после публичного переименования.
+
+- 📐 Политика: [docs/version_naming_policy.md](docs/version_naming_policy.md)
+- 🚀 Процесс релиза: [docs/release_process.md](docs/release_process.md)
+
+> ⚠️ Сборки старой линии `9.0` сравнивали версии по имени, поэтому на `1.2.0` они сами не
+> обновятся. Установите `1.2.0` один раз вручную — дальше обновления приходят автоматически.
 
 ### 🚀 Сборка из исходников
 
@@ -281,7 +313,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 | `app/src/main/jniLibs/` | Готовая `libhev-socks5-tunnel.so` (HevTun) |
 | `gomobile-patch/` | Патч gomobile для сборки Xray-обёртки |
 | `tgwsproxy/` | Модуль Telegram WS Proxy — клонируется отдельно (см. выше) |
-| `docs/` | Документация, включая политику версионирования |
+| `docs/` | Политика версионирования, процесс релиза, бриф по маскоту |
 
 ### 🧱 Технологии
 
