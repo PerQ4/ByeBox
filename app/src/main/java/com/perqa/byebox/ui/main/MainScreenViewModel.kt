@@ -28,6 +28,7 @@ import com.perqa.byebox.core.HapticType
 import com.perqa.byebox.data.SettingsProfileData
 import com.perqa.byebox.data.ProfilePresetManager
 import com.perqa.byebox.core.PingProbe
+import com.perqa.byebox.core.ProxyProtocolLabel
 import com.perqa.byebox.core.SettingsBackup
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1698,12 +1699,11 @@ class MainScreenViewModel(
 }
 
 private fun ProfileItem.toProxyConfig(guid: String): ProxyConfig {
-    val protocolStr = when (this.configType) {
-        EConfigType.VMESS -> "VMESS"
-        EConfigType.VLESS -> "VLESS"
-        EConfigType.TROJAN -> "Trojan"
-        EConfigType.SHADOWSOCKS -> "Shadowsocks"
-        else -> this.configType.name
+    val protocolStr = if (this.configType == EConfigType.CUSTOM) {
+        // Expanded JSON configs have no protocol field, so read it from the raw outbound.
+        ProxyProtocolLabel.fromRawJson(MmkvManager.decodeServerRaw(guid)) ?: this.configType.name
+    } else {
+        ProxyProtocolLabel.forConfigType(this.configType)
     }
     
     val subRemarks = this.subscriptionId.let { subId ->

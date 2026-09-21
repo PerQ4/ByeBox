@@ -15,7 +15,7 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.2.0** | `21` | 2026-09-21 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| **1.2.1** | `22` | 2026-09-21 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
 
 [English](#english) · [Русский](#русский)
 
@@ -81,7 +81,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> The current release is **`1.2.0`** (`versionCode 21`). The universal APK targets `arm64-v8a`.
+> The current release is **`1.2.1`** (`versionCode 22`). The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -96,7 +96,7 @@ separately from the version string, and the in-app updater compares builds by th
 - 🚀 Release process: [docs/release_process.md](docs/release_process.md)
 
 > ⚠️ Builds from the old `9.0` line compared versions by name, so they won't auto-update to
-> `1.2.0`. Install `1.2.0` once manually — later builds update themselves.
+> the new line. Install a `1.2.x` build once manually — later builds update themselves.
 
 ### 🚀 Building from source
 
@@ -248,7 +248,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий релиз — **`1.2.0`** (`versionCode 21`). Universal-APK рассчитан на `arm64-v8a`.
+> Текущий релиз — **`1.2.1`** (`versionCode 22`). Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 
@@ -262,8 +262,8 @@ Android-`versionCode` — поэтому он работает даже посл
 - 📐 Политика: [docs/version_naming_policy.md](docs/version_naming_policy.md)
 - 🚀 Процесс релиза: [docs/release_process.md](docs/release_process.md)
 
-> ⚠️ Сборки старой линии `9.0` сравнивали версии по имени, поэтому на `1.2.0` они сами не
-> обновятся. Установите `1.2.0` один раз вручную — дальше обновления приходят автоматически.
+> ⚠️ Сборки старой линии `9.0` сравнивали версии по имени, поэтому на новую линию они сами не
+> обновятся. Установите сборку `1.2.x` один раз вручную — дальше обновления приходят автоматически.
 
 ### 🚀 Сборка из исходников
 
