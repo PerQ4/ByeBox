@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Send
@@ -75,9 +76,9 @@ import kotlinx.coroutines.launch
 data class OnboardingResult(
     val appMode: String,
     val language: String,
-    val routingChannel: String,
     val routingProfile: String,
-    val perAppChannels: Map<String, String>,
+    val appRoutingMode: String,
+    val perAppPackages: Set<String>,
     val customDnsServer: String,
     val dnsServer: String,
     val tunStack: String,
@@ -91,7 +92,7 @@ data class OnboardingResult(
 
 private enum class SetupMode { None, Quick, Advanced }
 
-private enum class OnbStep { Welcome, Services, Channel, Routing, PerApp, Dns, Tun, Appearance, Subscription, Preset, Tiles, Done }
+private enum class OnbStep { Welcome, Services, Routing, PerApp, Dns, Tun, Appearance, Subscription, Preset, Tiles, Done }
 
 private sealed class SubImportState {
     object Idle : SubImportState()
@@ -113,10 +114,9 @@ fun OnboardingScreen(
     var setupMode by remember { mutableStateOf(SetupMode.None) }
     var lang by remember { mutableStateOf(language) }
     var services by remember { mutableStateOf(setOf("vpn", "tgws")) }
-    var routingChannel by remember { mutableStateOf(RouteChannel.VPN.value) }
     var routingProfile by remember { mutableStateOf(RoutingProfile.BYPASS_LAN_CN_RU.name) }
-    var perAppChannels by remember { mutableStateOf(mapOf<String, String>()) }
-    var perAppEnabled by remember { mutableStateOf(false) }
+    var appRoutingMode by remember { mutableStateOf(AppRoutingMode.OFF.name) }
+    var perAppPackages by remember { mutableStateOf(setOf<String>()) }
     var customDns by remember { mutableStateOf("") }
     var dnsServer by remember { mutableStateOf(DnsServer.SYSTEM.name) }
     var tunStack by remember { mutableStateOf(TunStack.GVISOR.name) }
@@ -144,7 +144,6 @@ fun OnboardingScreen(
             SetupMode.Quick -> {
                 add(OnbStep.Services)
                 if (hasVpn) {
-                    add(OnbStep.Channel)
                     add(OnbStep.PerApp)
                 }
                 add(OnbStep.Tiles)
@@ -153,7 +152,6 @@ fun OnboardingScreen(
             SetupMode.Advanced -> {
                 add(OnbStep.Services)
                 if (hasVpn) {
-                    add(OnbStep.Channel)
                     add(OnbStep.Routing)
                     add(OnbStep.PerApp)
                     add(OnbStep.Dns)
@@ -182,9 +180,9 @@ fun OnboardingScreen(
             OnboardingResult(
                 appMode = derivedAppMode(),
                 language = lang,
-                routingChannel = routingChannel,
                 routingProfile = routingProfile,
-                perAppChannels = perAppChannels,
+                appRoutingMode = appRoutingMode,
+                perAppPackages = perAppPackages,
                 customDnsServer = customDns.trim(),
                 dnsServer = dnsServer,
                 tunStack = tunStack,
@@ -202,16 +200,15 @@ fun OnboardingScreen(
     val pm = ctx.packageManager
     val apps = remember {
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-            .map { InstalledAppInfo(pm.getApplicationLabel(it).toString(), it.packageName, false) }
+            .map { InstalledAppInfo(pm.getApplicationLabel(it).toString(), it.packageName, (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0) }
             .sortedBy { it.label.lowercase() }
     }
 
     if (showAppPicker) {
-        RoutingAppPickerSheet(
+        AppPickerSheet(
             apps = apps,
-            channels = perAppChannels.mapValues { RouteChannel.from(it.value) },
-            onSave = { newMap -> perAppChannels = newMap.mapValues { it.value.value }; showAppPicker = false },
+            selectedPackages = perAppPackages,
+            onSave = { newPackages -> perAppPackages = newPackages; showAppPicker = false },
             onDismiss = { showAppPicker = false },
             language = lang
         )
@@ -289,18 +286,13 @@ fun OnboardingScreen(
                                     onLanguageChange = { lang = it }
                                 )
                                 OnbStep.Services -> ServicesStep(lang, isExpressive, services) { services = it }
-                                OnbStep.Channel -> ChannelStep(lang, isExpressive, routingChannel) { routingChannel = it }
                                 OnbStep.Routing -> RoutingProfileStep(lang, isExpressive, routingProfile) { routingProfile = it }
-                                OnbStep.PerApp -> PerAppStep(
+                                OnbStep.PerApp -> AppRoutingStep(
                                     language = lang,
                                     isExpressive = isExpressive,
-                                    enabled = perAppEnabled,
-                                    channels = perAppChannels.mapValues { RouteChannel.from(it.value) },
-                                    apps = apps,
-                                    onSelect = { enabled ->
-                                        perAppEnabled = enabled
-                                        if (!enabled) perAppChannels = emptyMap()
-                                    },
+                                    mode = appRoutingMode,
+                                    packages = perAppPackages,
+                                    onModeSelect = { appRoutingMode = it },
                                     onOpenPicker = { showAppPicker = true }
                                 )
                                 OnbStep.Dns -> DnsStep(
@@ -378,9 +370,9 @@ fun OnboardingScreen(
                                     hasVpn = hasVpn,
                                     languages = lang,
                                     appMode = derivedAppMode(),
-                                    channel = routingChannel,
+                                    appRouting = remember(appRoutingMode) { AppRoutingMode.entries.firstOrNull { it.name == appRoutingMode } ?: AppRoutingMode.OFF },
                                     profile = remember(routingProfile) { RoutingProfile.entries.firstOrNull { it.name == routingProfile } ?: RoutingProfile.BYPASS_LAN_CN_RU },
-                                    appCount = perAppChannels.size,
+                                    appCount = perAppPackages.size,
                                     customDns = customDns,
                                     dns = remember(dnsServer) { DnsServer.entries.firstOrNull { it.name == dnsServer } ?: DnsServer.SYSTEM },
                                     tun = remember(tunStack) { TunStack.entries.firstOrNull { it.name == tunStack } ?: TunStack.GVISOR },
@@ -597,31 +589,6 @@ private fun ServicesStep(language: String, isExpressive: Boolean, selected: Set<
 }
 
 @Composable
-private fun ChannelStep(language: String, isExpressive: Boolean, channel: String, onSelect: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        stepHeader(
-            Loc.get("onboarding_channel_title", language),
-            Loc.get("onboarding_channel_q", language)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        ChoiceTile(
-            Loc.get("routing_channel_vpn", language),
-            Loc.get("onboarding_default_vpn", language),
-            Icons.AutoMirrored.Filled.CompareArrows,
-            channel == RouteChannel.VPN.value,
-            isExpressive
-        ) { onSelect(RouteChannel.VPN.value) }
-        ChoiceTile(
-            Loc.get("routing_channel_direct", language),
-            Loc.get("onboarding_default_direct", language),
-            Icons.Default.OpenInBrowser,
-            channel == RouteChannel.DIRECT.value,
-            isExpressive
-        ) { onSelect(RouteChannel.DIRECT.value) }
-    }
-}
-
-@Composable
 private fun RoutingProfileStep(language: String, isExpressive: Boolean, selected: String, onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         stepHeader(
@@ -652,80 +619,49 @@ private fun RoutingProfileStep(language: String, isExpressive: Boolean, selected
 }
 
 @Composable
-private fun PerAppStep(
+private fun AppRoutingStep(
     language: String,
     isExpressive: Boolean,
-    enabled: Boolean,
-    channels: Map<String, RouteChannel>,
-    apps: List<InstalledAppInfo>,
-    onSelect: (Boolean) -> Unit,
+    mode: String,
+    packages: Set<String>,
+    onModeSelect: (String) -> Unit,
     onOpenPicker: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         stepHeader(
-            Loc.get("onboarding_perapp_ask_title", language),
-            Loc.get("onboarding_perapp_ask_q", language)
+            Loc.get("onboarding_perapp_title", language),
+            Loc.get("onboarding_perapp_q", language)
         )
         Spacer(modifier = Modifier.height(2.dp))
-        ChoiceTile(Loc.get("perapp_yes", language), "", Icons.Default.CheckCircle, enabled, isExpressive) { onSelect(true) }
-        ChoiceTile(Loc.get("perapp_no", language), "", Icons.Default.OpenInBrowser, !enabled, isExpressive) { onSelect(false) }
-        if (enabled) {
-            Spacer(modifier = Modifier.height(2.dp))
-            SelectedAppsPickerSection(language, isExpressive, channels, apps, onOpenPicker)
-        }
-    }
-}
-
-@Composable
-private fun SelectedAppsPickerSection(
-    language: String,
-    isExpressive: Boolean,
-    channels: Map<String, RouteChannel>,
-    apps: List<InstalledAppInfo>,
-    onOpenPicker: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SettingsActionRow(
-            title = Loc.get("selected_apps", language),
-            subtitle = String.format(Loc.get("packages_selected", language), channels.size),
-            button = Loc.get("select_btn", language),
-            enabled = true,
-            cornerRoundness = if (isExpressive) "expressive" else "18dp",
-            onClick = onOpenPicker
-        )
-        val selectedApps = apps.filter { channels.containsKey(it.packageName) }
-            .map { RouteApp(it.packageName, it.label) }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            selectedApps.forEach { app ->
-                val ch = channels[app.pkg] ?: RouteChannel.DEFAULT
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val painter = rememberAppIconPainter(app.pkg)
-                    if (painter != null) {
-                        Image(
-                            painter,
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
-                        )
-                    } else {
-                        Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(app.label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                        Text(app.pkg, style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
-                    }
-                    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text(
-                            routeChannelLabel(ch, language),
-                            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        )
-                    }
-                }
+        AppRoutingMode.entries.forEach { m ->
+            val icon = when (m) {
+                AppRoutingMode.OFF -> Icons.Default.Language
+                AppRoutingMode.ONLY_SELECTED -> Icons.Default.List
+                AppRoutingMode.BYPASS_SELECTED -> Icons.Default.AltRoute
             }
+            val subKey = when (m) {
+                AppRoutingMode.OFF -> "app_routing_all_sub"
+                AppRoutingMode.ONLY_SELECTED -> "app_routing_selected_sub"
+                AppRoutingMode.BYPASS_SELECTED -> "app_routing_bypass_sub"
+            }
+            ChoiceTile(
+                m.localizedName(language),
+                Loc.get(subKey, language),
+                icon,
+                mode == m.name,
+                isExpressive
+            ) { onModeSelect(m.name) }
+        }
+        if (mode != AppRoutingMode.OFF.name) {
+            Spacer(modifier = Modifier.height(2.dp))
+            SettingsActionRow(
+                title = Loc.get("app_routing_select_title", language),
+                subtitle = String.format(Loc.get("app_routing_select_sub", language), packages.size),
+                button = Loc.get("app_routing_select_btn", language),
+                enabled = true,
+                cornerRoundness = if (isExpressive) "expressive" else "18dp",
+                onClick = onOpenPicker
+            )
         }
     }
 }
@@ -1032,7 +968,7 @@ private fun SummaryStep(
     hasVpn: Boolean,
     languages: String,
     appMode: String,
-    channel: String,
+    appRouting: AppRoutingMode,
     profile: RoutingProfile,
     appCount: Int,
     customDns: String,
@@ -1059,25 +995,20 @@ private fun SummaryStep(
         else -> Loc.get("mode_both", language)
     }
 
-    fun channelValue(): String = when (channel) {
-        RouteChannel.DIRECT.value -> Loc.get("channel_direct", language)
-        else -> Loc.get("channel_vpn", language)
-    }
-
     val rows = buildList<Pair<String, String>> {
         add(Loc.get("onboarding_lbl_language", language) to languageValue())
         add(Loc.get("onboarding_lbl_purpose", language) to purposeValue())
         if (hasVpn) {
-            add(Loc.get("onboarding_channel_title", language) to channelValue())
             if (advanced) {
                 add(Loc.get("onboarding_lbl_routing_profile", language) to profile.localizedName(language))
             }
-            val appsValue = if (appCount == 0) {
-                Loc.get("perapp_no", language)
-            } else {
-                String.format(Loc.get("packages_selected", language), appCount)
+            add(Loc.get("onboarding_lbl_apps", language) to appRouting.localizedName(language))
+            if (appRouting != AppRoutingMode.OFF) {
+                add(
+                    Loc.get("app_routing_select_title", language) to
+                        String.format(Loc.get("packages_selected", language), appCount)
+                )
             }
-            add(Loc.get("onboarding_lbl_apps", language) to appsValue)
         }
         if (advanced) {
             if (hasVpn) {

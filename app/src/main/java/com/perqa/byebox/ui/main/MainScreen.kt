@@ -43,9 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,8 +93,6 @@ fun MainScreen(
             var showBottomBar by remember { mutableStateOf(true) }
             var showImportDialog by remember { mutableStateOf(false) }
             var speedDialExpanded by remember { mutableStateOf(false) }
-            val routingStore = remember { RoutingStore(context) }
-            val scope = rememberCoroutineScope()
 
             LaunchedEffect(selectedTab) {
                 showBottomBar = true
@@ -153,14 +149,11 @@ fun MainScreen(
                         RoutingProfile.entries.firstOrNull { it.name == result.routingProfile }
                             ?.let { viewModel.changeRoutingProfile(it) }
                         viewModel.changeAppRoutingMode(
-                            if (result.perAppChannels.isNotEmpty()) AppRoutingMode.ONLY_SELECTED else AppRoutingMode.OFF
+                            AppRoutingMode.entries.firstOrNull { it.name == result.appRoutingMode }
+                                ?: AppRoutingMode.OFF
                         )
-                        viewModel.changeAppRoutingPackages(result.perAppChannels.keys.joinToString("\n"))
+                        viewModel.changeAppRoutingPackages(result.perAppPackages.sorted().joinToString("\n"))
                         viewModel.changeCustomDnsServer(result.customDnsServer)
-                        scope.launch {
-                            routingStore.setDefaultChannel(result.routingChannel)
-                            result.perAppChannels.forEach { (pkg, ch) -> routingStore.setAppChannel(pkg, ch) }
-                        }
                         DnsServer.entries.firstOrNull { it.name == result.dnsServer }
                             ?.let { viewModel.changeDnsServer(it) }
                         TunStack.entries.firstOrNull { it.name == result.tunStack }
