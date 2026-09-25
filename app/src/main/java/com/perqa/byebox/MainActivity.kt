@@ -36,13 +36,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.perqa.byebox.R
 import com.perqa.byebox.core.AppLogger
+import com.perqa.byebox.core.UpdateCheckScheduler
 import com.perqa.byebox.service.ByeBoxTileService
+import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainUiState
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.MmkvManager
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        const val ACTION_TOGGLE_VPN = "com.perqa.byebox.action.TOGGLE_VPN"
+        const val ACTION_CHECK_UPDATES = "com.perqa.byebox.action.CHECK_UPDATES"
+    }
+
     private val viewModel by viewModels<MainScreenViewModel> {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -126,11 +137,65 @@ class MainActivity : ComponentActivity() {
 
         // Handle deep links on cold start
         handleDeepLinkIntent(intent)
+        handleShortcutIntent(intent)
+        publishShortcuts()
+        UpdateCheckScheduler.sync(this)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleDeepLinkIntent(intent)
+        handleShortcutIntent(intent)
+    }
+
+    /**
+     * App icon long-press shortcuts (dynamic shortcuts). Publishing is best
+     * effort: fails silently on devices that do not support them.
+     */
+    private fun publishShortcuts() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
+        try {
+            val language = viewModel.uiState.value.language
+            ShortcutManagerCompat.addDynamicShortcuts(
+                this,
+                listOf(
+                    ShortcutInfoCompat.Builder(this, "toggle_vpn")
+                        .setShortLabel(Loc.get("shortcut_toggle_vpn", language))
+                        .setLongLabel(Loc.get("shortcut_toggle_vpn", language))
+                        .setIcon(IconCompat.createWithResource(this, R.drawable.ic_notification_on))
+                        .setIntent(
+                            Intent(this, MainActivity::class.java).apply {
+                                action = ACTION_TOGGLE_VPN
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            }
+                        )
+                        .build(),
+                    ShortcutInfoCompat.Builder(this, "check_updates")
+                        .setShortLabel(Loc.get("shortcut_check_updates", language))
+                        .setLongLabel(Loc.get("shortcut_check_updates", language))
+                        .setIcon(IconCompat.createWithResource(this, R.drawable.ic_notification_on))
+                        .setIntent(
+                            Intent(this, MainActivity::class.java).apply {
+                                action = ACTION_CHECK_UPDATES
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            }
+                        )
+                        .build()
+                )
+            )
+        } catch (_: Exception) {
+            // Shortcuts are optional; never crash on unsupported devices
+        }
+    }
+
+    private fun handleShortcutIntent(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_TOGGLE_VPN -> {
+                val isRunning = MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
+                handleVpnToggle(connect = !isRunning)
+            }
+            ACTION_CHECK_UPDATES -> viewModel.checkForUpdates()
+        }
     }
 
     private fun handleDeepLinkIntent(intent: Intent?) {

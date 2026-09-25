@@ -58,6 +58,9 @@ import com.perqa.byebox.ui.main.smoothStep
 @Composable
 fun ProfilePresetsCard(
     state: MainUiState,
+    isExpanded: Boolean = false,
+    onToggleExpanded: () -> Unit = {},
+    singleRowPreview: Boolean = false,
     onSelectProfile: (String) -> Unit,
     onDeleteProfile: (String) -> Unit,
     onEditProfile: (SettingsProfileData) -> Unit,
@@ -67,13 +70,22 @@ fun ProfilePresetsCard(
     reservedCollapsedBelowPx: Float? = null,
     reservedCollapsedBottomPx: Float? = null
 ) {
-    var collapsed by remember { mutableStateOf(true) }
+    val collapsed = !isExpanded
+    val singleRowMode = collapsed && singleRowPreview
     var swipingId by remember { mutableStateOf<String?>(null) }
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
     var headerHeightPx by remember { mutableFloatStateOf(0f) }
+    // Последняя полная высота списка, измеренная вне single-row режима, и флаг,
+    // что последнее измерение контента сделано в single-row (т.е. это одна
+    // строка). Когда блок выходит из single-row (закрыли TGWS), на первом кадре
+    // contentHeightPx всё ещё хранит высоту одной строки — по ней нельзя судить,
+    // обрезается ли список, — поэтому оценка canCrop опирается на последнюю
+    // полную высоту, пока измерение не догонит.
+    var lastFullContentHeightPx by remember { mutableFloatStateOf(0f) }
+    var lastMeasuredSingleRow by remember { mutableStateOf(false) }
     val bottomPad = 64.dp
     val bottomPadPx = with(density) { bottomPad.toPx() }
     val staticPeekHeight = 168.dp
@@ -107,6 +119,35 @@ fun ProfilePresetsCard(
     val peekHeight = dynamicPeekHeight
     val peekHeightPx = with(density) { peekHeight.toPx() }
     val overflowsCollapsed = collapsed && scrollState.maxValue > 0f
+    // Сворачивание имеет смысл только когда в свёрнутом виде список реально
+    // обрезается (контент выше peek). Если весь список и так помещается
+    // (пресетов меньше, чем нужно для обрезания), переключатель не нужен:
+    // вместо шеврона в хедере показывается нейтральная полосочка.
+    // На кадре выхода из single-row измеренная высота ещё равна высоте одной
+    // строки (remeasure происходит в следующем layout) — для свёрнутого
+    // состояния берём последнюю полную высоту списка, иначе стрелка мигает,
+    // исчезая на пару миллисекунд при каждом закрытии Telegram.
+    val effectiveCropHeightPx = if (collapsed && lastMeasuredSingleRow) {
+        lastFullContentHeightPx
+    } else {
+        contentHeightPx
+    }
+    val canCrop = effectiveCropHeightPx > 0f && effectiveCropHeightPx > peekHeightPx
+    // Переключатель показываем, когда сворачивание/разворачивание имеет смысл:
+    //  - singleRowPreview (блок сжат до одной строки из-за открытого TGWS) — всегда,
+    //    иначе не вернуть блок обратно;
+    //  - блок раскрыт — всегда, свернуть можно всегда;
+    //  - блок свёрнут — только если контент реально обрезается (canCrop).
+    // Важно: для раскрытого состояния НЕ используем canCrop — на первом кадре
+    // раскрытия contentHeightPx ещё хранит высоту одной строки, и стрелка
+    // мигает, исчезая на пару миллисекунд. Для свёрнутого состояния canCrop
+    // тоже устойчив к этому лагу (см. lastFullContentHeightPx выше) — стрелка
+    // не пропадает и при закрытии Telegram через тап по нему.
+    val isExpandable = when {
+        !collapsed -> true
+        collapsed && singleRowPreview -> true
+        else -> canCrop
+    }
 
     // Внутренний список должен прокручиваться сам, не увлекая за собой страницу:
     // пока список свёрнут и имеет запас прокрутки, «съедаем» остаток жеста,
@@ -168,6 +209,10 @@ fun ProfilePresetsCard(
     }
     val profiles = state.profiles
 
+    // При singleRowPreview (например, когда открыт блок Telegram) свёрнутый блок
+    // показывает только первую строку — «один элемент», без скролла и пустой зоны.
+    val visibleConfigs = if (collapsed && singleRowPreview) displayConfigs.take(1) else displayConfigs
+
     val firstConfigActive = displayConfigs.firstOrNull()?.let { it.id == state.activeProfileId } ?: false
     val firstConfigSwiping = displayConfigs.firstOrNull()?.id == swipingId
     val headerBottomCorner = if (collapsed || displayConfigs.isEmpty() || firstConfigActive || firstConfigSwiping) 28.dp else 6.dp
@@ -195,8 +240,9 @@ fun ProfilePresetsCard(
                 onRenameSource = { _, _ -> },
                 onDeleteSource = {},
                 onPingSource = {},
-                expanded = !collapsed,
-                onToggleExpanded = { collapsed = !collapsed },
+                expanded = isExpanded,
+                onToggleExpanded = onToggleExpanded,
+                expandable = isExpandable,
                 showConfigs = false,
                 shape = headerShape,
                 language = state.language,
@@ -214,9 +260,18 @@ fun ProfilePresetsCard(
         ) {
             Column(
                 modifier = if (collapsed) {
+                    // Свёрнутая высота = min(контент, peek): при малом числе пресетов
+                    // (меньше, чем нужно для обрезания) контейнер сжимается ровно под
+                    // контент, а не занимает всю свободную высоту экрана — иначе блок
+                    // с 1-2 пресетами выглядит разложенным с пустой прокручиваемой зоной.
+                    val bodyHeightPx = if (contentHeightPx > 0f) {
+                        minOf(contentHeightPx, peekHeightPx)
+                    } else {
+                        peekHeightPx
+                    }
                     Modifier
                         .fillMaxWidth()
-                        .height(peekHeight)
+                        .height(with(density) { bodyHeightPx.toDp() })
                         .verticalScroll(scrollState)
                         .nestedScroll(parentScrollBlocker)
                 } else {
@@ -226,14 +281,22 @@ fun ProfilePresetsCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onGloballyPositioned { contentHeightPx = it.size.height.toFloat() },
+                        .onGloballyPositioned { coords ->
+                            contentHeightPx = coords.size.height.toFloat()
+                            if (!singleRowMode) {
+                                lastFullContentHeightPx = coords.size.height.toFloat()
+                                lastMeasuredSingleRow = false
+                            } else {
+                                lastMeasuredSingleRow = true
+                            }
+                        },
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    displayConfigs.forEachIndexed { index, config ->
+                    visibleConfigs.forEachIndexed { index, config ->
                         val isActive = config.id == state.activeProfileId
-                        val prevIsActive = index > 0 && displayConfigs[index - 1].id == state.activeProfileId
-                        val nextIsActive = index < displayConfigs.lastIndex && displayConfigs[index + 1].id == state.activeProfileId
-                        val isLast = index == displayConfigs.lastIndex
+                        val prevIsActive = index > 0 && visibleConfigs[index - 1].id == state.activeProfileId
+                        val nextIsActive = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == state.activeProfileId
+                        val isLast = index == visibleConfigs.lastIndex
 
                         val baseTopCorner = when {
                             isActive -> 28.dp
@@ -247,8 +310,8 @@ fun ProfilePresetsCard(
                             else -> 6.dp
                         }
 
-                        val prevIsSwipingNeighbor = index > 0 && displayConfigs[index - 1].id == swipingId
-                        val nextIsSwipingNeighbor = index < displayConfigs.lastIndex && displayConfigs[index + 1].id == swipingId
+                        val prevIsSwipingNeighbor = index > 0 && visibleConfigs[index - 1].id == swipingId
+                        val nextIsSwipingNeighbor = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == swipingId
                         val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 96f).coerceIn(0f, 1f))
                         val neighborRoundnessProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 140f).coerceIn(0f, 1f))
                         val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, 28.dp, neighborRoundnessProgress) else baseTopCorner
@@ -295,7 +358,10 @@ fun ProfilePresetsCard(
                         )
                     }
                 }
-                if (collapsed) {
+                // Нижний запас под скролл добавляем только когда список реально
+                // переполняет свёрнутый контейнер (иначе при 1-2 пресетах остаётся
+                // большая пустая зона, и блок выглядит разложенным).
+                if (collapsed && overflowsCollapsed) {
                     Spacer(modifier = Modifier.height(bottomPad))
                 }
             }

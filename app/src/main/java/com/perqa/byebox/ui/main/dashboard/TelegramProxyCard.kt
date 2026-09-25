@@ -76,6 +76,8 @@ import kotlinx.coroutines.launch
 fun TelegramProxyCard(
     language: String = "ru",
     cornerRoundness: String = "expressive",
+    isExpanded: Boolean = false,
+    onToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -92,7 +94,6 @@ fun TelegramProxyCard(
 
     var isStarting by remember { mutableStateOf(false) }
     var applyMode by remember { mutableStateOf("packages") }
-    var expanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (settingsStore.secretKey.first().isBlank()) {
@@ -138,14 +139,14 @@ fun TelegramProxyCard(
                 statusText = statusText,
                 isActive = isActiveVisual,
                 isVerified = isVerifiedRunning,
-                isExpanded = expanded,
+                isExpanded = isExpanded,
                 language = language,
-                onToggle = { expanded = !expanded },
+                onToggle = onToggle,
                 onToggleService = { if (isActiveVisual) disconnectAction() else connectAction() }
             )
 
             AnimatedVisibility(
-                visible = expanded,
+                visible = isExpanded,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -312,7 +313,7 @@ internal fun TelegramExpandedContent(
             )
         ) {
             Text(
-                stringResource(TgwsR.string.apply_in_telegram),
+                Loc.get("tgws_apply_in_telegram", language),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -323,12 +324,12 @@ internal fun TelegramExpandedContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ModeChip(
-                label = "Пакеты",
+                label = Loc.get("tgws_packages", language),
                 selected = applyMode == "packages",
                 modifier = Modifier.weight(1f).height(44.dp)
             ) { onApplyModeChange("packages") }
             ModeChip(
-                label = "Ссылка",
+                label = Loc.get("tgws_link", language),
                 selected = applyMode == "link",
                 modifier = Modifier.weight(1f).height(44.dp)
             ) { onApplyModeChange("link") }
@@ -337,7 +338,8 @@ internal fun TelegramExpandedContent(
         ProxyStatusPanel(
             cfEnabled = cfEnabled,
             poolSize = poolSize,
-            port = port
+            port = port,
+            language = language
         )
 
         SettingsRowSurface(
@@ -345,7 +347,7 @@ internal fun TelegramExpandedContent(
             onClick = {
                 val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cb.setPrimaryClip(android.content.ClipData.newPlainText("Proxy", proxyUrl))
-                Toast.makeText(context, TgwsR.string.copied, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, Loc.get("tgws_copied", language), Toast.LENGTH_SHORT).show()
             }
         ) {
             Text(
@@ -357,7 +359,7 @@ internal fun TelegramExpandedContent(
             )
             Icon(
                 Icons.Default.ContentCopy,
-                contentDescription = stringResource(TgwsR.string.copy),
+                contentDescription = Loc.get("tgws_copy", language),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )

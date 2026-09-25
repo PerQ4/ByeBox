@@ -281,6 +281,7 @@ object CoreServiceManager {
 
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
         MmkvManager.encodeSettings(AppConfig.PREF_TILE_VPN_RUNNING, true)
+        com.perqa.byebox.core.SessionStatsManager.start()
         TrafficStatsManager.start(result.content)
         NotificationManager.startSpeedNotification()
         LogUtil.i(AppConfig.TAG, "StartCore-Manager: Core started successfully")
@@ -314,6 +315,7 @@ object CoreServiceManager {
         MmkvManager.encodeSettings(AppConfig.PREF_TILE_VPN_RUNNING, false)
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_STOP_SUCCESS, "")
         NotificationManager.cancelNotification()
+        com.perqa.byebox.core.SessionStatsManager.stop()
 
         try {
             service.unregisterReceiver(mMsgReceive)

@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +49,10 @@ fun DashboardScreen(
     var tgwsCollapsedHeightPx by remember { mutableFloatStateOf(0f) }
     var aboveContentHeightPx by remember { mutableFloatStateOf(0f) }
     var bottomReserveHeightPx by remember { mutableFloatStateOf(0f) }
+    // Пресеты и TGWS-карточка не должны быть развёрнуты одновременно: оба блока
+    // занимают много места, поэтому разворот одного сворачивает другой.
+    var presetsExpanded by remember { mutableStateOf(false) }
+    var tgwsExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -74,7 +79,10 @@ fun DashboardScreen(
                         uploadSpeed = state.uploadSpeed,
                         dnsServer = state.dnsServer,
                         language = state.language,
-                        cornerRoundness = state.cornerRoundness
+                        cornerRoundness = state.cornerRoundness,
+                        sessionElapsed = state.sessionElapsed,
+                        sessionUpload = state.sessionUpload,
+                        sessionDownload = state.sessionDownload
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -116,6 +124,12 @@ fun DashboardScreen(
 
             ProfilePresetsCard(
                 state = state,
+                isExpanded = presetsExpanded,
+                onToggleExpanded = {
+                    presetsExpanded = !presetsExpanded
+                    if (presetsExpanded) tgwsExpanded = false
+                },
+                singleRowPreview = tgwsExpanded,
                 onSelectProfile = { viewModel.changeActiveProfileId(it) },
                 onDeleteProfile = onDeleteProfile,
                 onEditProfile = onEditProfile,
@@ -151,7 +165,12 @@ fun DashboardScreen(
                 ) {
                     TelegramProxyCard(
                         language = state.language,
-                        cornerRoundness = state.cornerRoundness
+                        cornerRoundness = state.cornerRoundness,
+                        isExpanded = tgwsExpanded,
+                        onToggle = {
+                            tgwsExpanded = !tgwsExpanded
+                            if (tgwsExpanded) presetsExpanded = false
+                        }
                     )
                 }
             }

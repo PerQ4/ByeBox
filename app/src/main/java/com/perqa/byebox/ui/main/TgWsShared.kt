@@ -34,7 +34,8 @@ fun ProxyStatusPanel(
     cfEnabled: Boolean,
     poolSize: Int,
     port: String,
-    version: String? = null
+    version: String? = null,
+    language: String = "ru"
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -50,21 +51,21 @@ fun ProxyStatusPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ProxyStatusItem(
-                text = if (cfEnabled) "CF" else androidx.compose.ui.res.stringResource(TgwsR.string.direct_mode),
+                text = if (cfEnabled) "CF" else Loc.get("tgws_direct", language),
                 modifier = Modifier
                     .weight(0.9f)
                     .padding(horizontal = 6.dp, vertical = 8.dp)
             )
             ProxyStatusDivider()
             ProxyStatusItem(
-                text = androidx.compose.ui.res.stringResource(TgwsR.string.pool_short, poolSize),
+                text = String.format(Loc.get("tgws_pool_short", language), poolSize),
                 modifier = Modifier
                     .weight(1.05f)
                     .padding(horizontal = 6.dp, vertical = 8.dp)
             )
             ProxyStatusDivider()
             ProxyStatusItem(
-                text = androidx.compose.ui.res.stringResource(TgwsR.string.port_short, port),
+                text = String.format(Loc.get("tgws_port_short", language), port),
                 modifier = Modifier
                     .weight(1.35f)
                     .padding(horizontal = 6.dp, vertical = 8.dp)

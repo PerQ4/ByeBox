@@ -133,7 +133,8 @@ fun TgwsFullPage(
             isBusy = isBusyVisual,
             poolSize = poolSize,
             port = port,
-            cornerRoundness = cornerRoundness
+            cornerRoundness = cornerRoundness,
+            language = language
         )
 
         ConnectionButton(
@@ -251,7 +252,8 @@ private fun TgwsStatusPillBar(
     isBusy: Boolean,
     poolSize: Int,
     port: String,
-    cornerRoundness: String
+    cornerRoundness: String,
+    language: String = "ru"
 ) {
     val statusColor = when {
         isActive && isVerified -> MaterialTheme.colorScheme.primary
@@ -311,7 +313,7 @@ private fun TgwsStatusPillBar(
                         .background(MaterialTheme.colorScheme.secondary)
                 )
                 Text(
-                    text = stringResource(TgwsR.string.pool_short, poolSize),
+                    text = String.format(Loc.get("tgws_pool_short", language), poolSize),
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -332,7 +334,7 @@ private fun TgwsStatusPillBar(
                         .background(MaterialTheme.colorScheme.primary)
                 )
                 Text(
-                    text = stringResource(TgwsR.string.port_short, port),
+                    text = String.format(Loc.get("tgws_port_short", language), port),
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

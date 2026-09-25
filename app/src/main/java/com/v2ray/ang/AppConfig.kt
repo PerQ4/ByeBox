@@ -84,6 +84,7 @@ object AppConfig {
     const val PREF_AUTO_SORT_AFTER_TEST = "pref_auto_sort_after_test"
     const val PREF_REAL_PING_CONCURRENCY = "pref_real_ping_concurrency"
     const val PREF_TILE_VPN_RUNNING = "pref_tile_vpn_running"
+    const val PREF_AUTO_RECONNECT_NETWORK = "pref_auto_reconnect_network"
 
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"

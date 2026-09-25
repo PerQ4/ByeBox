@@ -59,6 +59,7 @@ class CoreVpnService : VpnService(), ServiceControl {
         object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 setUnderlyingNetworks(arrayOf(network))
+                maybeReconnectAfterNetworkHandoff()
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
@@ -68,8 +69,40 @@ class CoreVpnService : VpnService(), ServiceControl {
 
             override fun onLost(network: Network) {
                 setUnderlyingNetworks(null)
+                networkHandoffPending = true
             }
         }
+    }
+
+    // --- Auto-reconnect on network change -----------------------------------
+    // When the underlying network is lost and a new one becomes available
+    // (e.g. Wi-Fi -> mobile data), the tunnel's sockets die with the old
+    // network. If enabled in settings, restart the whole service so the
+    // tunnel is rebuilt on the fresh network. Debounced to avoid restart
+    // storms during a rapid handoff sequence.
+    private val reconnectHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var networkHandoffPending = false
+    private var reconnectScheduled = false
+
+    private val reconnectRunnable = Runnable { doNetworkReconnect() }
+
+    private fun maybeReconnectAfterNetworkHandoff() {
+        if (!networkHandoffPending || reconnectScheduled) return
+        if (!MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_RECONNECT_NETWORK, false)) return
+        networkHandoffPending = false
+        reconnectScheduled = true
+        reconnectHandler.postDelayed(reconnectRunnable, 1500L)
+    }
+
+    private fun doNetworkReconnect() {
+        reconnectScheduled = false
+        if (!isRunning) return
+        if (!MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_RECONNECT_NETWORK, false)) return
+        LogUtil.i(AppConfig.TAG, "StartCore-VPN: Network changed, restarting tunnel")
+        val restartIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
+        restartIntent.setPackage(AppConfig.ANG_PACKAGE)
+        restartIntent.putExtra("key", AppConfig.MSG_STATE_RESTART)
+        sendBroadcast(restartIntent)
     }
 
     override fun onCreate() {
@@ -368,6 +401,9 @@ class CoreVpnService : VpnService(), ServiceControl {
 //        val info = loadVpnNetworkInfo(configName, emptyInfo)!! + (lastNetworkInfo ?: emptyInfo)
 //        saveVpnNetworkInfo(configName, info)
         isRunning = false
+        reconnectHandler.removeCallbacks(reconnectRunnable)
+        reconnectScheduled = false
+        networkHandoffPending = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
                 connectivity.unregisterNetworkCallback(defaultNetworkCallback)
