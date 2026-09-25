@@ -20,6 +20,8 @@ import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.DarkThemeStyle
 import com.perqa.byebox.core.HapticFeedbackUtil
 import com.perqa.byebox.core.UpdateCheckResult
+import com.perqa.byebox.core.SessionStatsManager
+import com.perqa.byebox.core.UpdateCheckScheduler
 import com.perqa.byebox.core.UpdateChecker
 import com.perqa.byebox.core.UpdateDownloadState
 import com.perqa.byebox.core.UpdateDownloader
@@ -30,6 +32,7 @@ import com.perqa.byebox.data.ProfilePresetManager
 import com.perqa.byebox.core.PingProbe
 import com.perqa.byebox.core.ProxyProtocolLabel
 import com.perqa.byebox.core.SettingsBackup
+import com.perqa.byebox.core.TgwsLang
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -152,6 +155,9 @@ data class MainUiState(
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val downloadSpeed: String = "0.0 KB/s",
     val uploadSpeed: String = "0.0 KB/s",
+    val sessionElapsed: String = "--:--",
+    val sessionUpload: String = "",
+    val sessionDownload: String = "",
     val appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
     val routingProfile: RoutingProfile = RoutingProfile.BYPASS_LAN_CN_RU,
     val dnsServer: DnsServer = DnsServer.SYSTEM,
@@ -172,6 +178,7 @@ data class MainUiState(
     val fragmentEnabled: Boolean = false,
     val ipv6Enabled: Boolean = false,
     val startOnBootEnabled: Boolean = false,
+    val autoReconnectNetwork: Boolean = false,
     val logLevel: String = "warning",
     val blockingEnabled: Boolean = false,
     val sniffingEnabled: Boolean = true,
@@ -224,6 +231,9 @@ class MainScreenViewModel(
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     private val _downloadSpeed = MutableStateFlow("0.0 KB/s")
     private val _uploadSpeed = MutableStateFlow("0.0 KB/s")
+    private val _sessionElapsed = MutableStateFlow("--:--")
+    private val _sessionUpload = MutableStateFlow("")
+    private val _sessionDownload = MutableStateFlow("")
     private val _appTheme = MutableStateFlow(readEnum(KEY_APP_THEME, AppTheme.SYSTEM_DYNAMIC))
     private val _routingProfile = MutableStateFlow(readEnum(KEY_ROUTING_PROFILE, RoutingProfile.BYPASS_LAN_CN_RU))
     private val _dnsServer = MutableStateFlow(readEnum(KEY_DNS_SERVER, DnsServer.SYSTEM))
@@ -242,6 +252,7 @@ class MainScreenViewModel(
     private val _fragmentEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false))
     private val _ipv6Enabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false))
     private val _startOnBootEnabled = MutableStateFlow(MmkvManager.decodeStartOnBoot())
+    private val _autoReconnectNetwork = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_RECONNECT_NETWORK, false))
 
     private val _autoRefreshSubsOnStartup = MutableStateFlow(prefs.getBoolean("pref_auto_refresh_subs_startup", true))
     val autoRefreshSubsOnStartup: StateFlow<Boolean> get() = _autoRefreshSubsOnStartup
@@ -326,6 +337,7 @@ class MainScreenViewModel(
                     trafficJob?.cancel()
                     _downloadSpeed.value = "0.0 KB/s"
                     _uploadSpeed.value = "0.0 KB/s"
+                    resetSessionUi()
                     loadDataFromMmkv()
                     triggerHaptic(HapticType.MEDIUM)
                 }
@@ -334,6 +346,7 @@ class MainScreenViewModel(
                     trafficJob?.cancel()
                     _downloadSpeed.value = "0.0 KB/s"
                     _uploadSpeed.value = "0.0 KB/s"
+                    resetSessionUi()
                     addLog("[ERROR] Сбой подключения: $content")
                     showToast(Loc.get("toast_connection_failure", _language.value))
                     loadDataFromMmkv()
@@ -399,7 +412,11 @@ class MainScreenViewModel(
         _isCheckingUpdate,
         _pingingConfigIds,
         _updateDownload,
-        _autoCheckUpdates
+        _autoCheckUpdates,
+        _sessionElapsed,
+        _sessionUpload,
+        _sessionDownload,
+        _autoReconnectNetwork
     ) { a ->
         val f = TypedFlows(a)
         MainUiState(
@@ -454,7 +471,11 @@ class MainScreenViewModel(
             isCheckingUpdate = f.get(48),
             pingingConfigIds = f.get(49),
             updateDownload = f.get(50),
-            autoCheckUpdates = f.get(51)
+            autoCheckUpdates = f.get(51),
+            sessionElapsed = f.get(52),
+            sessionUpload = f.get(53),
+            sessionDownload = f.get(54),
+            autoReconnectNetwork = f.get(55)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -560,6 +581,7 @@ class MainScreenViewModel(
     fun setAutoCheckUpdates(enabled: Boolean) {
         _autoCheckUpdates.value = enabled
         prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply()
+        UpdateCheckScheduler.sync(appContext)
     }
 
     fun downloadUpdate() {
@@ -649,6 +671,12 @@ class MainScreenViewModel(
                 withContext(Dispatchers.Main) {
                     _downloadSpeed.value = formatBytesPerSec(downloadBps)
                     _uploadSpeed.value = formatBytesPerSec(uploadBps)
+                    val elapsed = SessionStatsManager.elapsedMillis()
+                    _sessionElapsed.value = if (elapsed > 0L) SessionStatsManager.formatElapsed(elapsed) else "--:--"
+                    val sessionUp = SessionStatsManager.uploadBytes()
+                    val sessionDown = SessionStatsManager.downloadBytes()
+                    _sessionUpload.value = if (sessionUp > 0L) SessionStatsManager.formatBytes(sessionUp, _language.value) else ""
+                    _sessionDownload.value = if (sessionDown > 0L) SessionStatsManager.formatBytes(sessionDown, _language.value) else ""
                 }
             }
         }
@@ -660,6 +688,12 @@ class MainScreenViewModel(
             bytesPerSec >= 1024L -> String.format(Locale.US, "%.1f KB/s", bytesPerSec / 1024.0)
             else -> "${bytesPerSec} B/s"
         }
+    }
+
+    private fun resetSessionUi() {
+        _sessionElapsed.value = "--:--"
+        _sessionUpload.value = ""
+        _sessionDownload.value = ""
     }
 
     private fun getActiveConfig(): ProxyConfig? {
@@ -1120,6 +1154,13 @@ class MainScreenViewModel(
         showToggleToast("toast_autostart_on", "toast_autostart_off", enabled)
     }
 
+    fun changeAutoReconnectEnabled(enabled: Boolean) {
+        _autoReconnectNetwork.value = enabled
+        MmkvManager.encodeSettings(AppConfig.PREF_AUTO_RECONNECT_NETWORK, enabled)
+        addLog("[SYSTEM] Авто-переподключение при смене сети: ${if (enabled) "включено" else "выключено"}")
+        showToggleToast("toast_reconnect_on", "toast_reconnect_off", enabled)
+    }
+
     fun setAutoRefreshSubsOnStartup(enabled: Boolean) {
         _autoRefreshSubsOnStartup.value = enabled
         prefs.edit().putBoolean("pref_auto_refresh_subs_startup", enabled).apply()
@@ -1232,6 +1273,8 @@ class MainScreenViewModel(
     fun changeLanguage(lang: String) {
         _language.value = lang
         prefs.edit().putString("pref_language", lang)?.apply()
+        // Уведомление TGWS и плитка быстрых настроек резолвят строки по этой локали.
+        TgwsLang.sync(appContext)
     }
 
     fun changeDarkThemeStyle(style: DarkThemeStyle) {

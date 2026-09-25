@@ -1025,6 +1025,10 @@ fun SourceGroupCard(
     onPingSource: () -> Unit,
     expanded: Boolean = true,
     onToggleExpanded: () -> Unit = {},
+    // When false, collapsing/expanding has no visible effect (e.g. all rows fit
+    // in the collapsed peek) — the header shows a neutral handle instead of a
+    // chevron and taps no longer toggle.
+    expandable: Boolean = true,
     showConfigs: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(22.dp),
     compactMode: Boolean = false,
@@ -1218,7 +1222,7 @@ fun SourceGroupCard(
                         }
                     )
                 }
-                .clickable(enabled = !isRenaming) {
+                .clickable(enabled = !isRenaming && expandable) {
                     tactileFeedback()
                     onToggleExpanded()
                 },
@@ -1328,13 +1332,15 @@ fun SourceGroupCard(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp).padding(2.dp)
-                )
+                if (expandable) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp).padding(2.dp)
+                    )
+                }
             }
 
             source?.description?.takeIf { it.isNotBlank() }?.let { desc ->

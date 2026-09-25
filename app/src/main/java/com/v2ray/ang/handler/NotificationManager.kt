@@ -88,11 +88,12 @@ object NotificationManager {
             }
 
         val serverName = currentConfig?.remarks ?: CoreServiceManager.getRunningServerName().ifBlank { "ByeBox VPN" }
+        val lang = currentLanguage()
 
         mBuilder = NotificationCompat.Builder(service, channelId)
             .setSmallIcon(R.drawable.ic_notification_on)
             .setContentTitle(serverName)
-            .setContentText("Туннель активен, трафик защищён")
+            .setContentText(com.perqa.byebox.ui.main.Loc.get("notif_vpn_active", lang))
             .setColor(Color.parseColor("#006494"))
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
@@ -101,12 +102,12 @@ object NotificationManager {
             .setContentIntent(contentPendingIntent)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Остановить",
+                com.perqa.byebox.ui.main.Loc.get("notif_stop", lang),
                 stopV2RayPendingIntent
             )
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Перезапустить",
+                com.perqa.byebox.ui.main.Loc.get("notif_restart", lang),
                 restartV2RayPendingIntent
             )
 
@@ -135,8 +136,15 @@ object NotificationManager {
         speedNotificationJob?.let {
             it.cancel()
             speedNotificationJob = null
-            updateNotification("Туннель активен")
+            updateNotification(com.perqa.byebox.ui.main.Loc.get("notif_vpn_active", currentLanguage()))
         }
+    }
+
+    /** Reads the app language from SharedPreferences (same store the UI writes to). */
+    private fun currentLanguage(): String {
+        val service = getService() ?: return "system"
+        return service.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
+            .getString("pref_language", "system") ?: "system"
     }
 
     /**
@@ -210,7 +218,15 @@ object NotificationManager {
 
         val uplinkStr = formatSpeed(uplinkSpeedBps)
         val downlinkStr = formatSpeed(downlinkSpeedBps)
-        val speedText = "↑ $uplinkStr   ↓ $downlinkStr"
+        val lang = currentLanguage()
+        val sessionText = com.perqa.byebox.core.SessionStatsManager.formatElapsed(
+            com.perqa.byebox.core.SessionStatsManager.elapsedMillis()
+        )
+        val speedText = if (sessionText == "00:00") {
+            "↑ $uplinkStr   ↓ $downlinkStr"
+        } else {
+            "$sessionText   ↑ $uplinkStr   ↓ $downlinkStr"
+        }
         updateNotification(speedText)
 
         return uplinkSpeedBps + downlinkSpeedBps == 0L

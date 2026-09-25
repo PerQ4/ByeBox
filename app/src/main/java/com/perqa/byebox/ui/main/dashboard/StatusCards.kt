@@ -206,6 +206,9 @@ fun StatusPillBar(
     dnsServer: DnsServer,
     language: String = "ru",
     cornerRoundness: String = "expressive",
+    sessionElapsed: String = "--:--",
+    sessionUpload: String = "",
+    sessionDownload: String = "",
     modifier: Modifier = Modifier
 ) {
     val statusColor by animateColorAsState(
@@ -218,6 +221,19 @@ fun StatusPillBar(
         label = "statusPillColor"
     )
     val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
+    val statusLabel = when (status) {
+        ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
+        ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
+        ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
+        ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
+    }
+    // Session timer lives inline in the status line so the status card never
+    // grows an extra row just to show it.
+    val statusText = if (status == ConnectionStatus.CONNECTED && sessionElapsed != "--:--") {
+        "$statusLabel · $sessionElapsed"
+    } else {
+        statusLabel
+    }
     val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
     val dotAlpha by dotPulse.animateFloat(
         initialValue = 0.3f,
@@ -254,12 +270,7 @@ fun StatusPillBar(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = when (status) {
-                        ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
-                        ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
-                        ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
-                        ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
-                    },
+                    text = statusText,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Black,
                         color = statusColor
@@ -326,8 +337,25 @@ fun StatusPillBar(
                         fontWeight = FontWeight.SemiBold
                     ),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                // Session traffic totals share the DNS row so the status card
+                // stays two rows tall regardless of connection state.
+                if (status == ConnectionStatus.CONNECTED &&
+                    (sessionUpload.isNotBlank() || sessionDownload.isNotBlank())
+                ) {
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "↑ $sessionUpload ↓ $sessionDownload",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        ),
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

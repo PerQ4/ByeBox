@@ -85,6 +85,18 @@ object TrafficStatsManager {
                 // Shared bridge to the UI process (the dashboard reads MMKV, not the in-memory flow)
                 MmkvManager.encodeSettings(AppConfig.PREF_SPEED_UPLOAD_BPS, uploadBps)
                 MmkvManager.encodeSettings(AppConfig.PREF_SPEED_DOWNLOAD_BPS, downloadBps)
+
+                // Per-session totals. The native counters are reset on every query, so the
+                // bytes observed here are exactly the traffic of this poll window. SessionStats
+                // zeroes the counters when a new session starts.
+                MmkvManager.encodeSettings(
+                    SessionStatsManager.PREF_SESSION_UPLOAD_BYTES,
+                    MmkvManager.decodeSettingsLong(SessionStatsManager.PREF_SESSION_UPLOAD_BYTES, 0L) + proxyUplink
+                )
+                MmkvManager.encodeSettings(
+                    SessionStatsManager.PREF_SESSION_DOWNLOAD_BYTES,
+                    MmkvManager.decodeSettingsLong(SessionStatsManager.PREF_SESSION_DOWNLOAD_BYTES, 0L) + proxyDownlink
+                )
             }
         }
     }

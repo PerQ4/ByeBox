@@ -560,6 +560,15 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                 onCheckedChange = viewModel::changeLanBypassEnabled
                             )
                             SettingsSwitchRow(
+                                title = Loc.get("auto_reconnect_network", state.language),
+                                subtitle = Loc.get("auto_reconnect_network_sub", state.language),
+                                checked = state.autoReconnectNetwork,
+                                icon = Icons.Default.Refresh,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeAutoReconnectEnabled
+                            )
+                            SettingsSwitchRow(
                                 title = Loc.get("blocking_vpn", state.language),
                                 subtitle = Loc.get("blocking_vpn_sub", state.language),
                                 checked = state.blockingEnabled,

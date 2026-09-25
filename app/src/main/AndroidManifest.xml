@@ -151,6 +151,7 @@
             android:label="ByeBox VPN"
             android:icon="@drawable/ic_launcher_monochrome"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:settingsActivity="com.perqa.byebox.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
@@ -162,11 +163,20 @@
             android:label="@string/qs_profile_tile_label"
             android:icon="@drawable/ic_quick_switch"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:settingsActivity="com.perqa.byebox.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!-- TGWS-плитка (модуль tgwsproxy): долгий тап открывает приложение,
+             а не ProxyTilePreferencesActivity из автономного приложения.
+             Атрибут добавляется здесь и склеивается манифест-мерджером. -->
+        <service
+            android:name="com.amurcanov.tgwsproxy.ProxyTileService"
+            android:settingsActivity="com.perqa.byebox.MainActivity"
+            tools:replace="android:settingsActivity" />
 
     </application>
 
