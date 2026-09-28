@@ -35,16 +35,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Upload
@@ -53,7 +55,6 @@ import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
@@ -121,22 +122,18 @@ import androidx.compose.ui.unit.sp
 import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.core.UpdateDownloadState
-import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.AuroraPrimaryDark
 import com.perqa.byebox.theme.DarkThemeStyle
 import com.perqa.byebox.theme.ForestPrimaryDark
 import com.perqa.byebox.theme.SolarPrimaryDark
-import com.perqa.byebox.ui.main.dashboard.InfoChip
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -144,7 +141,6 @@ enum class SettingsSubMenu {
     CONNECTION,
     ROUTING,
     APPEARANCE,
-    TAB_ORDER,
     SYSTEM,
     LOGS,
     TGWS,
@@ -163,8 +159,7 @@ fun SettingsCategoryCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     
-    val isExpressive = cornerRoundness == "expressive"
-    val baseRadius = if (isExpressive) 24.dp else 12.dp
+    val baseRadius = settingsCardRadius(cornerRoundness)
     val targetRadius = if (isPressed) baseRadius + 6.dp else baseRadius
     val cornerRadius by animateDpAsState(targetValue = targetRadius, label = "categoryCardCornerRadius")
     val shape = RoundedCornerShape(cornerRadius)
@@ -203,20 +198,13 @@ fun SettingsCategoryCard(
                 .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            SettingsRowIcon(
+                icon = icon,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                containerAlpha = 1f,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                cornerRoundness = cornerRoundness
+            )
             
             Spacer(modifier = Modifier.width(16.dp))
             
@@ -240,12 +228,10 @@ fun SettingsCategoryCard(
             Spacer(modifier = Modifier.width(12.dp))
             
             Icon(
-                imageVector = Icons.Default.KeyboardArrowUp,
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                modifier = Modifier
-                    .size(24.dp)
-                    .rotate(90f)
+                modifier = Modifier.size(24.dp)
             )
         }
     }
@@ -407,7 +393,7 @@ fun SettingsTab(
                 SettingsCategoryCard(
                     title = Loc.get("title_logs", state.language),
                     description = Loc.get("logs_params", state.language),
-                    icon = Icons.Default.List,
+                    icon = Icons.Default.Description,
                     scaleFactor = state.tapImpactScale,
                     cornerRoundness = state.cornerRoundness,
                     onClick = {
@@ -469,25 +455,17 @@ fun SettingsTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = {
-                        selectedSubMenu = if (selectedSubMenu == SettingsSubMenu.TAB_ORDER) {
-                            SettingsSubMenu.APPEARANCE
-                        } else {
-                            null
-                        }
-                    },
+                    onClick = { selectedSubMenu = null },
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainer)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = Loc.get("back", state.language),
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .rotate(-90f)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(16.dp))
@@ -499,7 +477,6 @@ fun SettingsTab(
                         SettingsSubMenu.SYSTEM -> Loc.get("submenu_system", state.language)
                         SettingsSubMenu.LOGS -> Loc.get("title_logs", state.language)
 SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
-                SettingsSubMenu.TAB_ORDER -> Loc.get("tab_order_title", state.language)
                         SettingsSubMenu.TILES -> Loc.get("tiles_title", state.language)
                         else -> ""
                     },
@@ -530,7 +507,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                         )
                     }
                     SettingsSubMenu.CONNECTION -> {
-                        SettingsGroup(title = Loc.get("submenu_connection", state.language)) {
+                        SettingsGroup(title = Loc.get("vpn_group_title", state.language)) {
                             SettingsSwitchRow(
                                 title = Loc.get("ipv6_tunnel", state.language),
                                 subtitle = Loc.get("ipv6_tunnel_sub", state.language),
@@ -618,9 +595,29 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         singleLine = true,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        shape = RoundedCornerShape(14.dp)
+                                        shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                     )
                                 }
+                            }
+                        }
+
+                        SettingsGroup(title = Loc.get("tun_stack_title", state.language)) {
+                            TunStack.values().forEachIndexed { index, stack ->
+                                val stackIcon = when (stack) {
+                                    TunStack.GVISOR -> Icons.Default.Shield
+                                    TunStack.SYSTEM -> Icons.Default.Build
+                                }
+                                SettingsChoiceRow(
+                                    title = stack.localizedName(state.language),
+                                    subtitle = stack.localizedDescription(state.language),
+                                    selected = state.tunStack == stack,
+                                    icon = stackIcon,
+                                    top = index == 0,
+                                    bottom = index == TunStack.values().lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.changeTunStack(stack) }
+                                )
                             }
                         }
 
@@ -657,7 +654,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                     Text(
                                         text = Loc.get("socks_port_desc", state.language),
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            color = MaterialTheme.settingsSubtitleColor
                                         )
                                     )
                                 }
@@ -667,27 +664,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                     singleLine = true,
                                     textStyle = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.width(90.dp),
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                            }
-                        }
-
-                        SettingsGroup(title = Loc.get("tun_stack_title", state.language)) {
-                            TunStack.values().forEachIndexed { index, stack ->
-                                val stackIcon = when (stack) {
-                                    TunStack.GVISOR -> Icons.Default.Shield
-                                    TunStack.SYSTEM -> Icons.Default.Build
-                                }
-                                SettingsChoiceRow(
-                                    title = stack.localizedName(state.language),
-                                    subtitle = stack.localizedDescription(state.language),
-                                    selected = state.tunStack == stack,
-                                    icon = stackIcon,
-                                    top = index == 0,
-                                    bottom = index == TunStack.values().lastIndex,
-                                    scaleFactor = state.tapImpactScale,
-                                    cornerRoundness = state.cornerRoundness,
-                                    onClick = { viewModel.changeTunStack(stack) }
+                                    shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                 )
                             }
                         }
@@ -803,7 +780,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                     Text(
                                         text = Loc.get("custom_direct_desc", state.language),
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            color = MaterialTheme.settingsSubtitleColor
                                         ),
                                         modifier = Modifier.padding(bottom = 6.dp)
                                     )
@@ -815,7 +792,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp)
+                                        shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                     )
                                 }
                             }
@@ -833,7 +810,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                     Text(
                                         text = Loc.get("custom_proxy_desc", state.language),
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            color = MaterialTheme.settingsSubtitleColor
                                         ),
                                         modifier = Modifier.padding(bottom = 6.dp)
                                     )
@@ -845,7 +822,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp)
+                                        shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                     )
                                 }
                             }
@@ -912,47 +889,6 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                             }
                         }
 
-                        SettingsGroup(title = Loc.get("xray_features", state.language)) {
-                            SettingsSwitchRow(
-                                title = Loc.get("sniffing", state.language),
-                                subtitle = Loc.get("sniffing_desc", state.language),
-                                checked = state.sniffingEnabled,
-                                icon = Icons.Default.Search,
-                                top = true,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeSniffingEnabled
-                            )
-                            SettingsSwitchRow(
-                                title = Loc.get("fragment", state.language),
-                                subtitle = Loc.get("fragment_desc", state.language),
-                                checked = state.fragmentEnabled,
-                                icon = Icons.Default.Build,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeFragmentEnabled
-                            )
-                            SettingsSwitchRow(
-                                title = Loc.get("mux", state.language),
-                                subtitle = Loc.get("mux_desc", state.language),
-                                checked = state.muxEnabled,
-                                icon = Icons.Default.Settings,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeMuxEnabled
-                            )
-                            SettingsSwitchRow(
-                                title = Loc.get("fake_dns", state.language),
-                                subtitle = Loc.get("fake_dns_desc", state.language),
-                                checked = state.fakeDnsEnabled,
-                                icon = Icons.Default.Settings,
-                                bottom = true,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeFakeDnsEnabled
-                            )
-                        }
-
                         // Разрешение доменов (объединено: Domain Strategy + Outbound Resolve)
                         val domainResolutionOptions = listOf(
                             "AsIs" to (Loc.get("domain_strategy_as_is", state.language) to Loc.get("domain_strategy_as_is_desc", state.language)),
@@ -1008,6 +944,47 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                 )
                             }
                         }
+
+                        SettingsGroup(title = Loc.get("xray_features", state.language)) {
+                            SettingsSwitchRow(
+                                title = Loc.get("sniffing", state.language),
+                                subtitle = Loc.get("sniffing_desc", state.language),
+                                checked = state.sniffingEnabled,
+                                icon = Icons.Default.Search,
+                                top = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeSniffingEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("fragment", state.language),
+                                subtitle = Loc.get("fragment_desc", state.language),
+                                checked = state.fragmentEnabled,
+                                icon = Icons.Default.Build,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeFragmentEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("mux", state.language),
+                                subtitle = Loc.get("mux_desc", state.language),
+                                checked = state.muxEnabled,
+                                icon = Icons.Default.Settings,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeMuxEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("fake_dns", state.language),
+                                subtitle = Loc.get("fake_dns_desc", state.language),
+                                checked = state.fakeDnsEnabled,
+                                icon = Icons.Default.Settings,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeFakeDnsEnabled
+                            )
+                        }
                     }
 
                     SettingsSubMenu.APPEARANCE -> {
@@ -1015,28 +992,33 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                             SettingsThemeGrid(state = state, viewModel = viewModel)
                         }
                         
-                        SettingsGroup(title = Loc.get("haptics_title", state.language)) {
-                            val options = listOf(
-                                1.00f to Loc.get("tap_impact_none", state.language),
-                                0.95f to Loc.get("tap_impact_light", state.language),
-                                0.90f to Loc.get("tap_impact_medium", state.language),
-                                0.85f to Loc.get("tap_impact_deep", state.language)
-                            )
-                            options.forEachIndexed { index, (value, label) ->
+                        SettingsGroup(title = Loc.get("dark_theme_style_title", state.language)) {
+                            DarkThemeStyle.values().forEachIndexed { index, style ->
+                                val isFirst = index == 0
+                                val isLast = index == DarkThemeStyle.values().lastIndex
                                 SettingsChoiceRow(
-                                    title = label,
-                                    subtitle = Loc.get("tap_impact_sub", state.language),
-                                    selected = state.tapImpactScale == value,
-                                    icon = Icons.Default.Vibration,
-                                    top = index == 0,
-                                    bottom = index == options.lastIndex,
+                                    title = when (style) {
+                                    DarkThemeStyle.STANDARD -> Loc.get("dark_standard", state.language)
+                                    DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate", state.language)
+                                    DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy", state.language)
+                                    DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black", state.language)
+                                    },
+                                    subtitle = when (style) {
+                                        DarkThemeStyle.STANDARD -> Loc.get("dark_standard_sub", state.language)
+                                        DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate_sub", state.language)
+                                        DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy_sub", state.language)
+                                        DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black_sub", state.language)
+                                    },
+                                    selected = state.darkThemeStyle == style,
+                                    top = isFirst,
+                                    bottom = isLast,
                                     scaleFactor = state.tapImpactScale,
                                     cornerRoundness = state.cornerRoundness,
-                                    onClick = { viewModel.changeTapImpactScale(value) }
+                                    onClick = { viewModel.changeDarkThemeStyle(style) }
                                 )
                             }
                         }
-                        
+
                         SettingsGroup(title = Loc.get("roundness_title", state.language)) {
                             val roundnessOptions = listOf(
                                 "standard" to Loc.get("corner_std", state.language),
@@ -1057,6 +1039,28 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                     scaleFactor = state.tapImpactScale,
                                     cornerRoundness = state.cornerRoundness,
                                     onClick = { viewModel.changeCornerRoundness(value) }
+                                )
+                            }
+                        }
+                        
+                        SettingsGroup(title = Loc.get("haptics_title", state.language)) {
+                            val options = listOf(
+                                1.00f to Loc.get("tap_impact_none", state.language),
+                                0.95f to Loc.get("tap_impact_light", state.language),
+                                0.90f to Loc.get("tap_impact_medium", state.language),
+                                0.85f to Loc.get("tap_impact_deep", state.language)
+                            )
+                            options.forEachIndexed { index, (value, label) ->
+                                SettingsChoiceRow(
+                                    title = label,
+                                    subtitle = Loc.get("tap_impact_sub", state.language),
+                                    selected = state.tapImpactScale == value,
+                                    icon = Icons.Default.Vibration,
+                                    top = index == 0,
+                                    bottom = index == options.lastIndex,
+                                    scaleFactor = state.tapImpactScale,
+                                    cornerRoundness = state.cornerRoundness,
+                                    onClick = { viewModel.changeTapImpactScale(value) }
                                 )
                             }
                         }
@@ -1097,31 +1101,29 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                             )
                         }
 
-                        SettingsGroup(title = Loc.get("dark_theme_style_title", state.language)) {
-                            DarkThemeStyle.values().forEachIndexed { index, style ->
-                                val isFirst = index == 0
-                                val isLast = index == DarkThemeStyle.values().lastIndex
-                                SettingsChoiceRow(
-                                    title = when (style) {
-                                    DarkThemeStyle.STANDARD -> Loc.get("dark_standard", state.language)
-                                    DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate", state.language)
-                                    DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy", state.language)
-                                    DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black", state.language)
-                                    },
-                                    subtitle = when (style) {
-                                        DarkThemeStyle.STANDARD -> Loc.get("dark_standard_sub", state.language)
-                                        DarkThemeStyle.DEEP_SLATE -> Loc.get("dark_deep_slate_sub", state.language)
-                                        DarkThemeStyle.MIDNIGHT_NAVY -> Loc.get("dark_midnight_navy_sub", state.language)
-                                        DarkThemeStyle.PURE_BLACK -> Loc.get("dark_pure_black_sub", state.language)
-                                    },
-                                    selected = state.darkThemeStyle == style,
-                                    top = isFirst,
-                                    bottom = isLast,
-                                    scaleFactor = state.tapImpactScale,
-                                    cornerRoundness = state.cornerRoundness,
-                                    onClick = { viewModel.changeDarkThemeStyle(style) }
-                                )
-                            }
+                        SettingsGroup(title = Loc.get("display_params_title", state.language)) {
+                            SettingsSwitchRow(
+                                title = Loc.get("compact_proxy_list", state.language),
+                                subtitle = Loc.get("compact_proxy_list_sub", state.language),
+                                checked = state.compactLayoutEnabled,
+                                icon = Icons.Default.List,
+                                top = true,
+                                bottom = false,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeCompactLayoutEnabled
+                            )
+                            SettingsSwitchRow(
+                                title = Loc.get("show_flags", state.language),
+                                subtitle = Loc.get("show_flags_sub", state.language),
+                                checked = state.showFlagsEnabled,
+                                icon = Icons.Default.Star,
+                                top = false,
+                                bottom = true,
+                                scaleFactor = state.tapImpactScale,
+                                cornerRoundness = state.cornerRoundness,
+                                onCheckedChange = viewModel::changeShowFlagsEnabled
+                            )
                         }
 
                         SettingsGroup(title = Loc.get("tab_appearance_title", state.language)) {
@@ -1180,31 +1182,6 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                             onClick = { showTabOrderSheet = true },
                             bottom = true
                         )
-
-                        SettingsGroup(title = Loc.get("display_params_title", state.language)) {
-                            SettingsSwitchRow(
-                                title = Loc.get("compact_proxy_list", state.language),
-                                subtitle = Loc.get("compact_proxy_list_sub", state.language),
-                                checked = state.compactLayoutEnabled,
-                                icon = Icons.Default.List,
-                                top = true,
-                                bottom = false,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeCompactLayoutEnabled
-                            )
-                            SettingsSwitchRow(
-                                title = Loc.get("show_flags", state.language),
-                                subtitle = Loc.get("show_flags_sub", state.language),
-                                checked = state.showFlagsEnabled,
-                                icon = Icons.Default.Star,
-                                top = false,
-                                bottom = true,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness,
-                                onCheckedChange = viewModel::changeShowFlagsEnabled
-                            )
-                        }
                     }
 
                     SettingsSubMenu.SYSTEM -> {
@@ -1307,12 +1284,10 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                         }
 
                         SettingsGroup(title = Loc.get("update_check", state.language)) {
-                            val isExpressive = state.cornerRoundness == "expressive"
-                            val radius = if (isExpressive) 24.dp else 14.dp
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(radius)),
+                                    .clip(RoundedCornerShape(settingsCardRadius(state.cornerRoundness))),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh
                             ) {
                                 Column(
@@ -1510,7 +1485,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         viewModel.exportSettings()
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(if (state.cornerRoundness == "expressive") 24.dp else 14.dp)
+                                    shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                 ) {
                                     Icon(Icons.Default.Upload, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
@@ -1522,25 +1497,13 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         importLauncher.launch(arrayOf("application/zip"))
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(if (state.cornerRoundness == "expressive") 24.dp else 14.dp)
+                                    shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(Loc.get("settings_import", state.language))
                                 }
                             }
-                        }
-                    }
-                    SettingsSubMenu.TAB_ORDER -> {
-                        SettingsGroup(title = Loc.get("tab_order_title", state.language)) {
-                            val tabOrder by viewModel.tabOrder.collectAsStateWithLifecycle()
-                            TabReorderList(
-                                order = tabOrder,
-                                onReorder = { viewModel.setTabOrder(it) },
-                                language = state.language,
-                                scaleFactor = state.tapImpactScale,
-                                cornerRoundness = state.cornerRoundness
-                            )
                         }
                     }
                     SettingsSubMenu.LOGS -> { /* handled above */ }
@@ -1569,59 +1532,6 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
 }
 
 @Composable
-private fun SettingsHeroCard(
-    status: ConnectionStatus,
-    routingProfile: RoutingProfile,
-    dnsServer: DnsServer,
-    appRoutingMode: AppRoutingMode,
-    language: String = "ru"
-) {
-    val color by animateColorAsState(
-        targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primaryContainer
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiaryContainer
-            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.errorContainer
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        label = "settingsHeroColor"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.onPrimaryContainer
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.onTertiaryContainer
-            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.onErrorContainer
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.onSurface
-        },
-        label = "settingsHeroContentColor"
-    )
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        color = color
-    ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = when (status) {
-                    ConnectionStatus.CONNECTED -> Loc.get("status_connected", language)
-                    ConnectionStatus.CONNECTING -> Loc.get("status_connecting", language)
-                    ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
-                    ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
-                },
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    color = contentColor
-                )
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(text = routingProfile.localizedName(language), textColor = contentColor, modifier = Modifier.weight(1f))
-                InfoChip(text = dnsServer.localizedName(language), textColor = contentColor, modifier = Modifier.weight(1f))
-            }
-            InfoChip(text = appRoutingMode.localizedName(language), textColor = contentColor, modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
 private fun SettingsThemeGrid(
     state: MainUiState,
     viewModel: MainScreenViewModel
@@ -1642,6 +1552,7 @@ private fun SettingsThemeGrid(
                         active = state.appTheme == theme,
                         accentColor = accent,
                         onClick = { viewModel.changeTheme(theme) },
+                        cornerRoundness = state.cornerRoundness,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1657,12 +1568,13 @@ fun ThemeButton(
     active: Boolean,
     accentColor: Color,
     onClick: () -> Unit,
+    cornerRoundness: String = "expressive",
     modifier: Modifier = Modifier
 ) {
     val tactileFeedback = rememberTactileFeedback()
     val buttonColor by animateColorAsState(
         targetValue = if (active) {
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.secondaryContainer
         } else {
             MaterialTheme.colorScheme.surfaceContainer
         },
@@ -1673,7 +1585,7 @@ fun ThemeButton(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(56.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(settingsControlRadius(cornerRoundness)))
             .background(buttonColor)
             .clickable {
                 if (!active) {
@@ -1694,7 +1606,7 @@ fun ThemeButton(
                 text = label,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -1725,8 +1637,7 @@ private fun UpdateBanner(
 ) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
-    val isExpressive = cornerRoundness == "expressive"
-    val radius = if (isExpressive) 30.dp else 18.dp
+    val radius = settingsCardRadius(cornerRoundness)
     val containerColor = MaterialTheme.colorScheme.tertiaryContainer
     val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
 
@@ -1893,14 +1804,13 @@ private fun TabReorderList(
             if (isDragged) MaterialTheme.colorScheme.surfaceContainerHighest
             else MaterialTheme.colorScheme.surfaceContainerHigh
         },
+        cornerRoundness = cornerRoundness,
         modifier = Modifier.fillMaxWidth()
     ) { id, _ ->
         val (label, icon) = tabMeta(id, language)
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp)
+        SettingsRowIcon(
+            icon = icon,
+            cornerRoundness = cornerRoundness
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
