@@ -1,6 +1,7 @@
 package com.perqa.byebox.service
 
 import android.content.Context
+import android.graphics.drawable.Icon
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.os.Build
@@ -40,6 +41,9 @@ class ByeBoxProfileTileService : TileService() {
     private fun updateTileState(profileOverride: SettingsProfileData? = null) {
         val tile = qsTile ?: return
         val context = applicationContext
+        // Иконка приходит из манифеста (@drawable/ic_quick_switch), но уже добавленная
+        // плитка хранит закэшированную иконку — возвращаем стрелки явно.
+        tile.icon = Icon.createWithResource(this, R.drawable.ic_quick_switch)
         val list = ProfilePresetManager.loadProfiles(context)
         if (list.isEmpty()) return
         
