@@ -444,6 +444,7 @@ fun ProxyTab(
                         },
                         onRefreshSource = { viewModel.refreshSubscription(it) },
                         onRenameSource = { sourceId, name -> viewModel.renameSubscriptionSource(sourceId, name) },
+                        onSetUserAgent = { sourceId, ua -> viewModel.setSubscriptionUserAgent(sourceId, ua) },
                         onDeleteSource = { id ->
                             if (state.confirmRemoveEnabled) {
                                 pendingSourceDeleteId = id
@@ -1020,6 +1021,7 @@ fun SourceGroupCard(
     onDelete: (String) -> Unit,
     onRefreshSource: (String) -> Unit,
     onRenameSource: (String, String) -> Unit,
+    onSetUserAgent: (String, String) -> Unit = { _, _ -> },
     onDeleteSource: (String) -> Unit,
     onPingSource: () -> Unit,
     expanded: Boolean = true,
@@ -1047,6 +1049,7 @@ fun SourceGroupCard(
     val activeCount = configs.count { it.id == activeConfigId }
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
+    var editedUa by remember(source?.id) { mutableStateOf(source?.userAgent ?: "") }
     var showShareDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -1239,23 +1242,40 @@ fun SourceGroupCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     if (isRenaming && source != null) {
-                        OutlinedTextField(
-                            value = editedName,
-                            onValueChange = { editedName = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        onRenameSource(source.id, editedName)
-                                        isRenaming = false
+                        Column {
+                            OutlinedTextField(
+                                value = editedName,
+                                onValueChange = { editedName = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                label = { Text(Loc.get("rename", language), maxLines = 1) },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            onRenameSource(source.id, editedName)
+                                            onSetUserAgent(source.id, editedUa)
+                                            isRenaming = false
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = Loc.get("save_cd", language))
                                     }
-                                ) {
-                                    Icon(Icons.Default.Check, contentDescription = Loc.get("save_cd", language))
                                 }
-                            }
-                        )
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = editedUa,
+                                onValueChange = { editedUa = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
+                                supportingText = {
+                                    Text(Loc.get("sub_ua_hint", language), maxLines = 2)
+                                },
+                                placeholder = { Text(Loc.get("sub_ua_default", language)) }
+                            )
+                        }
                     } else {
                         Text(
                             text = sourceName,
@@ -1380,7 +1400,11 @@ fun SourceGroupCard(
                     SourceActionButton(
                         label = Loc.get("rename", language),
                         icon = Icons.Default.Edit,
-                        onClick = { isRenaming = true },
+                        onClick = {
+                            editedName = source?.name ?: sourceName
+                            editedUa = source?.userAgent ?: ""
+                            isRenaming = true
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     SourceActionButton(
