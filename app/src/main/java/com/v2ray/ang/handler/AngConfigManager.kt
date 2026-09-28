@@ -834,6 +834,16 @@ object AngConfigManager {
     }
 
     /**
+     * True when a label is a meaningless numeric/tech token (e.g. panels that
+     * put just an id into content-disposition's filename="213"). Such tokens
+     * should not override a human-readable name or the host-derived fallback.
+     */
+    private fun isNumericLabel(value: String): Boolean {
+        val v = value.trim()
+        return v.isEmpty() || v.all { it.isDigit() }
+    }
+
+    /**
      * Updates the configuration via a subscription.
      *
      * @param it The subscription item.
@@ -983,7 +993,10 @@ object AngConfigManager {
             val count = parseConfigViaSub(configText, it.guid, false)
             if (count > 0) {
                 it.subscription.lastUpdated = System.currentTimeMillis()
-                
+
+                // 1. Header metadata (Happ/XTLS): subscription-userinfo, profile-title,
+                // profile-update-interval, support-url, web-page-url, announce, ...
+                var titleAppliedFromHeader = false
                 headers.entries.forEach { entry ->
                     val key = entry.key.lowercase()
                     val valStr = entry.value
@@ -994,15 +1007,27 @@ object AngConfigManager {
                         it.subscription.totalBytes = userinfo.total
                         it.subscription.expireAt = userinfo.expire
                     }
-                    if (key == "profile-title") {
+                    if (key == "profile-update-interval") {
+                        val hours = valStr.trim().toLongOrNull()
+                        if (hours != null && hours > 0L && it.subscription.updateInterval == 1440L) {
+                            // Happ reports the interval in hours; stored value is minutes.
+                            // Only apply when the user hasn't customized the interval.
+                            it.subscription.updateInterval = hours * 60L
+                        }
+                    }
+                    if (key == "profile-title" || key == "subscription-title") {
                         val newTitle = decodeHeaderValue(valStr)
                         if (newTitle.isNotBlank() && shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
                             it.subscription.remarks = newTitle
+                            titleAppliedFromHeader = true
                         }
                     }
                     if (key == "content-disposition") {
                         val filename = parseContentDispositionFilename(valStr)
-                        if (filename != null && filename.isNotBlank() && shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
+                        if (filename != null && filename.isNotBlank() &&
+                            !titleAppliedFromHeader && !isNumericLabel(filename) &&
+                            shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)
+                        ) {
                             it.subscription.remarks = filename
                         }
                     }
@@ -1015,10 +1040,8 @@ object AngConfigManager {
                     if (key == "announce") {
                         val announceText = decodeHeaderValue(valStr)
                         if (announceText.isNotBlank()) {
+                            // Announcement text comes from the panel (subscription), not the app.
                             it.subscription.announce = announceText
-                            if (it.subscription.description.isNullOrBlank()) {
-                                it.subscription.description = announceText
-                            }
                         }
                     }
                     if (key == "support-url" || key == "profile-web-page-url" || key == "announce-url") {
@@ -1035,7 +1058,9 @@ object AngConfigManager {
 
                 // 2. Parse from body comments as fallback/enrichment
                 runCatching {
-                    configText.lines().take(15).forEach { line ->
+                    // Happ/XTLS panels may ship metadata as comment lines in the
+                    // subscription body (#profile-title, #subscription-userinfo, ...).
+                    configText.lines().take(20).forEach { line ->
                         val trimmed = line.trim()
                         if (trimmed.startsWith("#") || trimmed.startsWith("//")) {
                             val commentContent = trimmed.substring(if (trimmed.startsWith("#")) 1 else 2).trim()
@@ -1044,19 +1069,55 @@ object AngConfigManager {
                                 val commentKey = commentContent.substring(0, colonIndex).trim().lowercase()
                                 val commentVal = commentContent.substring(colonIndex + 1).trim()
                                 if (commentVal.isNotBlank()) {
-                                    val decodedVal = try {
-                                        java.net.URLDecoder.decode(decodeRfc2047(commentVal), "UTF-8").trim()
-                                    } catch (_: Exception) {
-                                        decodeRfc2047(commentVal).trim()
-                                    }
-                                    if (commentKey == "profile-title" || commentKey == "subscription-title") {
-                                        if (shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
-                                            it.subscription.remarks = decodedVal
+                                    val decodedVal = decodeHeaderValue(commentVal)
+                                    when {
+                                        commentKey == "profile-title" || commentKey == "subscription-title" ->
+                                            if (shouldUseRemoteTitle(it.subscription.remarks, it.subscription.url)) {
+                                                it.subscription.remarks = decodedVal
+                                            }
+
+                                        commentKey == "profile-description" || commentKey == "subscription-description" ->
+                                            if (it.subscription.description.isNullOrBlank()) {
+                                                it.subscription.description = decodedVal
+                                            }
+
+                                        commentKey == "subscription-userinfo" || commentKey == "x-subscription-userinfo" -> {
+                                            if (it.subscription.uploadBytes == null && it.subscription.downloadBytes == null &&
+                                                it.subscription.totalBytes == null && it.subscription.expireAt == null
+                                            ) {
+                                                val userinfo = parseSubscriptionUserinfo(commentVal)
+                                                it.subscription.uploadBytes = userinfo.upload
+                                                it.subscription.downloadBytes = userinfo.download
+                                                it.subscription.totalBytes = userinfo.total
+                                                it.subscription.expireAt = userinfo.expire
+                                            }
                                         }
-                                    }
-                                    if (commentKey == "profile-description" || commentKey == "subscription-description") {
-                                        if (it.subscription.description.isNullOrBlank()) {
-                                            it.subscription.description = decodedVal
+
+                                        commentKey == "profile-update-interval" -> {
+                                            if (it.subscription.updateInterval == 1440L) {
+                                                val hours = commentVal.toLongOrNull()
+                                                if (hours != null && hours > 0L) {
+                                                    it.subscription.updateInterval = hours * 60L
+                                                }
+                                            }
+                                        }
+
+                                        commentKey == "support-url" -> if (it.subscription.supportUrl.isNullOrBlank()) {
+                                            it.subscription.supportUrl = decodedVal
+                                        }
+
+                                        commentKey == "profile-web-page-url" || commentKey == "web-page-url" ->
+                                            if (it.subscription.webPageUrl.isNullOrBlank()) {
+                                                it.subscription.webPageUrl = decodedVal
+                                            }
+
+                                        commentKey == "announce-url" -> if (it.subscription.announceUrl.isNullOrBlank()) {
+                                            it.subscription.announceUrl = decodedVal
+                                        }
+
+                                        commentKey == "announce" -> if (it.subscription.announce.isNullOrBlank()) {
+                                            // Announcement text comes from the panel (subscription), not the app.
+                                            it.subscription.announce = decodedVal
                                         }
                                     }
                                 }
@@ -1123,7 +1184,14 @@ object AngConfigManager {
         }
         val uri = URI(Utils.fixIllegalUrl(url))
         val subItem = SubscriptionItem()
-        subItem.remarks = uri.fragment ?: "import sub"
+        // Happ/XTLS subscriptions may carry a title in the URL fragment
+        // (#Title or #Title?installid=...) — strip params and decode it.
+        subItem.remarks = uri.fragment
+            ?.substringBefore('?')
+            ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "import sub"
         subItem.url = url
         MmkvManager.encodeSubscription("", subItem)
         return 1

@@ -777,7 +777,14 @@ class MainScreenViewModel(
                 if (existingSub == null) {
                     val uri = try { URI(Utils.fixIllegalUrl(trimmedUrl)) } catch (e: Exception) { null }
                     val host = uri?.host ?: Loc.get("fallback_subscription", _language.value)
-                    val remarks = uri?.fragment ?: host
+                    // Happ/XTLS subscriptions may carry a title in the URL fragment
+                    // (#Title or #Title?installid=...) — strip params and decode it.
+                    val fragmentTitle = uri?.fragment
+                        ?.substringBefore('?')
+                        ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    val remarks = fragmentTitle ?: host
 
                     val subItem = SubscriptionItem().apply {
                         this.remarks = remarks
@@ -1848,9 +1855,11 @@ private val tldToCountryCode = mapOf(
 )
 
 private fun inferCountryFlag(address: String, remarks: String): String {
-    val flagRegex = Regex("[\\uD83C\\uDDE6-\\uD83C\\uDDFF]{2}")
-    val existingFlag = flagRegex.find(remarks)
-    if (existingFlag != null) return existingFlag.value
+    // Happ rule: a flag becomes the server icon only when it is the FIRST emoji
+    // in the name. If another emoji precedes it, the flag is not used as an icon;
+    // we then fall back to country-code / domain heuristics.
+    val flagFromStart = flagAtStartOrAnywhere(remarks)
+    if (flagFromStart != null) return flagFromStart
 
     val ccRegex = Regex("""(?:^|\s|\[|\()([A-Za-z]{2})(?:\s|]|\)|_|-)""")
     ccRegex.findAll(remarks).forEach { match ->
@@ -1868,6 +1877,49 @@ private fun inferCountryFlag(address: String, remarks: String): String {
     }
 
     return "🏳️"
+}
+
+/**
+ * Returns a flag emoji from [name] when the first emoji (skipping leading
+ * whitespace) is a flag, or when the name contains no emoji at all but does
+ * contain a flag somewhere later. Returns null when a non-flag emoji is the
+ * first emoji (the flag must not be used as the icon in that case).
+ */
+private fun flagAtStartOrAnywhere(name: String): String? {
+    val codepoints = name.codePoints().toArray().toList()
+    val regionStart = 0x1F1E6
+    val regionEnd = 0x1F1FF
+    var firstEmojiIndex: Int? = null
+    for (i in codepoints.indices) {
+        if (codepoints[i] in 0x1F300..0x1FAFF || codepoints[i] in regionStart..regionEnd) {
+            firstEmojiIndex = i
+            break
+        }
+    }
+    val firstIdx = firstEmojiIndex ?: return null
+    if (firstIdx == 0) {
+        // Leading flag pair: use it.
+        val high = codepoints[firstIdx]
+        if (high in regionStart..regionEnd) {
+            val low = codepoints.getOrNull(firstIdx + 1)
+            if (low != null && low in regionStart..regionEnd) {
+                return String(intArrayOf(high, low), 0, 2)
+            }
+        }
+        // Leading emoji that is not a flag → no flag icon.
+        return null
+    }
+    // No leading emoji — look for any flag later in the name.
+    for (i in codepoints.indices) {
+        val high = codepoints[i]
+        if (high in regionStart..regionEnd) {
+            val low = codepoints.getOrNull(i + 1)
+            if (low != null && low in regionStart..regionEnd) {
+                return String(intArrayOf(high, low), 0, 2)
+            }
+        }
+    }
+    return null
 }
 
 
