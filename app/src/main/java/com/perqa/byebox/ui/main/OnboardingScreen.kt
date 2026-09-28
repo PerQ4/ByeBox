@@ -1,7 +1,11 @@
 package com.perqa.byebox.ui.main
 
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -37,6 +41,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -51,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -92,13 +98,14 @@ data class OnboardingResult(
 
 private enum class SetupMode { None, Quick, Advanced }
 
-private enum class OnbStep { Welcome, Services, Routing, PerApp, Dns, Tun, Appearance, Subscription, Preset, Tiles, Done }
+private enum class OnbStep { Welcome, Services, Tgws, Routing, PerApp, Dns, Tun, Appearance, Subscription, Preset, Tiles, Done }
 
 private sealed class SubImportState {
     object Idle : SubImportState()
     object Checking : SubImportState()
     data class Done(val count: Int) : SubImportState()
     object Failed : SubImportState()
+    object Invalid : SubImportState()
 }
 
 @Composable
@@ -108,21 +115,29 @@ fun OnboardingScreen(
     configs: List<ProxyConfig>,
     uiState: MainUiState,
     onImportSubscription: suspend (String) -> ImportOutcome,
-    onFinish: (OnboardingResult) -> Unit
+    onFinish: (OnboardingResult) -> Unit,
+    onSkip: () -> Unit
 ) {
     var step by remember { mutableIntStateOf(0) }
     var setupMode by remember { mutableStateOf(SetupMode.None) }
     var lang by remember { mutableStateOf(language) }
     var services by remember { mutableStateOf(setOf("vpn", "tgws")) }
-    var routingProfile by remember { mutableStateOf(RoutingProfile.BYPASS_LAN_CN_RU.name) }
-    var appRoutingMode by remember { mutableStateOf(AppRoutingMode.OFF.name) }
-    var perAppPackages by remember { mutableStateOf(setOf<String>()) }
-    var customDns by remember { mutableStateOf("") }
-    var dnsServer by remember { mutableStateOf(DnsServer.SYSTEM.name) }
-    var tunStack by remember { mutableStateOf(TunStack.GVISOR.name) }
+    // Стартовые значения берём из текущих настроек, чтобы «По умолчанию» и
+    // быстрые пути не перетирали уже настроенную конфигурацию.
+    var routingProfile by remember { mutableStateOf(uiState.routingProfile.name) }
+    var appRoutingMode by remember { mutableStateOf(uiState.appRoutingMode.name) }
+    var perAppPackages by remember {
+        mutableStateOf(
+            if (uiState.appRoutingPackages.isBlank()) emptySet()
+            else uiState.appRoutingPackages.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        )
+    }
+    var customDns by remember { mutableStateOf(uiState.customDnsServer) }
+    var dnsServer by remember { mutableStateOf(uiState.dnsServer.name) }
+    var tunStack by remember { mutableStateOf(uiState.tunStack.name) }
     var roundness by remember { mutableStateOf(cornerRoundness) }
-    var darkStyle by remember { mutableStateOf(DarkThemeStyle.STANDARD.name) }
-    var glassBar by remember { mutableStateOf(true) }
+    var darkStyle by remember { mutableStateOf(uiState.darkThemeStyle.name) }
+    var glassBar by remember { mutableStateOf(uiState.glassmorphicBar) }
     var subscriptionUrl by remember { mutableStateOf("") }
     var subscriptionImported by remember { mutableStateOf(false) }
     var subState by remember { mutableStateOf<SubImportState>(SubImportState.Idle) }
@@ -130,6 +145,18 @@ fun OnboardingScreen(
     var presetDrafts by remember { mutableStateOf(listOf<SettingsProfileData>()) }
     var editingPreset by remember { mutableStateOf<SettingsProfileData?>(null) }
     var showAppPicker by remember { mutableStateOf(false) }
+
+    val qrLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val url = result.data?.getStringExtra("SCAN_RESULT")
+        if (!url.isNullOrBlank()) {
+            subscriptionUrl = url
+            if (subState != SubImportState.Idle && subState != SubImportState.Checking) {
+                subState = SubImportState.Idle
+            }
+        }
+    }
 
     val isExpressive = roundness == "expressive"
 
@@ -143,6 +170,9 @@ fun OnboardingScreen(
             SetupMode.None -> {}
             SetupMode.Quick -> {
                 add(OnbStep.Services)
+                if (hasTgws) {
+                    add(OnbStep.Tgws)
+                }
                 if (hasVpn) {
                     add(OnbStep.PerApp)
                 }
@@ -151,6 +181,9 @@ fun OnboardingScreen(
             }
             SetupMode.Advanced -> {
                 add(OnbStep.Services)
+                if (hasTgws) {
+                    add(OnbStep.Tgws)
+                }
                 if (hasVpn) {
                     add(OnbStep.Routing)
                     add(OnbStep.PerApp)
@@ -241,6 +274,9 @@ fun OnboardingScreen(
             return@Dialog
         }
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            BackHandler {
+                if (safeStep > 0) step = (safeStep - 1).coerceAtLeast(0) else onSkip()
+            }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -250,20 +286,34 @@ fun OnboardingScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    repeat(steps.size) { index ->
-                        val active = index == safeStep
-                        Box(
-                            modifier = Modifier
-                                .height(6.dp)
-                                .width(if (active) 28.dp else 10.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(
-                                    if (active) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-                                )
-                        )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                    ) {
+                        repeat(steps.size) { index ->
+                            val active = index == safeStep
+                            Box(
+                                modifier = Modifier
+                                    .height(6.dp)
+                                    .width(if (active) 28.dp else 10.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(
+                                        if (active) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                                    )
+                            )
+                        }
+                    }
+                    if (currentStep != OnbStep.Done) {
+                        TextButton(onClick = onSkip) {
+                            Text(
+                                Loc.get("onboarding_skip", lang),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -286,6 +336,7 @@ fun OnboardingScreen(
                                     onLanguageChange = { lang = it }
                                 )
                                 OnbStep.Services -> ServicesStep(lang, isExpressive, services) { services = it }
+                                OnbStep.Tgws -> TgwsStep(lang, isExpressive)
                                 OnbStep.Routing -> RoutingProfileStep(lang, isExpressive, routingProfile) { routingProfile = it }
                                 OnbStep.PerApp -> AppRoutingStep(
                                     language = lang,
@@ -328,18 +379,25 @@ fun OnboardingScreen(
                                     onImport = {
                                         val trimmed = subscriptionUrl.trim()
                                         if (trimmed.isNotBlank()) {
-                                            subState = SubImportState.Checking
-                                            scope.launch {
-                                                val outcome = onImportSubscription(trimmed)
-                                                if (outcome.count > 0) {
-                                                    subState = SubImportState.Done(outcome.count)
-                                                    subscriptionImported = true
-                                                } else {
-                                                    subState = SubImportState.Failed
+                                            val looksLikeUrl = trimmed.startsWith("http://", ignoreCase = true) ||
+                                                trimmed.startsWith("https://", ignoreCase = true)
+                                            if (!looksLikeUrl) {
+                                                subState = SubImportState.Invalid
+                                            } else {
+                                                subState = SubImportState.Checking
+                                                scope.launch {
+                                                    val outcome = onImportSubscription(trimmed)
+                                                    if (outcome.count > 0) {
+                                                        subState = SubImportState.Done(outcome.count)
+                                                        subscriptionImported = true
+                                                    } else {
+                                                        subState = SubImportState.Failed
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
+                                    },
+                                    onScanQr = { qrLauncher.launch(Intent(ctx, QrScanActivity::class.java)) }
                                 )
                                 OnbStep.Preset -> PresetStep(
                                     language = lang,
@@ -589,6 +647,45 @@ private fun ServicesStep(language: String, isExpressive: Boolean, selected: Set<
 }
 
 @Composable
+private fun TgwsStep(language: String, isExpressive: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        stepHeader(
+            Loc.get("onboarding_tgws_title", language),
+            Loc.get("onboarding_tgws_q", language)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        SettingsRowSurface(cornerRoundness = if (isExpressive) "expressive" else "18dp") {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Text(
+                    Loc.get("onboarding_tgws_sub", language),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun RoutingProfileStep(language: String, isExpressive: Boolean, selected: String, onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         stepHeader(
@@ -825,7 +922,8 @@ private fun SubscriptionStep(
     url: String,
     onUrlChange: (String) -> Unit,
     state: SubImportState,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onScanQr: () -> Unit
 ) {
     val fieldRoundness = if (isExpressive) 24.dp else 14.dp
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -834,14 +932,39 @@ private fun SubscriptionStep(
             Loc.get("onboarding_sub_q", language)
         )
         Spacer(modifier = Modifier.height(2.dp))
-        OutlinedTextField(
-            value = url,
-            onValueChange = onUrlChange,
-            placeholder = { Text(Loc.get("onboarding_sub_placeholder", language)) },
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(fieldRoundness)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedTextField(
+                value = url,
+                onValueChange = onUrlChange,
+                placeholder = { Text(Loc.get("onboarding_sub_placeholder", language)) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(fieldRoundness)
+            )
+            IconButton(
+                onClick = onScanQr,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(fieldRoundness))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QrCode2,
+                    contentDescription = Loc.get("qr_scan_hint", language),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Text(
+            Loc.get("onboarding_sub_qr", language),
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            modifier = Modifier.padding(start = 4.dp)
         )
         Button(
             onClick = onImport,
@@ -879,6 +1002,10 @@ private fun SubscriptionStep(
             )
             SubImportState.Failed -> Text(
                 Loc.get("onboarding_sub_fail", language),
+                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error)
+            )
+            SubImportState.Invalid -> Text(
+                Loc.get("onboarding_sub_invalid", language),
                 style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error)
             )
             SubImportState.Idle, SubImportState.Checking -> {}
