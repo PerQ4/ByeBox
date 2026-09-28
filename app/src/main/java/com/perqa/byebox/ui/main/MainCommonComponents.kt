@@ -672,10 +672,21 @@ fun SettingsActionRow(
     enabled: Boolean,
     scaleFactor: Float = 0.90f,
     cornerRoundness: String = "expressive",
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    selected: Boolean = false,
     onClick: () -> Unit,
+    top: Boolean = false,
     bottom: Boolean = false
 ) {
-    SettingsRowSurface(onClick = onClick, enabled = enabled, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+    SettingsRowSurface(onClick = onClick, enabled = enabled, top = top, bottom = bottom, selected = selected, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+        if (icon != null) {
+            SettingsRowIcon(
+                icon = icon,
+                containerAlpha = if (selected) 0.42f else 0.18f,
+                contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                cornerRoundness = cornerRoundness
+            )
+        }
         SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
         Button(
             onClick = onClick,

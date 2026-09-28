@@ -9,20 +9,19 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.amurcanov.tgwsproxy.ProxyTileService
 import com.perqa.byebox.R
@@ -54,7 +53,8 @@ private data class TileDef(
     val service: Class<*>,
     val qsLabel: String,
     val title: String,
-    val subtitle: String
+    val subtitle: String,
+    val icon: ImageVector
 )
 
 @Composable
@@ -76,7 +76,8 @@ fun QuickSettingsTilesPage(
                     service = ByeBoxTileService::class.java,
                     qsLabel = "ByeBox VPN",
                     title = Loc.get("tiles_toggle", language),
-                    subtitle = Loc.get("tiles_toggle_sub", language)
+                    subtitle = Loc.get("tiles_toggle_sub", language),
+                    icon = Icons.Filled.PowerSettingsNew
                 )
             )
             add(
@@ -85,7 +86,8 @@ fun QuickSettingsTilesPage(
                     service = ByeBoxProfileTileService::class.java,
                     qsLabel = "ByeBox Presets",
                     title = Loc.get("tiles_cycle", language),
-                    subtitle = Loc.get("tiles_cycle_sub", language)
+                    subtitle = Loc.get("tiles_cycle_sub", language),
+                    icon = Icons.Filled.Repeat
                 )
             )
             if (showTgws) {
@@ -95,7 +97,8 @@ fun QuickSettingsTilesPage(
                         service = ProxyTileService::class.java,
                         qsLabel = "Telegram WS Proxy",
                         title = Loc.get("tiles_tgws", language),
-                        subtitle = Loc.get("tiles_tgws_sub", language)
+                        subtitle = Loc.get("tiles_tgws_sub", language),
+                        icon = Icons.AutoMirrored.Filled.Send
                     )
                 )
             }
@@ -108,60 +111,43 @@ fun QuickSettingsTilesPage(
     val added = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(
-            text = Loc.get("tiles_title", language),
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black)
-        )
-        Text(
-            text = Loc.get("tiles_desc", language),
-            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-        )
-
-        tiles.forEach { tile ->
-            val isAdded = added[tile.id] ?: false
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(
+        SettingsGroup(title = Loc.get("tiles_group", language)) {
+            tiles.forEachIndexed { index, tile ->
+                val isAdded = added[tile.id] ?: false
+                SettingsActionRow(
+                    title = tile.title,
+                    subtitle = tile.subtitle,
+                    button = if (isAdded) Loc.get("tiles_added", language) else Loc.get("tiles_add", language),
+                    enabled = true,
+                    icon = tile.icon,
+                    selected = isAdded,
+                    top = index == 0,
+                    bottom = index == tiles.lastIndex,
+                    scaleFactor = scaleFactor,
+                    cornerRoundness = cornerRoundness,
                     onClick = {
                         if (!supported) {
                             Toast.makeText(context, Loc.get("tiles_unsupported", language), Toast.LENGTH_SHORT).show()
-                            return@Button
+                            return@SettingsActionRow
                         }
                         controller?.let { c ->
                             c.requestAdd(tile.service, tile.qsLabel) { ok -> if (ok) added[tile.id] = true }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(settingsCardRadius(cornerRoundness)),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isAdded) MaterialTheme.colorScheme.secondaryContainer
-                        else MaterialTheme.colorScheme.primary,
-                        contentColor = if (isAdded) MaterialTheme.colorScheme.onSecondaryContainer
-                        else MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text(
-                        text = if (isAdded) Loc.get("tiles_added", language) else Loc.get("tiles_add", language),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black)
-                    )
-                }
-                Text(
-                    text = tile.title.plus("\n").plus(tile.subtitle),
-                    style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    }
                 )
             }
         }
 
         Text(
             text = if (supported) Loc.get("tiles_note", language) else Loc.get("tiles_unsupported", language),
-            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-            modifier = Modifier.padding(horizontal = 4.dp)
+            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.settingsSubtitleColor),
+            modifier = Modifier.padding(horizontal = 8.dp)
         )
 
         Text(
             text = Loc.get("tiles_longpress", language),
-            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-            modifier = Modifier.padding(horizontal = 4.dp)
+            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.settingsSubtitleColor),
+            modifier = Modifier.padding(horizontal = 8.dp)
         )
     }
 }
