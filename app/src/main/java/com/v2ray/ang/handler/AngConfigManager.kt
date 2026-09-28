@@ -865,6 +865,15 @@ object AngConfigManager {
             }
             LogUtil.i(AppConfig.TAG, url)
             val userAgent = it.subscription.userAgent
+            // HWID: auto-generate once and persist, so Remnawave/XTLS panels see a
+            // stable device id across updates instead of a fresh one every time.
+            var hwid = it.subscription.hwid
+            if (hwid.isNullOrBlank()) {
+                hwid = java.util.UUID.randomUUID().toString()
+                it.subscription.hwid = hwid
+                MmkvManager.encodeSubscription(it.guid, it.subscription)
+                LogUtil.i(AppConfig.TAG, "HWID auto-generated for ${it.subscription.remarks}: $hwid")
+            }
             val proxyUsername = SettingsManager.getSocksUsername()
             val proxyPassword = SettingsManager.getSocksPassword()
 
@@ -874,6 +883,7 @@ object AngConfigManager {
                     UrlContentRequest(
                         url = url,
                         userAgent = userAgent,
+                        hwid = hwid,
                         timeout = 15000,
                         httpPort = httpPort,
                         proxyUsername = proxyUsername,
@@ -889,7 +899,8 @@ object AngConfigManager {
                     HttpUtil.getUrlContentAndHeaders(
                         UrlContentRequest(
                             url = url,
-                            userAgent = userAgent
+                            userAgent = userAgent,
+                            hwid = hwid
                         )
                     )
                 } catch (e: Exception) {
@@ -922,6 +933,7 @@ object AngConfigManager {
                         UrlContentRequest(
                             url = url,
                             userAgent = expandedUserAgent,
+                            hwid = hwid,
                             timeout = 15000,
                             httpPort = httpPort,
                             proxyUsername = proxyUsername,
@@ -936,6 +948,7 @@ object AngConfigManager {
                         UrlContentRequest(
                             url = url,
                             userAgent = expandedUserAgent,
+                            hwid = hwid,
                             timeout = 15000
                         )
                     )
@@ -950,6 +963,22 @@ object AngConfigManager {
             }
             val configText = responsePair.first
             val headers = responsePair.second
+
+            // Remnawave/XTLS HWID: a panel with HWID Device Limit reports
+            // x-hwid-max-devices-reached: true and returns dummy nodes instead of
+            // real configs. Don't overwrite existing servers with those dummies.
+            val hwidLimitReached = headers.entries
+                .firstOrNull { it.key.equals("x-hwid-max-devices-reached", ignoreCase = true) }
+                ?.value
+                ?.trim()
+            if (hwidLimitReached == "true") {
+                val remark = extractHwidDummyRemark(configText)
+                val limitMsg = remark?.takeIf { it.isNotBlank() }
+                    ?: "Слишком много устройств: освободите слот в боте («Настройка» → «Сессии») или докупите устройства"
+                it.subscription.announce = limitMsg
+                LogUtil.e(AppConfig.TAG, "Update subscription: HWID device limit reached for ${it.subscription.url} - $limitMsg")
+                return SubscriptionUpdateResult(failureCount = 1)
+            }
 
             val count = parseConfigViaSub(configText, it.guid, false)
             if (count > 0) {
@@ -1115,6 +1144,29 @@ object AngConfigManager {
         }
         val host = runCatching { URI(url.orEmpty()).host?.removePrefix("www.") }.getOrNull()
         return host != null && current == host
+    }
+
+    /**
+     * Extracts the first human-readable remark from an HWID-limit dummy payload
+     * (JSON config array "remarks" field, or a URL-encoded fragment of the first
+     * vless line in a base64 batch). Returns null when the payload has no text.
+     */
+    private fun extractHwidDummyRemark(configText: String): String? {
+        return try {
+            val candidate: String? = if (configText.trimStart().startsWith("[")) {
+                val arr = JsonUtil.fromJson(configText, Array<Any>::class.java) ?: return null
+                val first = arr.firstOrNull()
+                if (first is Map<*, *>) first["remarks"]?.toString() else null
+            } else {
+                // base64 batch: first "xxx://...#<urlencoded name>" line
+                val decoded = String(Base64.decode(configText, Base64.NO_WRAP), Charsets.UTF_8)
+                val line = decoded.lineSequence().firstOrNull { it.contains("#") }
+                line?.substringAfter("#", "")?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            }
+            candidate?.trim()?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun decodeHeaderValue(value: String): String {

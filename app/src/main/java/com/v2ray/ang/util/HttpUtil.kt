@@ -1,5 +1,6 @@
 package com.v2ray.ang.util
 
+import android.os.Build
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
 import com.perqa.byebox.BuildConfig
@@ -166,6 +167,16 @@ object HttpUtil {
                 .get()
                 .header("User-agent", finalUserAgent)
                 .header("Connection", "close")
+
+            // Remnawave/XTLS HWID: panels with HWID Device Limit (e.g. Green VPN,
+            // "x-hwid-active") only serve real configs to registered devices.
+            if (!request.hwid.isNullOrBlank()) {
+                requestBuilder
+                    .header("x-hwid", request.hwid.trim())
+                    .header("x-device-os", "Android")
+                    .header("x-ver-os", Build.VERSION.RELEASE)
+                    .header("x-device-model", Build.MODEL)
+            }
 
             applyEmbeddedBasicAuthHeader(currentUrl, requestBuilder)
 

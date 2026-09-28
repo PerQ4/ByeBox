@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import java.util.UUID
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import androidx.activity.compose.BackHandler
@@ -37,6 +38,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -80,6 +83,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -131,6 +135,7 @@ import androidx.compose.ui.unit.sp
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.data.ProxyConfig
 import com.perqa.byebox.data.SubscriptionSource
+import com.perqa.byebox.data.UaPresets
 import com.perqa.byebox.findActivity
 import kotlinx.coroutines.launch
 
@@ -445,6 +450,7 @@ fun ProxyTab(
                         onRefreshSource = { viewModel.refreshSubscription(it) },
                         onRenameSource = { sourceId, name -> viewModel.renameSubscriptionSource(sourceId, name) },
                         onSetUserAgent = { sourceId, ua -> viewModel.setSubscriptionUserAgent(sourceId, ua) },
+                        onSetHwid = { sourceId, hwid -> viewModel.setSubscriptionHwid(sourceId, hwid) },
                         onDeleteSource = { id ->
                             if (state.confirmRemoveEnabled) {
                                 pendingSourceDeleteId = id
@@ -1010,6 +1016,7 @@ fun SortSummaryBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SourceGroupCard(
     sourceName: String,
@@ -1022,6 +1029,7 @@ fun SourceGroupCard(
     onRefreshSource: (String) -> Unit,
     onRenameSource: (String, String) -> Unit,
     onSetUserAgent: (String, String) -> Unit = { _, _ -> },
+    onSetHwid: (String, String) -> Unit = { _, _ -> },
     onDeleteSource: (String) -> Unit,
     onPingSource: () -> Unit,
     expanded: Boolean = true,
@@ -1050,6 +1058,7 @@ fun SourceGroupCard(
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
     var editedUa by remember(source?.id) { mutableStateOf(source?.userAgent ?: "") }
+    var editedHwid by remember(source?.id) { mutableStateOf(source?.hwid ?: "") }
     var showShareDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -1242,6 +1251,7 @@ fun SourceGroupCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     if (isRenaming && source != null) {
+                        var showAdvanced by remember(source?.id) { mutableStateOf(false) }
                         Column {
                             OutlinedTextField(
                                 value = editedName,
@@ -1255,6 +1265,7 @@ fun SourceGroupCard(
                                         onClick = {
                                             onRenameSource(source.id, editedName)
                                             onSetUserAgent(source.id, editedUa)
+                                            onSetHwid(source.id, editedHwid)
                                             isRenaming = false
                                         }
                                     ) {
@@ -1263,18 +1274,105 @@ fun SourceGroupCard(
                                 }
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = editedUa,
-                                onValueChange = { editedUa = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
-                                supportingText = {
-                                    Text(Loc.get("sub_ua_hint", language), maxLines = 2)
-                                },
-                                placeholder = { Text(Loc.get("sub_ua_default", language)) }
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { showAdvanced = !showAdvanced }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = Loc.get("sub_advanced", language),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                                Icon(
+                                    imageVector = if (showAdvanced) {
+                                        Icons.Default.KeyboardArrowUp
+                                    } else {
+                                        Icons.Default.KeyboardArrowDown
+                                    },
+                                    contentDescription = Loc.get("sub_advanced_toggle_cd", language),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            AnimatedVisibility(visible = showAdvanced) {
+                                Column {
+                                    Text(
+                                        text = Loc.get("sub_ua_presets_label", language),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp)
+                                    )
+                                    FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        UaPresets.all.forEach { preset ->
+                                            FilterChip(
+                                                selected = editedUa == preset.value,
+                                                onClick = { editedUa = preset.value },
+                                                label = {
+                                                    Text(
+                                                        text = preset.locKey?.let { Loc.get(it, language) } ?: preset.label,
+                                                        maxLines = 1
+                                                    )
+                                                },
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = editedUa,
+                                        onValueChange = { editedUa = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(14.dp),
+                                        label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
+                                        supportingText = {
+                                            Text(Loc.get("sub_ua_hint", language), maxLines = 2)
+                                        },
+                                        placeholder = { Text(Loc.get("sub_ua_default", language)) }
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = editedHwid,
+                                        onValueChange = { editedHwid = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(14.dp),
+                                        label = { Text(Loc.get("sub_hwid", language), maxLines = 1) },
+                                        placeholder = { Text(Loc.get("sub_hwid_default", language)) },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = { editedHwid = UUID.randomUUID().toString() }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Refresh,
+                                                    contentDescription = Loc.get("sub_hwid_gen", language)
+                                                )
+                                            }
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = Loc.get("sub_hwid_hint", language),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 4.dp),
+                                        maxLines = 3
+                                    )
+                                }
+                            }
                         }
                     } else {
                         Text(
@@ -1403,6 +1501,7 @@ fun SourceGroupCard(
                         onClick = {
                             editedName = source?.name ?: sourceName
                             editedUa = source?.userAgent ?: ""
+                            editedHwid = source?.hwid ?: ""
                             isRenaming = true
                         },
                         modifier = Modifier.weight(1f)
@@ -2301,6 +2400,7 @@ private fun ConfigDetailLine(
 
 private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String = "ru"): String {
     val parts = mutableListOf<String>()
+    sourceSource?.announce?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
     sourceSource?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
         parts.add(formatter.format(java.util.Date(timestamp)))
