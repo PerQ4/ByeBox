@@ -41,6 +41,7 @@ fun <T> ReorderableList(
     onReorder: (List<T>) -> Unit,
     cardColor: @Composable (item: T, isDragged: Boolean) -> Color,
     modifier: Modifier = Modifier,
+    cornerRoundness: String = "expressive",
     handleTint: @Composable (item: T, isDragged: Boolean) -> Color = { _, _ -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) },
     itemContent: @Composable RowScope.(item: T, isDragged: Boolean) -> Unit
 ) {
@@ -78,9 +79,9 @@ fun <T> ReorderableList(
                     }
                     .shadow(
                         elevation = if (isDragged) 16.dp else 2.dp,
-                        shape = RoundedCornerShape(20.dp)
+                        shape = RoundedCornerShape(settingsCardRadius(cornerRoundness))
                     ),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(settingsCardRadius(cornerRoundness)),
                 colors = CardDefaults.cardColors(containerColor = cardColor(item, isDragged))
             ) {
                 Row(
@@ -93,7 +94,7 @@ fun <T> ReorderableList(
                         modifier = Modifier
                             .padding(end = 12.dp)
                             .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(settingsControlRadius(cornerRoundness)))
                             .pointerInput(Unit) {
                                 detectDragGestures(
                                     onDragStart = {

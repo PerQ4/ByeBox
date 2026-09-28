@@ -131,7 +131,7 @@ fun QuickSettingsTilesPage(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(if (cornerRoundness == "expressive") 26.dp else 14.dp),
+                    shape = RoundedCornerShape(settingsCardRadius(cornerRoundness)),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isAdded) MaterialTheme.colorScheme.secondaryContainer
                         else MaterialTheme.colorScheme.primary,

@@ -612,11 +612,11 @@ fun SettingsChoiceRow(
 ) {
     SettingsRowSurface(top = top, bottom = bottom, selected = selected, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness, onClick = onClick) {
         if (icon != null) {
-            androidx.compose.material3.Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(22.dp)
+            SettingsRowIcon(
+                icon = icon,
+                containerAlpha = if (selected) 0.42f else 0.18f,
+                contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                cornerRoundness = cornerRoundness
             )
         }
         SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f))
@@ -653,15 +653,12 @@ fun SettingsSwitchRow(
             onCheckedChange(!checked)
         }
     ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = if (checked && enabled) 0.42f else 0.18f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-        }
+        SettingsRowIcon(
+            icon = icon,
+            containerAlpha = if (checked && enabled) 0.42f else 0.18f,
+            contentColor = if (checked && enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            cornerRoundness = cornerRoundness
+        )
         SettingsRowText(title = title, subtitle = subtitle, modifier = Modifier.weight(1f), enabled = enabled)
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
@@ -683,35 +680,11 @@ fun SettingsActionRow(
         Button(
             onClick = onClick,
             enabled = enabled,
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(settingsControlRadius(cornerRoundness)),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Text(button, maxLines = 1)
         }
-    }
-}
-
-@Composable
-fun SettingsInputRow(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    enabled: Boolean,
-    scaleFactor: Float = 0.90f,
-    cornerRoundness: String = "expressive",
-    bottom: Boolean
-) {
-    SettingsRowSurface(bottom = bottom, enabled = enabled, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = { Text(placeholder) },
-            enabled = enabled,
-            minLines = 2,
-            maxLines = 4,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp)
-        )
     }
 }
 
@@ -729,9 +702,8 @@ fun SettingsRowSurface(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     
-    val isExpressive = cornerRoundness == "expressive"
-    val largeRadius = if (isExpressive) 28.dp else 14.dp
-    val smallRadius = if (isExpressive) 10.dp else 4.dp
+    val largeRadius = settingsCardRadius(cornerRoundness)
+    val smallRadius = settingsInnerRadius(cornerRoundness)
     
     val targetTop = if (top) {
         if (isPressed && enabled && onClick != null) (largeRadius + 4.dp) else largeRadius
@@ -859,7 +831,7 @@ fun SettingsHealthRow(
             label = { Text(Loc.get("health_url_label", language)) },
             singleLine = true,
             modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(settingsControlRadius(cornerRoundness))
         )
         IconButton(onClick = onTest) {
             Icon(Icons.Default.Search, contentDescription = Loc.get("health_check_cd", language))
@@ -883,7 +855,7 @@ fun ExpressiveTile(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val isExpressive = cornerRoundness == "expressive"
-    val baseRadius = if (isExpressive) 28.dp else 16.dp
+    val baseRadius = settingsCardRadius(cornerRoundness)
     val targetRadius = if (isPressed) baseRadius + 6.dp else baseRadius
     val cornerRadius by animateDpAsState(targetValue = targetRadius, label = "expressiveTileCorner")
     val scale by animateFloatAsState(
@@ -924,7 +896,7 @@ fun ExpressiveTile(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(if (isExpressive) 16.dp else 10.dp))
+                        .clip(RoundedCornerShape(settingsControlRadius(cornerRoundness)))
                         .background(contentColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -952,49 +924,3 @@ fun ExpressiveTile(
     }
 }
 
-@Composable
-fun ZoneCard(
-    title: String? = null,
-    trailing: @Composable RowScope.() -> Unit = {},
-    cornerRoundness: String = "expressive",
-    contentPadding: PaddingValues = PaddingValues(vertical = 14.dp),
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val isExpressive = cornerRoundness == "expressive"
-    val radius = if (isExpressive) 28.dp else 18.dp
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (title != null) Modifier.padding(top = 14.dp) else Modifier)
-                .padding(contentPadding)
-        ) {
-            if (title != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    trailing()
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-            content()
-        }
-    }
-}

@@ -109,7 +109,7 @@ private fun TgwsPortRow(
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.width(120.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(settingsControlRadius(cornerRoundness)),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -151,7 +151,7 @@ private fun TgwsTextFieldRow(
             onValueChange = onValueChange,
             singleLine = true,
             modifier = Modifier.width(200.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(settingsControlRadius(cornerRoundness)),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -223,7 +223,7 @@ private fun TgwsSecretRow(
                 onValueChange = onValueChange,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(settingsControlRadius(cornerRoundness)),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
