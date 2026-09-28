@@ -101,9 +101,9 @@ class ByeBoxTileService : TileService() {
         tile.label = "ByeBox"
 
         tile.icon = if (active) {
-            Icon.createWithResource(this, R.drawable.ic_notification_on)
+            Icon.createWithResource(this, R.drawable.ic_tile_telegram)
         } else {
-            Icon.createWithResource(this, R.drawable.ic_notification_off)
+            Icon.createWithResource(this, R.drawable.ic_tile_telegram_off)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
