@@ -1377,12 +1377,12 @@ fun SourceGroupCard(
                     } else {
                         Text(
                             text = sourceName,
-                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.onSurface
                             ),
-                            maxLines = 1
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     source?.let {
@@ -1392,17 +1392,20 @@ fun SourceGroupCard(
                                 text = sub,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                )
                             )
                         }
+                        TrafficProgressBar(source = it, language = language, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 6.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                     if (showNodeCount) {
                         Text(
                             text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
@@ -1445,21 +1448,20 @@ fun SourceGroupCard(
                                 color = expireColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 fontWeight = FontWeight.Bold
                             ),
+                            modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    if (expandable) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp).padding(2.dp)
+                        )
+                    }
                 }
-                if (expandable) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp).padding(2.dp)
-                    )
-                }
-            }
 
             source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(
@@ -2411,9 +2413,12 @@ private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String =
 private fun trafficSubtitle(source: SubscriptionSource, language: String = "ru"): String {
     val parts = mutableListOf<String>()
     val total = source.totalBytes
+    val used = (source.uploadBytes ?: 0L) + (source.downloadBytes ?: 0L)
     if (total != null && total > 0L) {
-        val used = (source.uploadBytes ?: 0L) + (source.downloadBytes ?: 0L)
         parts.add("${formatBytes(used)} / ${formatBytes(total)}")
+    } else if (used > 0L) {
+        // No quota (unlimited plan): still show what has been consumed.
+        parts.add(Loc.get("traffic_used", language) + " " + formatBytes(used))
     }
     source.expireAt?.let { epochMillis ->
         if (epochMillis > 0L) {
@@ -2433,6 +2438,64 @@ private fun trafficSubtitle(source: SubscriptionSource, language: String = "ru")
         }
     }
     return parts.joinToString(" · ")
+}
+
+@Composable
+private fun TrafficProgressBar(source: SubscriptionSource, language: String = "ru", modifier: Modifier = Modifier) {
+    val total = source.totalBytes
+    val used = (source.uploadBytes ?: 0L) + (source.downloadBytes ?: 0L)
+    if (used <= 0L) return
+    if (total == null || total <= 0L) {
+        // Unlimited plan: show consumed volume only, no bar.
+        Text(
+            text = "${Loc.get("traffic_used", language)} ${formatBytes(used)} · ${Loc.get("traffic_unlimited", language)}",
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                fontWeight = FontWeight.Bold
+            ),
+            maxLines = 1,
+            modifier = modifier.fillMaxWidth()
+        )
+        return
+    }
+    val fraction = (used.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${Loc.get("traffic_used", language)} ${formatBytes(used)} / ${formatBytes(total)}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontWeight = FontWeight.Bold
+                ),
+                maxLines = 1
+            )
+            Text(
+                text = "${(fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black
+                )
+            )
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(999.dp)),
+            color = when {
+                fraction >= 0.95f -> MaterialTheme.colorScheme.error
+                fraction >= 0.8f -> MaterialTheme.colorScheme.tertiary
+                else -> MaterialTheme.colorScheme.primary
+            },
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        )
+    }
 }
 
 private fun subscriptionExpireColor(source: SubscriptionSource, colorScheme: androidx.compose.material3.ColorScheme): Color? {
