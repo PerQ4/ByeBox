@@ -170,13 +170,20 @@
             </intent-filter>
         </service>
 
-        <!-- TGWS-плитка (модуль tgwsproxy): долгий тап открывает приложение,
-             а не ProxyTilePreferencesActivity из автономного приложения.
+        <!-- TGWS-плитка (модуль tgwsproxy): долгий тап открывает приложение.
              Атрибут добавляется здесь и склеивается манифест-мерджером. -->
         <service
             android:name="com.amurcanov.tgwsproxy.ProxyTileService"
             android:settingsActivity="com.perqa.byebox.MainActivity"
             tools:replace="android:settingsActivity" />
+
+        <!-- Убираем дублирующий обработчик QS_TILE_PREFERENCES из библиотеки tgwsproxy.
+             При двух кандидатах в одном пакете резолв SystemUI (CustomTile.getLongClickIntent)
+             неоднозначен, и долгий тап сваливается в неявный интент, который глушит
+             системный шлюз Settings. Единственным обработчиком остаётся MainActivity. -->
+        <activity
+            android:name="com.amurcanov.tgwsproxy.ProxyTilePreferencesActivity"
+            tools:node="remove" />
 
     </application>
 
