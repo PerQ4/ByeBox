@@ -854,6 +854,18 @@ class MainScreenViewModel(
         showToast(Loc.get("toast_source_renamed", _language.value))
     }
 
+    fun setSubscriptionUserAgent(sourceId: String, userAgent: String) {
+        val cleanUa = userAgent.trim()
+        val sub = MmkvManager.decodeSubscription(sourceId) ?: return
+        val prev = sub.userAgent ?: ""
+        if (prev == cleanUa) return
+        sub.userAgent = cleanUa.ifBlank { null }
+        MmkvManager.encodeSubscription(sourceId, sub)
+        loadDataFromMmkv()
+        addLog("[SYSTEM] User-Agent источника: ${sub.remarks} -> \"${sub.userAgent ?: "(по умолчанию v2rayNG)"}\"")
+        showToast(Loc.get("toast_ua_saved", _language.value))
+    }
+
     fun deleteSubscriptionSource(sourceId: String) {
         val sub = MmkvManager.decodeSubscription(sourceId)
         val name = sub?.remarks ?: Loc.get("fallback_source", _language.value)
@@ -1573,6 +1585,7 @@ class MainScreenViewModel(
                 totalBytes = subCache.subscription.totalBytes,
                 expireAt = subCache.subscription.expireAt,
                 description = subCache.subscription.description,
+                userAgent = subCache.subscription.userAgent,
                 announce = subCache.subscription.announce,
                 supportUrl = subCache.subscription.supportUrl,
                 webPageUrl = subCache.subscription.webPageUrl,
