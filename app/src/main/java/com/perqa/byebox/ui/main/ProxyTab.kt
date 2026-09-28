@@ -5,11 +5,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
-import java.io.File
-import java.io.FileOutputStream
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,6 +112,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1049,6 +1048,7 @@ fun SourceGroupCard(
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
     var showShareDialog by remember { mutableStateOf(false) }
+    var showQrDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
@@ -1419,11 +1419,19 @@ fun SourceGroupCard(
                     dismissButton = {
                         TextButton(onClick = {
                             showShareDialog = false
-                            shareQr(context, sourceUrl, Loc.get("share_title", language))
+                            showQrDialog = true
                         }) { Text(Loc.get("share_qr", language)) }
                     },
                     shape = RoundedCornerShape(28.dp),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            }
+
+            if (showQrDialog && sourceUrl != null) {
+                QrCodeDialog(
+                    content = sourceUrl,
+                    onDismiss = { showQrDialog = false },
+                    language = language
                 )
             }
 
@@ -1732,17 +1740,53 @@ private fun shareText(context: Context, text: String, chooserTitle: String) {
     context.startActivity(Intent.createChooser(intent, chooserTitle))
 }
 
-private fun shareQr(context: Context, content: String, chooserTitle: String) {
-    val bitmap = generateQrBitmap(content)
-    val file = File(context.cacheDir, "byebox_qr_${System.currentTimeMillis()}.png")
-    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/png"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, chooserTitle))
+@Composable
+private fun QrCodeDialog(content: String, onDismiss: () -> Unit, language: String = "ru") {
+    val bitmap = remember(content) { generateQrBitmap(content) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = Loc.get("qr_title", language),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 4.dp,
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = Loc.get("qr_title", language),
+                        modifier = Modifier
+                            .padding(10.dp)
+                            .size(250.dp)
+                    )
+                }
+                Text(
+                    text = Loc.get("qr_hint", language),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(Loc.get("ok", language)) }
+        },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1756,6 +1800,7 @@ fun ConfigDetailsSheet(
     var isEditing by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
+    var showQrDialog by remember { mutableStateOf(false) }
 
     var name by remember(config) { mutableStateOf(config.name) }
     var address by remember(config) { mutableStateOf(config.address) }
@@ -1856,11 +1901,19 @@ fun ConfigDetailsSheet(
             dismissButton = {
                 TextButton(onClick = {
                     showShareDialog = false
-                    shareQr(context, config.toConfigLink(), Loc.get("share_title", language))
+                    showQrDialog = true
                 }) { Text(Loc.get("share_qr", language)) }
             },
             shape = RoundedCornerShape(28.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+
+    if (showQrDialog) {
+        QrCodeDialog(
+            content = config.toConfigLink(),
+            onDismiss = { showQrDialog = false },
+            language = language
         )
     }
 
