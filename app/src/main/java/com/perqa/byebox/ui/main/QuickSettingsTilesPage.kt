@@ -47,7 +47,7 @@ private class QsTileController(private val activity: ComponentActivity) {
         sbm?.requestAddTileService(
             ComponentName(activity, service),
             label,
-            Icon.createWithResource(activity, R.drawable.ic_tile_telegram),
+            Icon.createWithResource(activity, R.drawable.ic_notification_on),
             activity.mainExecutor
         ) { result ->
             onResult(
