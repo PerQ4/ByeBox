@@ -15,7 +15,7 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.3.0** | `25` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| **1.3.1** | `26` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
 
 [English](#english) · [Русский](#русский)
 
@@ -81,7 +81,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> The current release is **`1.3.0`** (`versionCode 25`). The universal APK targets `arm64-v8a`.
+> The current release is **`1.3.1`** (`versionCode 26`). The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
 

@@ -224,7 +224,8 @@ private fun TgwsBufKbRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            IconButton(onClick = { onValueChange((value - 1).coerceAtLeast(0)) }) {
+            val step = if (value < 256) 16 else 64
+            IconButton(onClick = { onValueChange((value - step).coerceAtLeast(0)) }) {
                 Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
             Text(
@@ -232,7 +233,7 @@ private fun TgwsBufKbRow(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            IconButton(onClick = { onValueChange((value + 1).coerceAtMost(4096)) }) {
+            IconButton(onClick = { onValueChange((value + step).coerceAtMost(4096)) }) {
                 Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
