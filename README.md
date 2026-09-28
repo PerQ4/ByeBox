@@ -15,7 +15,8 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.3.1** | `26` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| **1.4.0** | `27` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| 1.3.1 | `26` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.3.1) |
 
 [English](#english) · [Русский](#русский)
 
@@ -83,7 +84,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> The current release is **`1.3.1`** (`versionCode 26`). The universal APK targets `arm64-v8a`.
+> The current release is **`1.4.0`** (`versionCode 27`). The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -252,7 +253,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий релиз — **`1.3.1`** (`versionCode 26`). Universal-APK рассчитан на `arm64-v8a`.
+> Текущий релиз — **`1.4.0`** (`versionCode 27`). Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 
