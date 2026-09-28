@@ -1,11 +1,13 @@
 package com.perqa.byebox.service
 
 import android.content.Context
+import android.graphics.drawable.Icon
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.os.Build
 import com.perqa.byebox.data.SettingsProfileData
 import com.perqa.byebox.data.ProfilePresetManager
+import com.perqa.byebox.R
 import com.v2ray.ang.core.CoreServiceManager
 
 class ByeBoxProfileTileService : TileService() {
@@ -39,6 +41,7 @@ class ByeBoxProfileTileService : TileService() {
     private fun updateTileState(profileOverride: SettingsProfileData? = null) {
         val tile = qsTile ?: return
         val context = applicationContext
+        tile.icon = Icon.createWithResource(this, R.drawable.ic_tile_telegram)
         val list = ProfilePresetManager.loadProfiles(context)
         if (list.isEmpty()) return
         
