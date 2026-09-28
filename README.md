@@ -63,8 +63,10 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 **✈️ Telegram**
 - Built-in local **MTProto proxy** (TG WS Proxy)
 - Cloudflare WebSocket and direct-datacenter modes
+- Core synced with upstream: WebSocket message **fragmentation**, **Fake TLS / SNI fronting**, CF worker domains
+- Fine-tunable proxy core settings: buffer size, CF worker domains, fake TLS domain, plain port 80, test DCs, PROXY protocol v1
 - Per-client bypass — the chosen Telegram client goes direct, around the VPN
-- Auto-start with the app and Quick Settings control
+- Auto-start with the app, Quick Settings control and tile
 
 **📊 Management**
 - Subscription import with auto-refresh
@@ -230,8 +232,10 @@ that apply to you. The software is provided "as is", without warranty of any kin
 **✈️ Telegram**
 - Встроенный локальный **MTProto-прокси** (TG WS Proxy)
 - Режимы Cloudflare WebSocket и прямых датацентров
+- Ядро синхронизировано с апстримом: фрагментация WebSocket, **Fake TLS / SNI-фронтинг**, CF worker-домены
+- Гибкие настройки ядра: буфер, CF worker-домены, fake TLS-домен, порт 80 без TLS, тестовые DC, PROXY protocol v1
 - Обход по клиенту — выбранный Telegram идёт напрямую, минуя VPN
-- Автозапуск вместе с приложением и управление из быстрых настроек
+- Автозапуск вместе с приложением, управление из быстрых настроек и плитка
 
 **📊 Управление**
 - Импорт подписок с автообновлением
@@ -248,7 +252,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий релиз — **`1.2.3`** (`versionCode 24`). Universal-APK рассчитан на `arm64-v8a`.
+> Текущий релиз — **`1.3.1`** (`versionCode 26`). Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 
