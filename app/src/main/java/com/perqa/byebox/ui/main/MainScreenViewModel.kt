@@ -866,6 +866,18 @@ class MainScreenViewModel(
         showToast(Loc.get("toast_ua_saved", _language.value))
     }
 
+    fun setSubscriptionHwid(sourceId: String, hwid: String) {
+        val cleanHwid = hwid.trim()
+        val sub = MmkvManager.decodeSubscription(sourceId) ?: return
+        val prev = sub.hwid ?: ""
+        if (prev == cleanHwid) return
+        sub.hwid = cleanHwid.ifBlank { null }
+        MmkvManager.encodeSubscription(sourceId, sub)
+        loadDataFromMmkv()
+        addLog("[SYSTEM] HWID источника: ${sub.remarks} -> \"${sub.hwid ?: "(пусто)"}\"")
+        showToast(Loc.get("toast_hwid_saved", _language.value))
+    }
+
     fun deleteSubscriptionSource(sourceId: String) {
         val sub = MmkvManager.decodeSubscription(sourceId)
         val name = sub?.remarks ?: Loc.get("fallback_source", _language.value)
@@ -1586,6 +1598,7 @@ class MainScreenViewModel(
                 expireAt = subCache.subscription.expireAt,
                 description = subCache.subscription.description,
                 userAgent = subCache.subscription.userAgent,
+                hwid = subCache.subscription.hwid,
                 announce = subCache.subscription.announce,
                 supportUrl = subCache.subscription.supportUrl,
                 webPageUrl = subCache.subscription.webPageUrl,

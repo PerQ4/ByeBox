@@ -15,6 +15,7 @@ data class SubscriptionSource(
     val expireAt: Long? = null,
     val description: String? = null,
     val userAgent: String? = null,
+    val hwid: String? = null,
     val announce: String? = null,
     val supportUrl: String? = null,
     val webPageUrl: String? = null,

@@ -13,6 +13,7 @@ data class SubscriptionItem(
     var filter: String? = null,
     var allowInsecureUrl: Boolean = false,
     var userAgent: String? = null,
+    var hwid: String? = null,
     var description: String? = null,
     var announce: String? = null,
     var supportUrl: String? = null,
