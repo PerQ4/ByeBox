@@ -198,6 +198,48 @@ private fun TgwsPoolRow(
 }
 
 @Composable
+private fun TgwsBufKbRow(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    top: Boolean = false,
+    bottom: Boolean = false,
+    scaleFactor: Float,
+    cornerRoundness: String,
+    language: String
+) {
+    SettingsRowSurface(top = top, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = Loc.get("tgws_buf_kb", language),
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = Loc.get("tgws_buf_kb_help", language),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(onClick = { onValueChange((value - 1).coerceAtLeast(0)) }) {
+                Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                text = if (value == 0) Loc.get("tgws_buf_auto", language) else value.toString(),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            IconButton(onClick = { onValueChange((value + 1).coerceAtMost(4096)) }) {
+                Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TgwsSecretRow(
     value: String,
     onValueChange: (String) -> Unit,
@@ -311,6 +353,12 @@ fun TgWsProxySettingsContent(
     val secretKey by settingsStore.secretKey.collectAsStateWithLifecycle(initialValue = "")
     val bypassEnabled by settingsStore.bypassClientEnabled.collectAsStateWithLifecycle(initialValue = false)
     val bypassPkg by settingsStore.bypassClientPackage.collectAsStateWithLifecycle(initialValue = "")
+    val bufferKb by settingsStore.bufferSizeKb.collectAsStateWithLifecycle(initialValue = 0)
+    val cfWorkerDomains by settingsStore.cfWorkerDomains.collectAsStateWithLifecycle(initialValue = "")
+    val fakeTlsDomain by settingsStore.fakeTlsDomain.collectAsStateWithLifecycle(initialValue = "")
+    val disableSecure by settingsStore.disableSecure.collectAsStateWithLifecycle(initialValue = false)
+    val forceTestDc by settingsStore.forceTestDc.collectAsStateWithLifecycle(initialValue = false)
+    val proxyProtocol by settingsStore.proxyProtocol.collectAsStateWithLifecycle(initialValue = false)
 
     var showPicker by remember { mutableStateOf(false) }
     var poolExpanded by remember { mutableStateOf(false) }
@@ -464,6 +512,61 @@ fun TgWsProxySettingsContent(
                     onClick = { showPicker = true }
                 )
             }
+        }
+
+        SettingsGroup(title = Loc.get("tgws_core_title", language)) {
+            TgwsBufKbRow(
+                value = bufferKb,
+                onValueChange = { scope.launch { settingsStore.saveBufferSizeKb(it) } },
+                top = true,
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness,
+                language = language
+            )
+            TgwsTextFieldRow(
+                title = Loc.get("tgws_cf_worker_domains", language),
+                value = cfWorkerDomains,
+                onValueChange = { scope.launch { settingsStore.saveCfWorkerDomains(it.trim()) } },
+                help = Loc.get("tgws_cf_worker_domains_help", language),
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness
+            )
+            TgwsTextFieldRow(
+                title = Loc.get("tgws_fake_tls_domain", language),
+                value = fakeTlsDomain,
+                onValueChange = { scope.launch { settingsStore.saveFakeTlsDomain(it.trim()) } },
+                help = Loc.get("tgws_fake_tls_domain_help", language),
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness
+            )
+            SettingsSwitchRow(
+                title = Loc.get("tgws_disable_secure", language),
+                subtitle = Loc.get("tgws_disable_secure_help", language),
+                checked = disableSecure,
+                icon = Icons.Default.Cloud,
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness,
+                onCheckedChange = { scope.launch { settingsStore.saveDisableSecure(it) } }
+            )
+            SettingsSwitchRow(
+                title = Loc.get("tgws_force_test_dc", language),
+                subtitle = Loc.get("tgws_force_test_dc_help", language),
+                checked = forceTestDc,
+                icon = Icons.Default.Build,
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness,
+                onCheckedChange = { scope.launch { settingsStore.saveForceTestDc(it) } }
+            )
+            SettingsSwitchRow(
+                title = Loc.get("tgws_proxy_protocol", language),
+                subtitle = Loc.get("tgws_proxy_protocol_help", language),
+                checked = proxyProtocol,
+                icon = Icons.Default.Language,
+                bottom = true,
+                scaleFactor = scaleFactor,
+                cornerRoundness = cornerRoundness,
+                onCheckedChange = { scope.launch { settingsStore.saveProxyProtocol(it) } }
+            )
         }
 
         SettingsGroup(title = stringResource(TgwsR.string.secret_key)) {
