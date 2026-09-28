@@ -86,13 +86,22 @@ fun MainScreen(
     ) {
             val tabOrder by viewModel.tabOrder.collectAsStateWithLifecycle()
             val appMode by viewModel.appMode.collectAsStateWithLifecycle()
+            val onboardingDone by viewModel.onboardingDone.collectAsStateWithLifecycle()
             val visibleTabs = tabOrder.filter { isTabVisible(it, appMode) }
             var selectedTab by rememberSaveable { mutableStateOf(viewModel.defaultTabId.value ?: "main") }
             val currentTabId = if (selectedTab in visibleTabs) selectedTab else (visibleTabs.firstOrNull() ?: "settings")
-            var showModeDialog by remember { mutableStateOf(appMode.isEmpty()) }
+            var showModeDialog by remember { mutableStateOf(false) }
             var showBottomBar by remember { mutableStateOf(true) }
             var showImportDialog by remember { mutableStateOf(false) }
             var speedDialExpanded by remember { mutableStateOf(false) }
+
+            // Онбординг — только для первой установки: без настроенных серверов,
+            // без выбранного режима и без флага завершённой настройки.
+            LaunchedEffect(state.configs.size) {
+                if (!showModeDialog && appMode.isEmpty() && !onboardingDone && state.configs.isEmpty()) {
+                    showModeDialog = true
+                }
+            }
 
             LaunchedEffect(selectedTab) {
                 showBottomBar = true
@@ -144,6 +153,7 @@ fun MainScreen(
                     uiState = state,
                     onImportSubscription = viewModel::importSubscriptionFromUrl,
                     onFinish = { result ->
+                        viewModel.setOnboardingDone()
                         viewModel.changeLanguage(result.language)
                         viewModel.setAppMode(result.appMode)
                         RoutingProfile.entries.firstOrNull { it.name == result.routingProfile }
@@ -167,6 +177,10 @@ fun MainScreen(
                             viewModel.addConfigFromUrl(subUrl)
                         }
                         result.presets.forEach { viewModel.addProfile(it) }
+                        showModeDialog = false
+                    },
+                    onSkip = {
+                        viewModel.setOnboardingDone()
                         showModeDialog = false
                     }
                 )

@@ -277,6 +277,8 @@ class MainScreenViewModel(
     val defaultTabId: StateFlow<String> get() = _defaultTabId
     private val _appMode = MutableStateFlow(prefs.getString("pref_app_mode", "") ?: "")
     val appMode: StateFlow<String> get() = _appMode
+    private val _onboardingDone = MutableStateFlow(prefs.getBoolean("pref_onboarding_done", false))
+    val onboardingDone: StateFlow<Boolean> get() = _onboardingDone
     private val _logLevel = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, "warning") ?: "warning")
     private val _blockingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool("pref_blocking", false))
     private val _sniffingEnabled = MutableStateFlow(MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true))
@@ -1201,6 +1203,12 @@ class MainScreenViewModel(
         if (mode !in setOf("", "vpn", "tgws", "both")) return
         _appMode.value = mode
         prefs.edit().putString("pref_app_mode", mode).apply()
+    }
+
+    fun setOnboardingDone() {
+        if (_onboardingDone.value) return
+        _onboardingDone.value = true
+        prefs.edit().putBoolean("pref_onboarding_done", true).apply()
     }
 
     fun changeBlockingEnabled(enabled: Boolean) {

@@ -452,7 +452,7 @@ fun AppPickerSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(420.dp),
+                    .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(
