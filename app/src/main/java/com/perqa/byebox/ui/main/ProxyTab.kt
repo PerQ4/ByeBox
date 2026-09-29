@@ -38,8 +38,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -82,8 +80,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -121,6 +122,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -164,6 +166,7 @@ fun ProxyTab(
     var swipingConfigId by remember { mutableStateOf<String?>(null) }
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
     var configDetails by remember { mutableStateOf<ProxyConfig?>(null) }
+    var subscriptionSettingsSource by remember { mutableStateOf<SubscriptionSource?>(null) }
     var pendingConfigDeleteId by remember { mutableStateOf<String?>(null) }
     var pendingSourceDeleteId by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
@@ -295,6 +298,15 @@ fun ProxyTab(
         ConfigDetailsSheet(
             config = config,
             onDismiss = { configDetails = null },
+            viewModel = viewModel,
+            language = state.language
+        )
+    }
+
+    subscriptionSettingsSource?.let { subSource ->
+        SubscriptionSettingsSheet(
+            source = subSource,
+            onDismiss = { subscriptionSettingsSource = null },
             viewModel = viewModel,
             language = state.language
         )
@@ -448,9 +460,6 @@ fun ProxyTab(
                             }
                         },
                         onRefreshSource = { viewModel.refreshSubscription(it) },
-                        onRenameSource = { sourceId, name -> viewModel.renameSubscriptionSource(sourceId, name) },
-                        onSetUserAgent = { sourceId, ua -> viewModel.setSubscriptionUserAgent(sourceId, ua) },
-                        onSetHwid = { sourceId, hwid -> viewModel.setSubscriptionHwid(sourceId, hwid) },
                         onDeleteSource = { id ->
                             if (state.confirmRemoveEnabled) {
                                 pendingSourceDeleteId = id
@@ -459,6 +468,7 @@ fun ProxyTab(
                             }
                         },
                         onPingSource = { viewModel.testPingsForSource(sourceName) },
+                        onOpenSettings = { subscriptionSettingsSource = subSource },
                         expanded = !groupCollapsed,
                         onToggleExpanded = {
                             collapsedGroupKeys = if (groupCollapsed) {
@@ -1016,7 +1026,6 @@ fun SortSummaryBar(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SourceGroupCard(
     sourceName: String,
@@ -1027,11 +1036,9 @@ fun SourceGroupCard(
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit,
     onRefreshSource: (String) -> Unit,
-    onRenameSource: (String, String) -> Unit,
-    onSetUserAgent: (String, String) -> Unit = { _, _ -> },
-    onSetHwid: (String, String) -> Unit = { _, _ -> },
     onDeleteSource: (String) -> Unit,
     onPingSource: () -> Unit,
+    onOpenSettings: (() -> Unit)? = null,
     expanded: Boolean = true,
     onToggleExpanded: () -> Unit = {},
     // When false, collapsing/expanding has no visible effect (e.g. all rows fit
@@ -1059,10 +1066,6 @@ fun SourceGroupCard(
     // названием только когда в ней есть реальный контент. Для карточек без метаданных
     // (например, «Пресеты») иконка управления и стрелка остаются в строке названия.
     val hasMetaContent = showNodeCount || showAvgPing || source != null
-    var isRenaming by remember(source?.id) { mutableStateOf(false) }
-    var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
-    var editedUa by remember(source?.id) { mutableStateOf(source?.userAgent ?: "") }
-    var editedHwid by remember(source?.id) { mutableStateOf(source?.hwid ?: "") }
     var showShareDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -1087,7 +1090,7 @@ fun SourceGroupCard(
     val swipeDeleteFraction by remember {
         derivedStateOf { (-displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
     }
-    val swipeInfoFraction by remember {
+    val swipeSettingsFraction by remember {
         derivedStateOf { (displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
     }
 
@@ -1099,23 +1102,23 @@ fun SourceGroupCard(
     }
     val errorContainer = MaterialTheme.colorScheme.errorContainer
     val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
-    val tertiaryContainer = MaterialTheme.colorScheme.tertiaryContainer
-    val onTertiaryContainer = MaterialTheme.colorScheme.onTertiaryContainer
-    val canSwipe = source != null && !isRenaming
+    val secondaryContainer = MaterialTheme.colorScheme.secondaryContainer
+    val onSecondaryContainer = MaterialTheme.colorScheme.onSecondaryContainer
+    val canSwipe = source != null && onOpenSettings != null
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .clip(bgShape)
-                .background(tertiaryContainer.copy(alpha = swipeInfoFraction)),
+                .background(secondaryContainer.copy(alpha = swipeSettingsFraction)),
             contentAlignment = Alignment.CenterStart
         ) {
-            if (swipeInfoFraction > 0.08f) {
+            if (swipeSettingsFraction > 0.08f) {
                 Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = Loc.get("manage_cd", language),
-                    tint = onTertiaryContainer.copy(alpha = (swipeInfoFraction * 2.5f).coerceIn(0f, 1f)),
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = Loc.get("settings_cd", language),
+                    tint = onSecondaryContainer.copy(alpha = (swipeSettingsFraction * 2.5f).coerceIn(0f, 1f)),
                     modifier = Modifier
                         .padding(start = 20.dp)
                         .size(22.dp)
@@ -1172,7 +1175,7 @@ fun SourceGroupCard(
                                     onSwipeOffsetChanged(0f)
                                     onSwipingChanged(false)
                                     source.id?.let(onDeleteSource)
-                                } else if (displayOffsetX >= actionThresholdPx && onInfo != null) {
+                                } else if (displayOffsetX >= actionThresholdPx) {
                                     tactileFeedback()
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
@@ -1183,7 +1186,9 @@ fun SourceGroupCard(
                                         onSwipeOffsetChanged(value)
                                     }
                                     onSwipingChanged(false)
-                                    onInfo()
+                                    // Свайп вправо открывает настройки подписки в
+                                    // выезжающем шите (как у конфигов).
+                                    onOpenSettings?.invoke()
                                 } else {
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
@@ -1238,7 +1243,7 @@ fun SourceGroupCard(
                         }
                     )
                 }
-                .clickable(enabled = !isRenaming && expandable) {
+                .clickable(enabled = expandable) {
                     tactileFeedback()
                     onToggleExpanded()
                 },
@@ -1254,141 +1259,15 @@ fun SourceGroupCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    if (isRenaming && source != null) {
-                        var showAdvanced by remember(source?.id) { mutableStateOf(false) }
-                        Column {
-                            OutlinedTextField(
-                                value = editedName,
-                                onValueChange = { editedName = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                label = { Text(Loc.get("rename", language), maxLines = 1) },
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = {
-                                            onRenameSource(source.id, editedName)
-                                            onSetUserAgent(source.id, editedUa)
-                                            onSetHwid(source.id, editedHwid)
-                                            isRenaming = false
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.Check, contentDescription = Loc.get("save_cd", language))
-                                    }
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { showAdvanced = !showAdvanced }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = Loc.get("sub_advanced", language),
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                )
-                                Icon(
-                                    imageVector = if (showAdvanced) {
-                                        Icons.Default.KeyboardArrowUp
-                                    } else {
-                                        Icons.Default.KeyboardArrowDown
-                                    },
-                                    contentDescription = Loc.get("sub_advanced_toggle_cd", language),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            AnimatedVisibility(visible = showAdvanced) {
-                                Column {
-                                    Text(
-                                        text = Loc.get("sub_ua_presets_label", language),
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        ),
-                                        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp)
-                                    )
-                                    FlowRow(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        UaPresets.all.forEach { preset ->
-                                            FilterChip(
-                                                selected = editedUa == preset.value,
-                                                onClick = { editedUa = preset.value },
-                                                label = {
-                                                    Text(
-                                                        text = preset.locKey?.let { Loc.get(it, language) } ?: preset.label,
-                                                        maxLines = 1
-                                                    )
-                                                },
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = editedUa,
-                                        onValueChange = { editedUa = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(14.dp),
-                                        label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
-                                        supportingText = {
-                                            Text(Loc.get("sub_ua_hint", language), maxLines = 2)
-                                        },
-                                        placeholder = { Text(Loc.get("sub_ua_default", language)) }
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = editedHwid,
-                                        onValueChange = { editedHwid = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(14.dp),
-                                        label = { Text(Loc.get("sub_hwid", language), maxLines = 1) },
-                                        placeholder = { Text(Loc.get("sub_hwid_default", language)) },
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = { editedHwid = UUID.randomUUID().toString() }
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Refresh,
-                                                    contentDescription = Loc.get("sub_hwid_gen", language)
-                                                )
-                                            }
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = Loc.get("sub_hwid_hint", language),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 4.dp),
-                                        maxLines = 3
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = sourceName,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Text(
+                        text = sourceName,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     source?.let {
                         val sub = sourceSubtitle(it, language)
                         if (sub.isNotBlank()) {
@@ -1402,31 +1281,29 @@ fun SourceGroupCard(
                         TrafficProgressBar(source = it, language = language, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
-                if (!hasMetaContent) {
-                    if (source?.webPageUrl != null || onInfo != null) {
-                        IconButton(
-                            onClick = {
-                                tactileFeedback()
-                                onInfo?.invoke()
-                            },
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                imageVector = headerActionIcon,
-                                contentDescription = Loc.get("manage_cd", language),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                    }
-                    if (expandable) {
+                if (!hasMetaContent && (source?.webPageUrl != null || onInfo != null)) {
+                    IconButton(
+                        onClick = {
+                            tactileFeedback()
+                            onInfo?.invoke()
+                        },
+                        modifier = Modifier.size(30.dp)
+                    ) {
                         Icon(
-                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp).padding(2.dp)
+                            imageVector = headerActionIcon,
+                            contentDescription = Loc.get("manage_cd", language),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
+                }
+                if (expandable) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp).padding(2.dp)
+                    )
                 }
             }
             if (hasMetaContent) {
@@ -1434,9 +1311,13 @@ fun SourceGroupCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 8.dp, end = 6.dp, bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     if (showNodeCount) {
                         Text(
                             text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
@@ -1445,22 +1326,6 @@ fun SourceGroupCard(
                                 fontWeight = FontWeight.Black
                             )
                         )
-                    }
-                    if (source?.webPageUrl != null || onInfo != null) {
-                        IconButton(
-                            onClick = {
-                                tactileFeedback()
-                                onInfo?.invoke()
-                            },
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                imageVector = headerActionIcon,
-                                contentDescription = Loc.get("manage_cd", language),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
                     }
                     if (showAvgPing) {
                         Text(
@@ -1471,39 +1336,53 @@ fun SourceGroupCard(
                             )
                         )
                     }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (source?.webPageUrl != null || onInfo != null) {
+                        IconButton(
+                            onClick = {
+                                tactileFeedback()
+                                onInfo?.invoke()
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = headerActionIcon,
+                                contentDescription = Loc.get("manage_cd", language),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
                     source?.let {
                         val expireColor = subscriptionExpireColor(it, MaterialTheme.colorScheme)
                         Text(
-                            text = trafficSubtitle(it, language),
+                            text = expireSubtitle(it, language),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = expireColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 fontWeight = FontWeight.Bold
                             ),
-                            modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    if (expandable) {
-                        Icon(
-                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp).padding(2.dp)
-                        )
-                    }
                 }
             }
+            }
 
+            // Описание подписки (profile-description) — отдельным блоком, как раньше.
             source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
-                Text(
+                MarkdownText(
                     text = desc,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+                        fontWeight = FontWeight.SemiBold
                     )
                 )
             }
@@ -1527,24 +1406,6 @@ fun SourceGroupCard(
                         label = Loc.get("refresh", language),
                         icon = Icons.Default.Refresh,
                         onClick = { onRefreshSource(source.id) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    SourceActionButton(
-                        label = Loc.get("rename", language),
-                        icon = Icons.Default.Edit,
-                        onClick = {
-                            editedName = source?.name ?: sourceName
-                            editedUa = source?.userAgent ?: ""
-                            editedHwid = source?.hwid ?: ""
-                            isRenaming = true
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    SourceActionButton(
-                        label = Loc.get("delete", language),
-                        icon = Icons.Default.Delete,
-                        onClick = { onDeleteSource(source.id) },
-                        destructive = true,
                         modifier = Modifier.weight(1f)
                     )
                     SourceActionButton(
@@ -2074,19 +1935,22 @@ fun ConfigDetailsSheet(
         )
     }
 
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { newValue ->
+            if (newValue == SheetValue.Hidden && hasChanges) {
+                showExitDialog = true
+                false
+            } else {
+                true
+            }
+        }
+    )
+    val flingGuard = rememberModalSheetFlingGuard(sheetState)
+
     ModalBottomSheet(
         onDismissRequest = { attemptDismiss() },
-        sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = true,
-            confirmValueChange = { newValue ->
-                if (newValue == SheetValue.Hidden && hasChanges) {
-                    showExitDialog = true
-                    false
-                } else {
-                    true
-                }
-            }
-        ),
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = { PlainDragHandle() }
@@ -2095,7 +1959,8 @@ fun ConfigDetailsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .nestedScroll(flingGuard),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
@@ -2432,9 +2297,314 @@ private fun ConfigDetailLine(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SubscriptionSettingsSheet(
+    source: SubscriptionSource,
+    onDismiss: () -> Unit,
+    viewModel: MainScreenViewModel,
+    language: String = "ru"
+) {
+    var editedName by remember(source.id) { mutableStateOf(source.name) }
+    var editedUa by remember(source.id) { mutableStateOf(source.userAgent ?: "") }
+    var editedHwid by remember(source.id) { mutableStateOf(source.hwid ?: "") }
+    var showAdvanced by remember(source.id) { mutableStateOf(true) }
+    var presetsExpanded by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    val tactileFeedback = rememberTactileFeedback()
+    val context = LocalContext.current
+
+    val hasChanges by remember {
+        derivedStateOf {
+            editedName != source.name ||
+                editedUa != (source.userAgent ?: "") ||
+                editedHwid != (source.hwid ?: "")
+        }
+    }
+
+    fun attemptDismiss() {
+        if (showExitDialog) return
+        if (hasChanges) {
+            showExitDialog = true
+        } else {
+            onDismiss()
+        }
+    }
+
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { newValue ->
+            if (newValue == SheetValue.Hidden && hasChanges) {
+                showExitDialog = true
+                false
+            } else {
+                true
+            }
+        }
+    )
+    val flingGuard = rememberModalSheetFlingGuard(sheetState)
+
+    BackHandler(enabled = !showExitDialog) { attemptDismiss() }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = Loc.get("config_details_unsaved_title", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                )
+            },
+            text = { Text(Loc.get("config_details_unsaved_msg", language)) },
+            confirmButton = {
+                TextButton(onClick = { onDismiss() }) {
+                    Text(Loc.get("config_details_exit", language), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text(Loc.get("config_details_stay", language))
+                }
+            }
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { attemptDismiss() },
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = { PlainDragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .nestedScroll(flingGuard),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = Loc.get("sub_settings_title", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold)
+                )
+            }
+
+            OutlinedTextField(
+                value = editedName,
+                onValueChange = { editedName = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                label = { Text(Loc.get("rename", language), maxLines = 1) }
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { showAdvanced = !showAdvanced }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = Loc.get("sub_advanced", language),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                )
+                Icon(
+                    imageVector = if (showAdvanced) {
+                        Icons.Default.KeyboardArrowUp
+                    } else {
+                        Icons.Default.KeyboardArrowDown
+                    },
+                    contentDescription = Loc.get("sub_advanced_toggle_cd", language),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            if (showAdvanced) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val selectedPreset = UaPresets.all.firstOrNull { it.value == editedUa }
+                    val selectedLabel = selectedPreset?.let {
+                        it.locKey?.let { key -> Loc.get(key, language) } ?: it.label
+                    }
+                    ExposedDropdownMenuBox(
+                        expanded = presetsExpanded,
+                        onExpandedChange = { presetsExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = selectedLabel ?: editedUa,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            label = { Text(Loc.get("sub_ua_presets_label", language), maxLines = 1) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetsExpanded) }
+                        )
+                        ExposedDropdownMenu(
+                            expanded = presetsExpanded,
+                            onDismissRequest = { presetsExpanded = false },
+                            modifier = Modifier.exposedDropdownSize()
+                        ) {
+                            UaPresets.all.forEach { preset ->
+                                val presetLabel = preset.locKey?.let { Loc.get(it, language) } ?: preset.label
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(text = presetLabel, maxLines = 1)
+                                    },
+                                    onClick = {
+                                        tactileFeedback()
+                                        editedUa = preset.value
+                                        presetsExpanded = false
+                                    },
+                                    trailingIcon = {
+                                        if (editedUa == preset.value) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editedUa,
+                        onValueChange = { editedUa = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
+                        supportingText = { Text(Loc.get("sub_ua_hint", language), maxLines = 2) },
+                        placeholder = { Text(Loc.get("sub_ua_default", language)) }
+                    )
+                    OutlinedTextField(
+                        value = editedHwid,
+                        onValueChange = { editedHwid = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        label = { Text(Loc.get("sub_hwid", language), maxLines = 1) },
+                        placeholder = { Text(Loc.get("sub_hwid_default", language)) },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    tactileFeedback()
+                                    editedHwid = UUID.randomUUID().toString()
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = Loc.get("sub_hwid_gen", language)
+                                )
+                            }
+                        }
+                    )
+                    Text(
+                        text = Loc.get("sub_hwid_hint", language),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                        ),
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        maxLines = 3
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        attemptDismiss()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text(Loc.get("cancel", language), fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = {
+                        tactileFeedback()
+                        if (editedName.isBlank()) {
+                            Toast.makeText(
+                                context,
+                                Loc.get("empty_fields", language),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@Button
+                        }
+                        if (source.name != editedName) {
+                            viewModel.renameSubscriptionSource(source.id, editedName)
+                        }
+                        if ((source.userAgent ?: "") != editedUa) {
+                            viewModel.setSubscriptionUserAgent(source.id, editedUa)
+                        }
+                        if ((source.hwid ?: "") != editedHwid) {
+                            viewModel.setSubscriptionHwid(source.id, editedHwid)
+                        }
+                        Toast.makeText(
+                            context,
+                            Loc.get("toast_ua_saved", language),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Text(Loc.get("save", language), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String = "ru"): String {
     val parts = mutableListOf<String>()
-    sourceSource?.announce?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+    // Анонс не дублируем, если он совпадает с описанием подписки (description
+    // выводится отдельным блоком ниже). Сам анонс показываем только когда описания нет
+    // или они различаются.
+    val description = sourceSource?.description?.takeIf { it.isNotBlank() }
+    val announce = sourceSource?.announce?.takeIf { it.isNotBlank() }
+    if (announce != null && announce != description) {
+        parts.add(announce)
+    }
     sourceSource?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
         parts.add(formatter.format(java.util.Date(timestamp)))
@@ -2442,16 +2612,8 @@ private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String =
     return parts.joinToString(" · ")
 }
 
-private fun trafficSubtitle(source: SubscriptionSource, language: String = "ru"): String {
+private fun expireSubtitle(source: SubscriptionSource, language: String = "ru"): String {
     val parts = mutableListOf<String>()
-    val total = source.totalBytes
-    val used = (source.uploadBytes ?: 0L) + (source.downloadBytes ?: 0L)
-    if (total != null && total > 0L) {
-        parts.add("${formatBytes(used)} / ${formatBytes(total)}")
-    } else if (used > 0L) {
-        // No quota (unlimited plan): still show what has been consumed.
-        parts.add(Loc.get("traffic_used", language) + " " + formatBytes(used))
-    }
     source.expireAt?.let { epochMillis ->
         if (epochMillis > 0L) {
             val now = System.currentTimeMillis()

@@ -58,6 +58,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -90,10 +92,13 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.perqa.byebox.core.HapticFeedbackUtil
@@ -109,6 +114,26 @@ fun PlainDragHandle(modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(2.dp))
             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
     )
+}
+
+/**
+ * Фикс бага ModalBottomSheet: когда контент шита почти во весь экран, быстрый
+ * восходящий флинг внутри скролл-контента вызывает бесконечное подпрыгивание
+ * («дёргание», не понимая, развернуться или свернуться). Connection поглощает
+ * upward-флинг velocity, если шит уже полностью развёрнут.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun rememberModalSheetFlingGuard(sheetState: SheetState): NestedScrollConnection {
+    return remember(sheetState) {
+        object : NestedScrollConnection {
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val isFlingingUp = available.y < 0
+                val isExpanded = sheetState.targetValue == SheetValue.Expanded
+                return if (isFlingingUp && isExpanded) available else Velocity.Zero
+            }
+        }
+    }
 }
 
 fun interface TactileFeedbackPlayer {
@@ -317,6 +342,7 @@ fun AppPickerSheet(
 
     val sheetScope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val flingGuard = rememberModalSheetFlingGuard(sheetState)
     fun keepEditing() {
         showExitDialog = false
         sheetScope.launch { sheetState.show() }
@@ -452,7 +478,8 @@ fun AppPickerSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .nestedScroll(flingGuard),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(

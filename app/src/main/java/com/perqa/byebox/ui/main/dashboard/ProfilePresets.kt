@@ -237,7 +237,6 @@ fun ProfilePresetsCard(
                 onSelect = onSelectProfile,
                 onDelete = onDeleteProfile,
                 onRefreshSource = {},
-                onRenameSource = { _, _ -> },
                 onDeleteSource = {},
                 onPingSource = {},
                 expanded = isExpanded,

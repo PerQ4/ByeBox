@@ -141,6 +141,9 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  // Markdown (описания подписок панелей)
+  implementation(libs.commonmark)
+  implementation(libs.commonmark.ext.gfm.strikethrough)
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
