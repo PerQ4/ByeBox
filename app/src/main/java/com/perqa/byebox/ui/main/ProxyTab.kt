@@ -61,9 +61,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
@@ -1819,6 +1821,7 @@ fun ConfigDetailsSheet(
     var showExitDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
+    var showJsonEditor by remember { mutableStateOf(false) }
 
     var name by remember(config) { mutableStateOf(config.name) }
     var address by remember(config) { mutableStateOf(config.address) }
@@ -1932,6 +1935,16 @@ fun ConfigDetailsSheet(
             content = config.toConfigLink(),
             onDismiss = { showQrDialog = false },
             language = language
+        )
+    }
+
+    if (showJsonEditor) {
+        JsonConfigEditorDialog(
+            configId = config.id,
+            configName = config.name,
+            viewModel = viewModel,
+            language = language,
+            onDismiss = { showJsonEditor = false }
         )
     }
 
@@ -2082,7 +2095,15 @@ fun ConfigDetailsSheet(
                         onSelected = { network = it }
                     )
 
-                    if (security == "reality" || pbk.isNotBlank() || sid.isNotBlank()) {
+                    if (security == "reality") {
+                        OutlinedTextField(
+                            value = flow,
+                            onValueChange = { flow = it },
+                            label = { Text("Flow") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp)
+                        )
                         OutlinedTextField(
                             value = pbk,
                             onValueChange = { pbk = it },
@@ -2101,7 +2122,7 @@ fun ConfigDetailsSheet(
                         )
                     }
 
-                    if (network == "ws" || wsPath.isNotBlank() || wsHost.isNotBlank()) {
+                    if (network == "ws") {
                         OutlinedTextField(
                             value = wsPath,
                             onValueChange = { wsPath = it },
@@ -2120,7 +2141,7 @@ fun ConfigDetailsSheet(
                         )
                     }
 
-                    if (network == "grpc" || grpcServiceName.isNotBlank()) {
+                    if (network == "grpc") {
                         OutlinedTextField(
                             value = grpcServiceName,
                             onValueChange = { grpcServiceName = it },
@@ -2130,9 +2151,60 @@ fun ConfigDetailsSheet(
                             shape = RoundedCornerShape(18.dp)
                         )
                     }
+
+                    // Явный вход в JSON-редактор внутри режима «Изменить»: без него
+                    // расширенный режим остаётся скрытым за маленькой иконкой.
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                tactileFeedback()
+                                showJsonEditor = true
+                            },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = Loc.get("json_editor_advanced_title", language),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                                Text(
+                                    text = Loc.get("json_editor_advanced_subtitle", language),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             } else {
-                config.description?.takeIf { it.isNotBlank() && it != config.name }?.let {
+                config.description?.takeIf { it.isNotBlank() && it != config.name && !config.isEndpointOnlyDescription(it) }?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodyMedium.copy(
@@ -3004,7 +3076,7 @@ fun ServerItemCard(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        config.description?.takeIf { it.isNotBlank() && it != config.name }?.let { description ->
+                        config.description?.takeIf { it.isNotBlank() && it != config.name && !config.isEndpointOnlyDescription(it) }?.let { description ->
                             Text(
                                 text = description,
                                 style = MaterialTheme.typography.bodySmall.copy(
@@ -3074,13 +3146,28 @@ private fun ProxyConfig.protocolSummary(): String {
 }
 
 private fun ProxyConfig.endpointSummary(): String {
-    val host = sni?.takeIf { it.isNotBlank() && it != address } ?: address
+    val host = com.v2ray.ang.util.Utils.maskServerAddress(sni?.takeIf { it.isNotBlank() && it != address } ?: address)
     val transport = when {
         wsPath?.isNotBlank() == true -> wsPath
         grpcServiceName?.isNotBlank() == true -> grpcServiceName
         else -> null
     }
     return listOfNotNull("$host:$port", transport).joinToString(" · ")
+}
+
+/**
+ * True when the description only repeats the (masked) endpoint that the card
+ * already shows in [endpointSummary] ("125.73.8.*** : 443" etc). Such rows are
+ * hidden so the address does not appear twice.
+ */
+private fun ProxyConfig.isEndpointOnlyDescription(desc: String): Boolean {
+    val maskedHost = com.v2ray.ang.util.Utils.maskServerAddress(
+        sni?.takeIf { it.isNotBlank() && it != address } ?: address
+    )
+    if (maskedHost.isBlank()) return false
+    val normalized = desc.replace(" ", "")
+    val expected = "$maskedHost:$port"
+    return normalized == expected || normalized.startsWith("$expected:")
 }
 
 @Composable

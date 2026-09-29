@@ -597,6 +597,26 @@ object Utils {
     }
 
     /**
+     * Mask a server address for the node list / dashboard: hides the last
+     * label of an IPv4/domain and the tail of an IPv6 address.
+     *
+     * Examples:
+     * - "125.73.8.42"   -> "125.73.8.***"
+     * - "example.com"    -> "example.***"
+     * - "2001:db8::1"    -> "2001:db8:***"
+     */
+    fun maskServerAddress(address: String?): String {
+        if (address.isNullOrBlank()) return ""
+        val addr = address.trim()
+        return when {
+            addr.contains(":") ->
+                addr.split(":").take(2).joinToString(":", postfix = ":***")
+            else ->
+                addr.split('.').dropLast(1).joinToString(".", postfix = ".***")
+        }
+    }
+
+    /**
      * Format a timestamp (milliseconds since epoch) into a date string.
      * Returns empty string for null or non-positive timestamps.
      * @param ts timestamp in milliseconds or null

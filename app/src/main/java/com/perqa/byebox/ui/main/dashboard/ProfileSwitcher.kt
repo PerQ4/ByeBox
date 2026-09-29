@@ -1169,7 +1169,7 @@ fun ProfileServerPickerSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${config.protocol} · ${config.address}:${config.port}",
+                                    text = "${config.protocol} · ${com.v2ray.ang.util.Utils.maskServerAddress(config.address)}:${config.port}",
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)

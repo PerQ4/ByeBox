@@ -11,6 +11,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.MmkvManager
 import kotlinx.coroutines.isActive
+import com.v2ray.ang.fmt.CustomFmt
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.SubscriptionCache
@@ -953,6 +954,53 @@ class MainScreenViewModel(
             }
             loadDataFromMmkv()
             showToast(Loc.get("toast_config_updated", _language.value))
+        }
+    }
+
+    /**
+     * Returns the editable JSON document for a config.
+     *
+     * Stored raw JSON (CUSTOM / expanded configs) is returned as-is. Typed
+     * profiles (vless://, vmess://, ...) usually have no raw, so an `outbounds`
+     * JSON is generated from the profile so the advanced editor has something
+     * to show and re-parse.
+     */
+    fun getConfigEditorJson(configId: String): String? {
+        MmkvManager.decodeServerRaw(configId)?.takeIf { it.isNotBlank() }?.let { return it }
+        val profile = MmkvManager.decodeServerConfig(configId) ?: return null
+        return CustomFmt.buildEditableJson(profile)
+    }
+
+    /**
+     * Saves a config from an edited raw JSON document.
+     *
+     * The JSON is fully parsed via [CustomFmt.parseFull] into a fresh typed
+     * ProfileItem (preserving the original subscription id and remarks where
+     * possible), then persisted both as the typed profile and as the raw JSON
+     * so CUSTOM/expanded configs keep their full outbound payload.
+     */
+    fun saveConfigFromJson(configId: String, rawJson: String) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val parsed = CustomFmt.parseFull(rawJson) ?: return@withContext false
+                val oldProfile = MmkvManager.decodeServerConfig(configId)
+                if (oldProfile != null) {
+                    parsed.subscriptionId = oldProfile.subscriptionId
+                    parsed.addedTime = oldProfile.addedTime
+                    if (parsed.remarks.isBlank() || parsed.remarks.all { it.isDigit() }) {
+                        parsed.remarks = oldProfile.remarks
+                    }
+                }
+                MmkvManager.encodeServerConfig(configId, parsed)
+                MmkvManager.encodeServerRaw(configId, rawJson)
+                true
+            }
+            if (result) {
+                loadDataFromMmkv()
+                showToast(Loc.get("toast_config_updated", _language.value))
+            } else {
+                showToast(Loc.get("json_editor_invalid", _language.value))
+            }
         }
     }
 

@@ -97,7 +97,10 @@ fun ProfilePresetsCard(
         (reservedCollapsedBelowPx ?: 0f) > 0f &&
         (reservedCollapsedBottomPx ?: 0f) > 0f &&
         headerHeightPx > 0f
-    val dynamicPeekHeight: Dp = remember(allReservesMeasured) {
+    val dynamicPeekHeight: Dp = remember(
+        allReservesMeasured,
+        reservedCollapsedAbovePx
+    ) {
         if (allReservesMeasured) {
             // Свободное место на экране: экран минус контент над пресетами, сам хедер,
             // снизу TGWS, нижний запас страницы и небольшой зазор

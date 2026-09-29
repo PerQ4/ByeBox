@@ -148,7 +148,7 @@ fun CockpitServerCard(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${activeConfig.address}:${activeConfig.port}",
+                    text = "${com.v2ray.ang.util.Utils.maskServerAddress(activeConfig.address)}:${activeConfig.port}",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace

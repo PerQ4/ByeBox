@@ -441,6 +441,15 @@ object Loc {
         "config_details_exit" to "Выйти",
         "config_details_stay" to "Остаться",
 
+        // Advanced JSON editor
+        "json_editor_title" to "Расширенный редактор JSON",
+        "json_editor_save" to "Сохранить",
+        "json_editor_reset" to "Сбросить к исходному",
+        "json_editor_empty" to "JSON не может быть пустым",
+        "json_editor_invalid" to "Некорректный JSON",
+        "json_editor_advanced_title" to "Расширенные настройки (JSON)",
+        "json_editor_advanced_subtitle" to "Прямое редактирование конфигурации сервера",
+
         // App picker
         "app_picker_title" to "Выбор приложений",
         "app_picker_count" to "%d выбрано",
@@ -1165,6 +1174,15 @@ object Loc {
         "config_details_exit" to "Exit",
         "config_details_stay" to "Stay",
 
+        // Advanced JSON editor
+        "json_editor_title" to "Advanced JSON editor",
+        "json_editor_save" to "Save",
+        "json_editor_reset" to "Reset to original",
+        "json_editor_empty" to "JSON cannot be empty",
+        "json_editor_invalid" to "Invalid JSON",
+        "json_editor_advanced_title" to "Advanced settings (JSON)",
+        "json_editor_advanced_subtitle" to "Edit the server configuration directly",
+
         // App picker
         "app_picker_title" to "Select Apps",
         "app_picker_count" to "%d selected",
@@ -1886,6 +1904,15 @@ object Loc {
         "config_details_unsaved_msg" to "您有未保存的更改。不保存就退出？",
         "config_details_exit" to "退出",
         "config_details_stay" to "留在当前页",
+
+        // Advanced JSON editor
+        "json_editor_title" to "高级 JSON 编辑器",
+        "json_editor_save" to "保存",
+        "json_editor_reset" to "恢复原始内容",
+        "json_editor_empty" to "JSON 不能为空",
+        "json_editor_invalid" to "JSON 格式无效",
+        "json_editor_advanced_title" to "高级设置 (JSON)",
+        "json_editor_advanced_subtitle" to "直接编辑服务器配置",
 
         // App picker
         "app_picker_title" to "选择应用",

@@ -1282,12 +1282,7 @@ object AngConfigManager {
         val port = profile.serverPort
         if (server.isNullOrBlank() && port.isNullOrBlank()) return ""
 
-        val addrPart = server?.let {
-            if (it.contains(":"))
-                it.split(":").take(2).joinToString(":", postfix = ":***")
-            else
-                it.split('.').dropLast(1).joinToString(".", postfix = ".***")
-        } ?: ""
+        val addrPart = Utils.maskServerAddress(server)
 
         return "$addrPart : ${port ?: ""}"
     }
