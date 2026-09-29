@@ -18,6 +18,7 @@
 local.properties
 *.apk
 *.aab
+gradle_debug.log
 xray-build/
 reference/
 /tgwsproxy/
