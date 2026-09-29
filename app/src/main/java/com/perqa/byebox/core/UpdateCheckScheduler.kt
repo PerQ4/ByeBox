@@ -43,6 +43,7 @@ object UpdateCheckScheduler {
     const val NOTIFICATION_ID = 14
 
     private const val KEY_AUTO_CHECK_UPDATES = "auto_check_updates"
+    private const val KEY_UPDATE_CHANNEL = "update_channel"
     private const val KEY_REMIND_LATER_UNTIL = "remind_later_until"
     private const val KEY_SKIPPED_VERSION_CODE = "skipped_version_code"
 
@@ -90,7 +91,9 @@ object UpdateCheckScheduler {
                 return Result.success()
             }
 
-            val result = UpdateChecker.check()
+            val result = UpdateChecker.check(
+                UpdateChannel.fromPreference(shared.getString(KEY_UPDATE_CHANNEL, null))
+            )
             if (result !is UpdateCheckResult.Available) {
                 LogUtil.i(AppConfig.TAG, "UpdateCheckTask: no newer release found")
                 return Result.success()

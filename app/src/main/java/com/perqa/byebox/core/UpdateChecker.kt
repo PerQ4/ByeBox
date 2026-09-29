@@ -55,6 +55,22 @@ sealed interface UpdateCheckResult {
 }
 
 /**
+ * Which release line the checker tracks.
+ *
+ * - [STABLE] — only stable releases published from `master` (GitHub `prerelease` flag off).
+ * - [DEV]    — all releases including experimental pre-releases published from `dev`.
+ */
+enum class UpdateChannel {
+    STABLE,
+    DEV;
+
+    companion object {
+        fun fromPreference(value: String?): UpdateChannel =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: STABLE
+    }
+}
+
+/**
  * Checks GitHub Releases for a newer ByeBox build.
  *
  * Uses the *list* endpoint (not `/releases/latest`) so pre-releases are visible too,
@@ -68,7 +84,8 @@ object UpdateChecker {
     private val VERSION_CODE_MARKER = Regex("""byebox:versionCode\s*=\s*(\d{1,9})""")
     private val NAME_CODE_MARKER = Regex("""\((\d{1,9})\)""")
 
-    suspend fun check(): UpdateCheckResult = withContext(Dispatchers.IO) {
+    suspend fun check(channel: UpdateChannel = UpdateChannel.STABLE): UpdateCheckResult =
+        withContext(Dispatchers.IO) {
         try {
             val releases = JSONArray(httpGet(RELEASES_API))
 
@@ -79,6 +96,8 @@ object UpdateChecker {
             for (i in 0 until releases.length()) {
                 val release = releases.optJSONObject(i) ?: continue
                 if (release.optBoolean("draft", false)) continue
+                // STABLE line ignores experimental pre-releases (dev builds).
+                if (channel == UpdateChannel.STABLE && release.optBoolean("prerelease", false)) continue
 
                 val version = SemVer.parse(release.optString("tag_name", "")) ?: continue
                 val code = extractVersionCode(release)

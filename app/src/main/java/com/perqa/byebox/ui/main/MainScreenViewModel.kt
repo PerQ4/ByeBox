@@ -21,6 +21,7 @@ import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.DarkThemeStyle
 import com.perqa.byebox.core.HapticFeedbackUtil
 import com.perqa.byebox.core.UpdateCheckResult
+import com.perqa.byebox.core.UpdateChannel
 import com.perqa.byebox.core.SessionStatsManager
 import com.perqa.byebox.core.UpdateCheckScheduler
 import com.perqa.byebox.core.UpdateChecker
@@ -205,6 +206,7 @@ data class MainUiState(
     val isCheckingUpdate: Boolean = false,
     val updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
     val autoCheckUpdates: Boolean = true,
+    val updateChannel: UpdateChannel = UpdateChannel.STABLE,
     val pingingConfigIds: Set<String> = emptySet(),
 )
 
@@ -306,6 +308,9 @@ class MainScreenViewModel(
     private val _isCheckingUpdate = MutableStateFlow(false)
     private val _updateDownload = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
     private val _autoCheckUpdates = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CHECK_UPDATES, true))
+    private val _updateChannel = MutableStateFlow(
+        UpdateChannel.fromPreference(prefs.getString(KEY_UPDATE_CHANNEL, null))
+    )
     private var downloadJob: Job? = null
     private var remindLaterUntil: Long = prefs.getLong(KEY_REMIND_LATER_UNTIL, 0L)
     private var skippedVersionCode: Int = prefs.getInt(KEY_SKIPPED_VERSION_CODE, 0)
@@ -416,6 +421,7 @@ class MainScreenViewModel(
         _pingingConfigIds,
         _updateDownload,
         _autoCheckUpdates,
+        _updateChannel,
         _sessionUpload,
         _sessionDownload,
         _autoReconnectNetwork,
@@ -475,10 +481,11 @@ class MainScreenViewModel(
             pingingConfigIds = f.get(49),
             updateDownload = f.get(50),
             autoCheckUpdates = f.get(51),
-            sessionUpload = f.get(52),
-            sessionDownload = f.get(53),
-            autoReconnectNetwork = f.get(54),
-            sessionDuration = f.get(55)
+            updateChannel = f.get(52),
+            sessionUpload = f.get(53),
+            sessionDownload = f.get(54),
+            autoReconnectNetwork = f.get(55),
+            sessionDuration = f.get(56)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -517,7 +524,7 @@ class MainScreenViewModel(
 
         viewModelScope.launch {
             if (_autoCheckUpdates.value && System.currentTimeMillis() >= remindLaterUntil) {
-                applyUpdateResult(UpdateChecker.check())
+                applyUpdateResult(UpdateChecker.check(_updateChannel.value))
             }
         }
         viewModelScope.launch {
@@ -540,7 +547,7 @@ class MainScreenViewModel(
         if (_isCheckingUpdate.value) return
         viewModelScope.launch {
             _isCheckingUpdate.value = true
-            val result = UpdateChecker.check()
+            val result = UpdateChecker.check(_updateChannel.value)
             _isCheckingUpdate.value = false
             applyUpdateResult(result)
             if (showLatest) {
@@ -585,6 +592,18 @@ class MainScreenViewModel(
         _autoCheckUpdates.value = enabled
         prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply()
         UpdateCheckScheduler.sync(appContext)
+    }
+
+    fun setUpdateChannel(channel: UpdateChannel) {
+        if (_updateChannel.value == channel) return
+        _updateChannel.value = channel
+        prefs.edit().putString(KEY_UPDATE_CHANNEL, channel.name).apply()
+        // Channel change (e.g. dev → stable) may hide the currently offered release.
+        if (_updateInfo.value != null) {
+            viewModelScope.launch {
+                applyUpdateResult(UpdateChecker.check(channel))
+            }
+        }
     }
 
     fun downloadUpdate() {
@@ -1834,6 +1853,7 @@ class MainScreenViewModel(
         private const val KEY_TUN_STACK = "tun_stack"
         private const val KEY_DARK_THEME_STYLE = "pref_dark_theme_style"
         private const val KEY_AUTO_CHECK_UPDATES = "auto_check_updates"
+        private const val KEY_UPDATE_CHANNEL = "update_channel"
         private const val KEY_SKIPPED_VERSION_CODE = "skipped_version_code"
         private const val KEY_REMIND_LATER_UNTIL = "remind_later_until"
         private const val REMIND_LATER_MILLIS = 24L * 60 * 60 * 1000

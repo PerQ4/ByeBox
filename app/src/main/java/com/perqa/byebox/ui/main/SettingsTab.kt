@@ -121,6 +121,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.MainActivity
+import com.perqa.byebox.core.UpdateChannel
 import com.perqa.byebox.core.UpdateDownloadState
 import com.perqa.byebox.theme.AppTheme
 import com.perqa.byebox.theme.AuroraPrimaryDark
@@ -1341,6 +1342,19 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                             }
                                         )
                                     }
+
+                                    SegmentedSelector(
+                                        label = Loc.get("update_channel_label", state.language),
+                                        options = listOf(
+                                            UpdateChannel.STABLE to Loc.get("update_channel_stable", state.language),
+                                            UpdateChannel.DEV to Loc.get("update_channel_dev", state.language)
+                                        ),
+                                        selected = state.updateChannel,
+                                        onSelected = {
+                                            tactileFeedback()
+                                            viewModel.setUpdateChannel(it)
+                                        }
+                                    )
 
                                     val download = state.updateDownload
                                     val info = state.updateInfo
