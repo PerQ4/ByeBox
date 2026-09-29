@@ -101,6 +101,7 @@ separately from the version string, and the in-app updater compares builds by th
 
 - 📐 Policy: [docs/version_naming_policy.md](docs/version_naming_policy.md)
 - 🚀 Release process: [docs/release_process.md](docs/release_process.md)
+- 🏗 Architecture: [docs/architecture.md](docs/architecture.md)
 
 > ⚠️ Builds from the old `9.0` line compared versions by name, so they won't auto-update to
 > the new line. Install a `1.2.x` build once manually — later builds update themselves.
@@ -157,7 +158,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 | `app/src/main/jniLibs/` | Prebuilt `libhev-socks5-tunnel.so` (HevTun) |
 | `gomobile-patch/` | gomobile patch used to build the Xray AAR |
 | `tgwsproxy/` | Telegram WS proxy module — cloned separately (see above) |
-| `docs/` | Versioning policy, release process, mascot brief |
+| `docs/` | Versioning policy, release process, architecture, mascot brief |
 
 ### 🧱 Tech stack
 
@@ -270,6 +271,7 @@ Android-`versionCode` — поэтому он работает даже посл
 
 - 📐 Политика: [docs/version_naming_policy.md](docs/version_naming_policy.md)
 - 🚀 Процесс релиза: [docs/release_process.md](docs/release_process.md)
+- 🏗 Архитектура: [docs/architecture.md](docs/architecture.md)
 
 > ⚠️ Сборки старой линии `9.0` сравнивали версии по имени, поэтому на новую линию они сами не
 > обновятся. Установите сборку `1.2.x` один раз вручную — дальше обновления приходят автоматически.
@@ -326,7 +328,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 | `app/src/main/jniLibs/` | Готовая `libhev-socks5-tunnel.so` (HevTun) |
 | `gomobile-patch/` | Патч gomobile для сборки Xray-обёртки |
 | `tgwsproxy/` | Модуль Telegram WS Proxy — клонируется отдельно (см. выше) |
-| `docs/` | Политика версионирования, процесс релиза, бриф по маскоту |
+| `docs/` | Политика версионирования, процесс релиза, архитектура, бриф по маскоту |
 
 ### 🧱 Технологии
 
