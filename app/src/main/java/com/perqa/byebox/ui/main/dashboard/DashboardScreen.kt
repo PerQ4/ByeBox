@@ -80,10 +80,18 @@ fun DashboardScreen(
                         dnsServer = state.dnsServer,
                         language = state.language,
                         cornerRoundness = state.cornerRoundness,
-                        sessionElapsed = state.sessionElapsed,
                         sessionUpload = state.sessionUpload,
                         sessionDownload = state.sessionDownload
                     )
+
+                    if (state.connectionStatus == ConnectionStatus.CONNECTED) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        SessionDurationCard(
+                            duration = state.sessionDuration,
+                            language = state.language,
+                            cornerRoundness = state.cornerRoundness
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 

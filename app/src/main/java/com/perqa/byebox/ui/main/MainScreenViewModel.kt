@@ -155,7 +155,7 @@ data class MainUiState(
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val downloadSpeed: String = "0.0 KB/s",
     val uploadSpeed: String = "0.0 KB/s",
-    val sessionElapsed: String = "--:--",
+    val sessionDuration: String = "--:--",
     val sessionUpload: String = "",
     val sessionDownload: String = "",
     val appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
@@ -231,7 +231,7 @@ class MainScreenViewModel(
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     private val _downloadSpeed = MutableStateFlow("0.0 KB/s")
     private val _uploadSpeed = MutableStateFlow("0.0 KB/s")
-    private val _sessionElapsed = MutableStateFlow("--:--")
+    private val _sessionDuration = MutableStateFlow("--:--")
     private val _sessionUpload = MutableStateFlow("")
     private val _sessionDownload = MutableStateFlow("")
     private val _appTheme = MutableStateFlow(readEnum(KEY_APP_THEME, AppTheme.SYSTEM_DYNAMIC))
@@ -415,10 +415,10 @@ class MainScreenViewModel(
         _pingingConfigIds,
         _updateDownload,
         _autoCheckUpdates,
-        _sessionElapsed,
         _sessionUpload,
         _sessionDownload,
-        _autoReconnectNetwork
+        _autoReconnectNetwork,
+        _sessionDuration
     ) { a ->
         val f = TypedFlows(a)
         MainUiState(
@@ -474,10 +474,10 @@ class MainScreenViewModel(
             pingingConfigIds = f.get(49),
             updateDownload = f.get(50),
             autoCheckUpdates = f.get(51),
-            sessionElapsed = f.get(52),
-            sessionUpload = f.get(53),
-            sessionDownload = f.get(54),
-            autoReconnectNetwork = f.get(55)
+            sessionUpload = f.get(52),
+            sessionDownload = f.get(53),
+            autoReconnectNetwork = f.get(54),
+            sessionDuration = f.get(55)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -674,7 +674,7 @@ class MainScreenViewModel(
                     _downloadSpeed.value = formatBytesPerSec(downloadBps)
                     _uploadSpeed.value = formatBytesPerSec(uploadBps)
                     val elapsed = SessionStatsManager.elapsedMillis()
-                    _sessionElapsed.value = if (elapsed > 0L) SessionStatsManager.formatElapsed(elapsed) else "--:--"
+                    _sessionDuration.value = if (elapsed > 0L) SessionStatsManager.formatElapsedFull(elapsed) else "--:--"
                     val sessionUp = SessionStatsManager.uploadBytes()
                     val sessionDown = SessionStatsManager.downloadBytes()
                     _sessionUpload.value = if (sessionUp > 0L) SessionStatsManager.formatBytes(sessionUp, _language.value) else ""
@@ -693,7 +693,7 @@ class MainScreenViewModel(
     }
 
     private fun resetSessionUi() {
-        _sessionElapsed.value = "--:--"
+        _sessionDuration.value = "--:--"
         _sessionUpload.value = ""
         _sessionDownload.value = ""
     }

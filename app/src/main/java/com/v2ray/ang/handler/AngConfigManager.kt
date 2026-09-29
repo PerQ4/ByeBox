@@ -1042,6 +1042,13 @@ object AngConfigManager {
                         if (announceText.isNotBlank()) {
                             // Announcement text comes from the panel (subscription), not the app.
                             it.subscription.announce = announceText
+                            // QRATOR/Happ panels sometimes ship the subscription information
+                            // in the `announce` header without sending profile-description.
+                            // In that case show the text as the description block (the announce
+                            // itself is hidden when it equals the description).
+                            if (it.subscription.description.isNullOrBlank()) {
+                                it.subscription.description = announceText
+                            }
                         }
                     }
                     if (key == "support-url" || key == "profile-web-page-url" || key == "announce-url") {
@@ -1118,6 +1125,12 @@ object AngConfigManager {
                                         commentKey == "announce" -> if (it.subscription.announce.isNullOrBlank()) {
                                             // Announcement text comes from the panel (subscription), not the app.
                                             it.subscription.announce = decodedVal
+                                            // Same fallback as with the header: when the panel does not
+                                            // send a profile-description, use the announce text as the
+                                            // description block.
+                                            if (it.subscription.description.isNullOrBlank()) {
+                                                it.subscription.description = decodedVal
+                                            }
                                         }
                                     }
                                 }

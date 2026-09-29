@@ -46,6 +46,16 @@ object SessionStatsManager {
 
     fun downloadBytes(): Long = MmkvManager.decodeSettingsLong(PREF_SESSION_DOWNLOAD_BYTES, 0L)
 
+    /** Formats elapsed milliseconds as `HH:MM:SS` (always two-digit hours). */
+    fun formatElapsedFull(ms: Long): String {
+        if (ms <= 0) return "00:00:00"
+        val totalSec = ms / 1000
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    }
+
     /** Formats elapsed milliseconds as `H:MM:SS` (or `MM:SS` under an hour). */
     fun formatElapsed(ms: Long): String {
         if (ms <= 0) return "00:00"

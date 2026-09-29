@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.QueryBuilder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -206,7 +207,6 @@ fun StatusPillBar(
     dnsServer: DnsServer,
     language: String = "ru",
     cornerRoundness: String = "expressive",
-    sessionElapsed: String = "--:--",
     sessionUpload: String = "",
     sessionDownload: String = "",
     modifier: Modifier = Modifier
@@ -227,13 +227,9 @@ fun StatusPillBar(
         ConnectionStatus.RECONNECTING -> Loc.get("status_reconnecting", language)
         ConnectionStatus.DISCONNECTED -> Loc.get("status_disconnected", language)
     }
-    // Session timer lives inline in the status line so the status card never
-    // grows an extra row just to show it.
-    val statusText = if (status == ConnectionStatus.CONNECTED && sessionElapsed != "--:--") {
-        "$statusLabel · $sessionElapsed"
-    } else {
-        statusLabel
-    }
+    // Session traffic totals share the DNS row so the status card stays two
+    // rows tall regardless of connection state.
+    val statusText = statusLabel
     val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
     val dotAlpha by dotPulse.animateFloat(
         initialValue = 0.3f,
@@ -429,6 +425,59 @@ fun SpeedCard(
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+            )
+        }
+    }
+}
+
+/**
+ * Prominent card showing the current VPN session duration (e.g. "00:14:32").
+ * Shown on the dashboard while the VPN is connected.
+ */
+@Composable
+fun SessionDurationCard(
+    duration: String,
+    language: String = "ru",
+    cornerRoundness: String = "expressive",
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 32.dp else 20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.QueryBuilder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = Loc.get("session_label", language),
+                style = MaterialTheme.typography.labelMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    fontWeight = FontWeight.Black
+                )
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = duration,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
