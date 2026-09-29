@@ -15,8 +15,9 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.5.3-beta.1** | `32` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3-beta.1) |
-| **1.5.2** | `30` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| **1.5.3** | `33` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| 1.5.3-beta.1 | `32` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3-beta.1) |
+| 1.5.2 | `30` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.2) |
 | 1.5.1 | `29` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.1) |
 | 1.5.0 | `28` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.0) |
 | 1.4.0 | `27` | 2026-09-28 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.4.0) |
@@ -87,7 +88,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> Latest **stable** release is **`1.5.2`** (`versionCode 30`); the newest **experimental** build is **`1.5.3-beta.1`** (`versionCode 32`). The universal APK targets `arm64-v8a`.
+> Latest **stable** release is **`1.5.3`** (`versionCode 33`) — the first build shipped with R8 minification enabled. The universal APK targets `arm64-v8a`.
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -256,7 +257,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий стабильный релиз — **`1.5.2`** (`versionCode 30`); свежий экспериментальный билд — **`1.5.3-beta.1`** (`versionCode 32`). Universal-APK рассчитан на `arm64-v8a`.
+> Текущий стабильный релиз — **`1.5.3`** (`versionCode 33`) — первая сборка с включённой минификацией R8. Universal-APK рассчитан на `arm64-v8a`.
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 

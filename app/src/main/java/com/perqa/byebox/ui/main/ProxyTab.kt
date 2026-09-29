@@ -8,6 +8,7 @@ import android.widget.Toast
 import java.util.UUID
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import com.v2ray.ang.handler.AngConfigManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -128,7 +129,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1433,7 +1433,7 @@ fun SourceGroupCard(
                     confirmButton = {
                         TextButton(onClick = {
                             showShareDialog = false
-                            shareText(context, sourceUrl, Loc.get("share_title", language))
+                            shareText(context, sourceUrl, Loc.get("share_title", language), language)
                         }) { Text(Loc.get("share_link", language)) }
                     },
                     dismissButton = {
@@ -1752,7 +1752,11 @@ private fun generateQrBitmap(content: String, sizePx: Int = 512): Bitmap {
     return bitmap
 }
 
-private fun shareText(context: Context, text: String, chooserTitle: String) {
+private fun shareText(context: Context, text: String, chooserTitle: String, language: String = "ru") {
+    if (text.isBlank()) {
+        Toast.makeText(context, Loc.get("share_empty", language), Toast.LENGTH_SHORT).show()
+        return
+    }
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
@@ -1760,8 +1764,63 @@ private fun shareText(context: Context, text: String, chooserTitle: String) {
     context.startActivity(Intent.createChooser(intent, chooserTitle))
 }
 
+/**
+ * Диалог «Поделиться»: отправить контент ссылкой или показать QR-код.
+ * Используется и в карточке конфига, и в меню изменения конфига.
+ */
+@Composable
+private fun ShareConfigDialog(
+    content: String,
+    descriptionKey: String,
+    language: String,
+    onDismiss: () -> Unit,
+    onShowQr: () -> Unit
+) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = Loc.get("share_title", language),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+            )
+        },
+        text = { Text(Loc.get(descriptionKey, language)) },
+        confirmButton = {
+            TextButton(onClick = {
+                shareText(context, content, Loc.get("share_title", language), language)
+            }) { Text(Loc.get("share_link", language)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onShowQr) { Text(Loc.get("share_qr", language)) }
+        },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
+}
+
 @Composable
 private fun QrCodeDialog(content: String, onDismiss: () -> Unit, language: String = "ru") {
+    if (content.isBlank()) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text(
+                    text = Loc.get("qr_title", language),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            text = { Text(Loc.get("share_empty", language)) },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text(Loc.get("ok", language)) }
+            },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+        return
+    }
     val bitmap = remember(content) { generateQrBitmap(content) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1904,35 +1963,21 @@ fun ConfigDetailsSheet(
     val context = LocalContext.current
 
     if (showShareDialog) {
-        AlertDialog(
-            onDismissRequest = { showShareDialog = false },
-            title = {
-                Text(
-                    text = Loc.get("share_title", language),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
-                )
-            },
-            text = { Text(Loc.get("share_config_desc", language)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showShareDialog = false
-                    shareText(context, config.toConfigLink(), Loc.get("share_title", language))
-                }) { Text(Loc.get("share_link", language)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showShareDialog = false
-                    showQrDialog = true
-                }) { Text(Loc.get("share_qr", language)) }
-            },
-            shape = RoundedCornerShape(28.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ShareConfigDialog(
+            content = config.effectiveShareLink(),
+            descriptionKey = "share_config_desc",
+            language = language,
+            onDismiss = { showShareDialog = false },
+            onShowQr = {
+                showShareDialog = false
+                showQrDialog = true
+            }
         )
     }
 
     if (showQrDialog) {
         QrCodeDialog(
-            content = config.toConfigLink(),
+            content = config.effectiveShareLink(),
             onDismiss = { showQrDialog = false },
             language = language
         )
@@ -2807,8 +2852,6 @@ fun ServerItemCard(
     statusText: String? = null,
     language: String = "ru"
 ) {
-    val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     val tactileFeedback = rememberTactileFeedback()
     val scope = rememberCoroutineScope()
     val protocolDetails = remember(config) { config.protocolSummary() }
@@ -2818,6 +2861,8 @@ fun ServerItemCard(
 
     var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
     var actionThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
+    var showShareDialog by remember(config.id) { mutableStateOf(false) }
+    var showQrDialog by remember(config.id) { mutableStateOf(false) }
     val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
     val detachStartPx = remember(density) { with(density) { 14.dp.toPx() } }
     val detachEndPx = remember(density) { with(density) { 58.dp.toPx() } }
@@ -3098,15 +3143,13 @@ fun ServerItemCard(
                         IconButton(
                             onClick = {
                                 tactileFeedback()
-                                val link = config.toConfigLink()
-                                if (link.isNotBlank()) {
-                                    clipboardManager.setText(AnnotatedString(link))
-                                    Toast.makeText(context, Loc.get("link_copied", language), Toast.LENGTH_SHORT).show()
-                                }
+                                showShareDialog = true
                             },
                             modifier = Modifier.size(30.dp)
                         ) {
-                            CopyIcon(
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = Loc.get("share", language),
                                 modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                             )
@@ -3115,6 +3158,27 @@ fun ServerItemCard(
                 }
             }
         }
+    }
+
+    if (showShareDialog) {
+        ShareConfigDialog(
+            content = config.effectiveShareLink(),
+            descriptionKey = "share_config_desc",
+            language = language,
+            onDismiss = { showShareDialog = false },
+            onShowQr = {
+                showShareDialog = false
+                showQrDialog = true
+            }
+        )
+    }
+
+    if (showQrDialog) {
+        QrCodeDialog(
+            content = config.effectiveShareLink(),
+            onDismiss = { showQrDialog = false },
+            language = language
+        )
     }
 }
 
@@ -3144,6 +3208,15 @@ private fun ProxyConfig.protocolSummary(): String {
         flow?.takeIf { it.isNotBlank() }?.replace("xtls-rprx-", "", ignoreCase = true)?.uppercase()
     ).joinToString(" / ").ifBlank { protocol.uppercase() }
 }
+
+/**
+ * Правильный способ получить share-ссылку конфига: через v2rayNG fmt-экспортёры
+ * (AngConfigManager.getShareLink), которые строят корректные ссылки для всех
+ * протоколов (ss/socks/wireguard/hysteria2 и т.д.). Самодельный toConfigLink()
+ * оставлен как fallback (для виртуальных пресетов FASTEST/LAST_ACTIVE и CUSTOM).
+ */
+internal fun ProxyConfig.effectiveShareLink(): String =
+    AngConfigManager.getShareLink(id).ifBlank { toConfigLink() }
 
 private fun ProxyConfig.endpointSummary(): String {
     val host = com.v2ray.ang.util.Utils.maskServerAddress(sni?.takeIf { it.isNotBlank() && it != address } ?: address)

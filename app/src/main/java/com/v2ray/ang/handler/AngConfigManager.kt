@@ -212,6 +212,23 @@ object AngConfigManager {
     }
 
     /**
+     * Builds a shareable link/URI for a config using the protocol-specific
+     * format classes (v2rayNG exporters). The UI copy/share/QR entry points
+     * must use this instead of ad-hoc link builders, which produce broken
+     * links for Shadowsocks/SOCKS/WireGuard/Hysteria2 and friends.
+     *
+     * @param guid The GUID of the configuration.
+     * @return The share URI string ("" when the config cannot be shared as a link).
+     */
+    fun getShareLink(guid: String?): String {
+        if (guid.isNullOrBlank()) return ""
+        val link = shareConfig(guid)
+        // Some types (CUSTOM, HTTP, HYSTERIA, unknown) have no exporter:
+        // shareConfig returns just the empty/partial scheme then — treat as unsupported.
+        return if (link.isBlank() || link.endsWith("://")) "" else link
+    }
+
+    /**
      * Imports a batch of configurations.
      *
      * @param server The server string.

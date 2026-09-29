@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.perqa.byebox.theme.ByeBoxTheme
 import com.perqa.byebox.ui.main.ConnectionStatus
+import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainScreenViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,8 +39,8 @@ import com.perqa.byebox.R
 import com.perqa.byebox.core.AppLogger
 import com.perqa.byebox.core.UpdateCheckScheduler
 import com.perqa.byebox.service.ByeBoxTileService
-import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainUiState
+import com.perqa.byebox.ui.main.effectiveShareLink
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.MmkvManager
@@ -259,7 +260,7 @@ class MainActivity : ComponentActivity() {
     fun shareActiveConfig() {
         val state = viewModel.uiState.value
         val activeConfig = state.configs.find { it.id == state.activeConfigId }
-        val link = activeConfig?.toConfigLink().orEmpty()
+        val link = activeConfig?.effectiveShareLink().orEmpty()
         if (link.isBlank()) {
             Toast.makeText(this, "Нет активной конфигурации для отправки", Toast.LENGTH_SHORT).show()
             return
