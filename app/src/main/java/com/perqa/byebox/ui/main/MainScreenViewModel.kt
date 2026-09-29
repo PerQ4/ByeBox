@@ -721,22 +721,51 @@ class MainScreenViewModel(
     }
 
     fun selectBestConfig() {
-        val responsive = _configs.value
-            .filter { it.ping != null && it.ping < 999 && it.failureCount < 3 }
-        val best = responsive.minByOrNull { it.ping ?: Int.MAX_VALUE }
-            ?: _configs.value
-                .filter { it.ping != null && it.ping < 999 }
-                .minByOrNull { it.ping ?: Int.MAX_VALUE }
-            ?: _configs.value.firstOrNull()
+        viewModelScope.launch {
+            if (_isPinging.value) return@launch
+            _isPinging.value = true
+            try {
+                addLog("[SYSTEM] Запуск тестирования задержки серверов...")
+                val healthUrl = _healthCheckUrl.value.trim()
+                val summary = PingProbe.probeConfigs(
+                    _configs.value,
+                    healthUrl,
+                    onStart = { config -> _pingingConfigIds.value = _pingingConfigIds.value + config.id },
+                    onResult = { config, ping ->
+                        _pingingConfigIds.value = _pingingConfigIds.value - config.id
+                        if (ping != null) {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, ping.toLong())
+                            addLog("[PING] ${config.name} -> $ping ms")
+                        } else {
+                            MmkvManager.encodeServerTestDelayMillis(config.id, 999L)
+                            addLog("[PING] ${config.name} -> timeout")
+                        }
+                    }
+                )
+                addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
+                loadDataFromMmkv()
 
-        if (best == null) {
-            showToast(Loc.get("toast_no_configs", _language.value))
-            return
+                val responsive = _configs.value
+                    .filter { it.ping != null && it.ping < 999 && it.failureCount < 3 }
+                val best = responsive.minByOrNull { it.ping ?: Int.MAX_VALUE }
+                    ?: _configs.value
+                        .filter { it.ping != null && it.ping < 999 }
+                        .minByOrNull { it.ping ?: Int.MAX_VALUE }
+                    ?: _configs.value.firstOrNull()
+
+                if (best == null) {
+                    showToast(Loc.get("toast_no_configs", _language.value))
+                    return@launch
+                }
+
+                selectConfig(best.id)
+                addLog("[SYSTEM] Выбран лучший сервер: ${best.name} (${best.ping?.let { "$it ms" } ?: "N/A"})")
+                showToast(String.format(Loc.get("toast_best_server", _language.value), best.name))
+            } finally {
+                _isPinging.value = false
+                _pingingConfigIds.value = emptySet()
+            }
         }
-
-        selectConfig(best.id)
-        addLog("[SYSTEM] Выбран лучший сервер: ${best.name} (${best.ping?.let { "$it ms" } ?: "N/A"})")
-        showToast(String.format(Loc.get("toast_best_server", _language.value), best.name))
     }
 
     fun addConfigFromUrl(url: String) {
