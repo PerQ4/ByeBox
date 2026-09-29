@@ -1055,6 +1055,10 @@ fun SourceGroupCard(
     val sourceUrl = configs.firstOrNull { it.sourceUrl != null }?.sourceUrl
     val averagePing = configs.mapNotNull { it.ping }.takeIf { it.isNotEmpty() }?.average()?.toInt()
     val activeCount = configs.count { it.id == activeConfigId }
+    // Мета-строка (узлы/иконка/пинг/трафик/chevron) выносится отдельной строкой под
+    // названием только когда в ней есть реальный контент. Для карточек без метаданных
+    // (например, «Пресеты») иконка управления и стрелка остаются в строке названия.
+    val hasMetaContent = showNodeCount || showAvgPing || source != null
     var isRenaming by remember(source?.id) { mutableStateOf(false) }
     var editedName by remember(source?.id, sourceName) { mutableStateOf(source?.name ?: sourceName) }
     var editedUa by remember(source?.id) { mutableStateOf(source?.userAgent ?: "") }
@@ -1398,7 +1402,34 @@ fun SourceGroupCard(
                         TrafficProgressBar(source = it, language = language, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
+                if (!hasMetaContent) {
+                    if (source?.webPageUrl != null || onInfo != null) {
+                        IconButton(
+                            onClick = {
+                                tactileFeedback()
+                                onInfo?.invoke()
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = headerActionIcon,
+                                contentDescription = Loc.get("manage_cd", language),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    if (expandable) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (expanded) Loc.get("collapse_cd", language) else Loc.get("expand_cd", language),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp).padding(2.dp)
+                        )
+                    }
+                }
             }
+            if (hasMetaContent) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1462,6 +1493,7 @@ fun SourceGroupCard(
                         )
                     }
                 }
+            }
 
             source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(
