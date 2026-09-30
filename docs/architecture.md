@@ -139,11 +139,6 @@ _vpnModeEnabled ─┘                            └──▶ UI перерис
 | **MMKV** (`com.tencent:mmkv`) | Настройки ядра, профили v2rayNG, конфиги, подписки | Унаследованное от v2rayNG, доступ из нативного кода и воркеров |
 | **SharedPreferences** | Продуктовые настройки ByeBox: порядок вкладок, режим приложения, онбординг, периодический пинг, тема, оформление | файл `byebox_settings`, читается только Kotlin-кодом приложения |
 
-Зависимость `androidx.datastore.preferences` подключена в `build.gradle.kts`, но
-в коде не используется — вся продуктовая обвязка идёт через
-`appContext.getSharedPreferences("byebox_settings", MODE_PRIVATE)`. Это стоит
-учитывать: искать настройки в DataStore бесполезно, их там нет.
-
 Основной доступ к MMKV идёт через два объекта-шлюза:
 
 - `MmkvManager` — CRUD над сущностями: `decodeServerConfig(guid)`,
@@ -169,11 +164,13 @@ MMKV открыт в `MULTI_PROCESS_MODE` — это нужно, потому к
 
 > **Единственное активное ядро — Xray.** Раньше в проекте параллельно жил sing-box:
 > `app/libs/libbox.aar`, `app/src/main/jniLibs/*/libbox.so` и
-> `app/src/main/assets/sing-box/*/sing-box` для четырёх ABI. Из HEAD они удалены
-> (в истории git они ещё лежат, поэтому `.git` занимает ~264 МБ). Кода, который
-> грузил бы `libbox` или запускал `sing-box`, в проекте нет — `System.loadLibrary`
-> вызывается только для `hev-socks5-tunnel`. Схема `sing-box://` в списке
-> deep-link'ов `MainActivity` — это разбор ссылки на конфиг, а не запуск ядра.
+> `app/src/main/assets/sing-box/*/sing-box` для четырёх ABI. Из HEAD они удалены,
+> а 30 сентября 2026 вычищены и из истории git (`git filter-repo`) — старые SHA
+> при этом сменились, поэтому клонировать репозиторий заново придётся.
+> Кода, который грузил бы `libbox` или запускал `sing-box`, в проекте нет:
+> `System.loadLibrary` вызывается только для `hev-socks5-tunnel`. Схема
+> `sing-box://` в списке deep-link'ов `MainActivity` — это разбор ссылки на конфиг,
+> а не запуск ядра.
 
 ### 6.2 Оборачивание
 
@@ -226,20 +223,47 @@ Shadowsocks, reality, `xtls-rprx-vision`, TLS, WebSocket, gRPC.
 
 ### 6.5 HevTunnel и настройка tunStack
 
+Два независимых понятия, которые раньше были смешаны (исправлено в 1.5.4):
+
+**HevTunnel** — внешний туннель HevSocks5Tunnel вместо нативного TUN ядра.
 В `ByeBoxApplication.onCreate()` принудительно выставляется
-`PREF_USE_HEV_TUNNEL = false`: иначе v2rayNG поднял бы туннель через
-HevSocks5Tunnel вместо нативного TUN Xray.
+`PREF_USE_HEV_TUNNEL = false`: ByeBox всегда работает через нативный TUN Xray.
+Библиотека `libhev-socks5-tunnel.so` остаётся в `app/src/main/jniLibs/` как
+fallback — при неудачной загрузке `isHevLibAvailable()` пишет `false`.
 
-Отсюда важный нюанс: в UI есть настройка «стек TUN» со значением `gvisor`
-(`MainUiState.tunStack`, дефолт `TunStack.GVISOR`, прокидывается в
-`XrayConfigGenerator` как строка `"gvisor"`), и `ProfilePresetManager` маппит
-`GVISOR → PREF_USE_HEV_TUNNEL = true`. То есть UI-значение и фактическое
-поведение расходятся: выбор gvisor в настройках перезаписывается при старте
-приложения на `false`. Если будете чинить эту настройку — начинать надо здесь.
+**Стек TUN** (`MainUiState.tunStack`) — выбор сетевого стека *внутри* ядра:
+`gvisor` (userspace, совместимость) или `system` (ядро Android, скорость).
+Ядро не знает поля `stack`: выбор делается полем **`noKernelTun`** у TUN-инбаунда
+(в `libv2ray.aar` это `json:"noKernelTun"`, логика обратная — `true` = gVisor).
 
-Библиотека `libhev-socks5-tunnel.so` в `app/src/main/jniLibs/` остаётся как
-fallback; при неудачной загрузке `isHevLibAvailable()` пишет `false` и
-переключается на TUN ядра.
+Цепочка применения:
+
+```
+UI: MainScreenViewModel.changeTunStack(stack)
+  ├─▶ MMKV: PREF_TUN_STACK = TunStackMapping.toXrayValue(name)   // "gvisor"/"system"
+  └─▶ ProfilePresetManager.applyProfile → applyTunStackSettings  // то же для пресетов
+
+Сборка конфига: CoreConfigManager.configureInbounds()
+  └─▶ inboundTun.settings.noKernelTun = TunStackMapping.toNoKernelTun(SettingsManager.getTunStack())
+```
+
+Маппинг вынесен в `TunStackMapping` (покрыт `TunStackMappingTest`), чтобы UI,
+пресеты и сборка конфига считали одинаково.
+
+**Дефолт — `system`, и это осознанно.** До 1.5.4 поле `noKernelTun` в конфиг не
+попадало вовсе, то есть ядро фактически работало на системном стеке, хотя UI
+показывал «gVisor». Чтобы багфикс не переключил стек у всех, кто его не выбирал,
+дефолт сохранён (`system`), а `TunStackMapping.toXrayValue` устроен
+fail-safe: **только явный выбор gVisor** даёт `gvisor`, всё остальное — `system`.
+Неизвестное или пустое значение никогда не переводит пользователя на
+userspace-стек.
+
+Миграция при первом запуске (`ByeBoxApplication.migrateTunStackOnce`):
+явный прошлый выбор переносится как есть, отсутствие выбора даёт `system`.
+
+До 1.5.4 настройка писалась в `PREF_USE_HEV_TUNNEL` (то есть путалась с HevTunnel),
+перетиралась при старте приложения и вообще не попадала в конфиг — выбор стека
+не делал ничего.
 
 ## 7. Форматирование и обмен конфигами
 
@@ -319,12 +343,15 @@ WorkManager подключён в мультипроцессном режиме 
 
 То, что стоит держать в голове при работе с кодом:
 
-1. **`tunStack = gvisor` не работает как задумано.** UI пишет
-   `PREF_USE_HEV_TUNNEL = true`, а `ByeBoxApplication` на старте сбрасывает его в
-   `false`. Подробнее — 6.5.
-2. **`androidx.datastore.preferences` подключён, но не используется.** Продуктовые
-   настройки лежат в `SharedPreferences("byebox_settings")`.
-3. **Sing-box в репозитории не активен.** Его бинарники и AAR убраны из HEAD,
-   но остались в истории git (отсюда ~264 МБ в `.git`) — см. 6.1.
-4. **Две модели конфига.** `ProxyConfig` и `ProfileItem` не синхронизируются
-   автоматически; конвертация живёт в `AngConfigManager` — см. 7.
+1. **Две модели конфига.** `ProxyConfig` (плоская, для UI) и `ProfileItem`
+   (вложенная, для ядра) не синхронизируются автоматически; конвертация живёт
+   в `AngConfigManager` — см. 7. Не баг, но источник путаницы: править нужно
+   согласованно в обоих.
+2. **Sing-box в репозитории не активен.** Его бинарники и AAR убраны из HEAD;
+   кода, который их грузит, нет — см. 6.1.
+3. **`XrayConfigGenerator` не используется в проде.** `generate()` вызывается
+   только из тестов; реальный конфиг собирает `CoreConfigManager`. Единая
+   правка конфигурации TUN идтится в `CoreConfigManager`, а не в генератор.
+
+Исправлено в 1.5.4: выбор стека TUN больше не путается с HevTunnel и реально
+доходит до конфига (6.5); зависимость `androidx.datastore.preferences` удалена.

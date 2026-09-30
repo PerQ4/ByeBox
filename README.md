@@ -163,7 +163,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ### 🧱 Tech stack
 
 Kotlin · Jetpack Compose & Material 3 · Navigation 3 · Coroutines & Flow ·
-DataStore · WorkManager · Haze · Xray-core (gomobile AAR) · MMKV · OkHttp ·
+SharedPreferences · WorkManager · Haze · Xray-core (gomobile AAR) · MMKV · OkHttp ·
 Gson · ZXing + ML Kit · CameraX · Rust (TG WS Proxy).
 
 ### 🤝 Acknowledgements
@@ -333,7 +333,7 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ### 🧱 Технологии
 
 Kotlin · Jetpack Compose и Material 3 · Navigation 3 · Coroutines и Flow ·
-DataStore · WorkManager · Haze · Xray-core (AAR через gomobile) · MMKV · OkHttp ·
+SharedPreferences · WorkManager · Haze · Xray-core (AAR через gomobile) · MMKV · OkHttp ·
 Gson · ZXing + ML Kit · CameraX · Rust (TG WS Proxy).
 
 ### 🤝 Благодарности
