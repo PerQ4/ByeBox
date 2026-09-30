@@ -5,6 +5,7 @@ import android.content.res.AssetManager
 import android.os.Build
 import android.text.TextUtils
 import androidx.appcompat.app.AppCompatDelegate
+import com.perqa.byebox.data.TunStackMapping
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.AppConfig.DEFAULT_SUBSCRIPTION_ID
@@ -469,6 +470,16 @@ object SettingsManager {
     fun getVpnMtu(): Int {
         return Utils.parseInt(MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_MTU), AppConfig.VPN_MTU)
     }
+
+    /**
+     * Стек TUN-инбаунда ядра: "gvisor" или "system".
+     *
+     * По умолчанию "system": до 1.5.4 поле `noKernelTun` в конфиг не попадало
+     * вовсе, поэтому ядро работало на системном TUN. Дефолт сохранён, чтобы
+     * обновление не меняло стек у тех, кто его не выбирал.
+     */
+    fun getTunStack(): String =
+        TunStackMapping.normalizeCoreValue(MmkvManager.decodeSettingsString(AppConfig.PREF_TUN_STACK))
 
     /**
      * Check if HEV TUN is being used.

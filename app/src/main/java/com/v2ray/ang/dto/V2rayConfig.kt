@@ -47,7 +47,14 @@ data class V2rayConfig(
             var accounts: List<SocksAccountBean>? = null,
             var name: String? = null,
 
-            var mtu: Int? = null
+            var mtu: Int? = null,
+
+            /**
+             * Принудительно включить сетевой стек gVisor вместо системного.
+             * Соответствует полю `noKernelTun` в TUN-инбаунде ядра Xray:
+             * true — трафик обрабатывает gVisor в userspace, false — ядро Android.
+             */
+            var noKernelTun: Boolean? = null
         ) {
             data class SocksAccountBean(
                 var user: String = "",

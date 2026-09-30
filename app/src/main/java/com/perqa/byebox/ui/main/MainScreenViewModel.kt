@@ -31,6 +31,7 @@ import com.perqa.byebox.core.UpdateInfo
 import com.perqa.byebox.core.HapticType
 import com.perqa.byebox.data.SettingsProfileData
 import com.perqa.byebox.data.ProfilePresetManager
+import com.perqa.byebox.data.TunStackMapping
 import com.perqa.byebox.core.PingProbe
 import com.perqa.byebox.core.ProxyProtocolLabel
 import com.perqa.byebox.core.SettingsBackup
@@ -171,7 +172,7 @@ data class MainUiState(
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
     val toastMessage: String? = null,
-    val tunStack: TunStack = TunStack.GVISOR,
+    val tunStack: TunStack = TunStack.SYSTEM,
     val vpnModeEnabled: Boolean = true,
     val socksPort: String = "10808",
     val proxySharingEnabled: Boolean = false,
@@ -243,7 +244,7 @@ class MainScreenViewModel(
     private val _lanBypassEnabled = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2")
     private val _appRoutingMode = MutableStateFlow(readEnum(KEY_APP_ROUTING_MODE, AppRoutingMode.OFF))
     private val _appRoutingPackages = MutableStateFlow(readString(KEY_APP_ROUTING_PACKAGES, ""))
-    private val _tunStack = MutableStateFlow(readEnum(KEY_TUN_STACK, TunStack.GVISOR))
+    private val _tunStack = MutableStateFlow(readTunStack())
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     val installedApps: List<InstalledAppInfo> get() = _installedApps.value
     private val _healthCheckUrl = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204")
@@ -1240,6 +1241,8 @@ class MainScreenViewModel(
 
         _tunStack.value = stack
         writeString("base_tun_stack", stack.name)
+        // Стек ядра читается при сборке конфига, поэтому храним его в MMKV.
+        MmkvManager.encodeSettings(AppConfig.PREF_TUN_STACK, TunStackMapping.toXrayValue(stack.name))
         propagateActiveProfile()
         addLog("[SYSTEM] TUN стек: ${stack.localizedName(_language.value)}")
         showToast(String.format(Loc.get("toast_tun_stack", _language.value), stack.localizedName(_language.value)))
@@ -1626,6 +1629,19 @@ class MainScreenViewModel(
         return enumValues<T>().firstOrNull { it.name == value } ?: fallback
     }
 
+    /**
+     * Стек TUN — источник истины в MMKV (его читает сборка конфига ядра).
+     * Для существующих установок предусмотрен откат на прежний ключ в
+     * SharedPreferences, чтобы выбор пользователя не терялся при обновлении.
+     */
+    private fun readTunStack(): TunStack {
+        val fromMmkv = MmkvManager.decodeSettingsString(AppConfig.PREF_TUN_STACK)
+        if (!fromMmkv.isNullOrBlank()) {
+            return TunStack.values().firstOrNull { it.xrayValue == fromMmkv } ?: TunStack.SYSTEM
+        }
+        return readEnum(KEY_TUN_STACK, readEnum("base_tun_stack", TunStack.SYSTEM))
+    }
+
     private fun readBoolean(key: String, fallback: Boolean): Boolean {
         return prefs.getBoolean(key, fallback) ?: fallback
     }
@@ -1744,7 +1760,7 @@ class MainScreenViewModel(
         _dnsServer.value = readEnum("base_dns_server", DnsServer.SYSTEM)
         _appRoutingMode.value = readEnum("base_app_routing_mode", AppRoutingMode.OFF)
         _appRoutingPackages.value = readString("base_app_routing_packages_str", "")
-        _tunStack.value = readEnum("base_tun_stack", TunStack.GVISOR)
+        _tunStack.value = readEnum("base_tun_stack", TunStack.SYSTEM)
         _routingDomainStrategy.value = MmkvManager.decodeSettingsString(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY) ?: "AsIs"
         _outboundDomainResolveMethod.value = MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD) ?: "0"
     }
@@ -1789,7 +1805,7 @@ class MainScreenViewModel(
         }
         // 6. tun_stack
         if (!prefs.contains("base_tun_stack")) {
-            val oldVal = prefs.getString("tun_stack", "GVISOR")
+            val oldVal = prefs.getString("tun_stack", "SYSTEM")
             editor.putString("base_tun_stack", oldVal)
         }
         // 7. fake dns

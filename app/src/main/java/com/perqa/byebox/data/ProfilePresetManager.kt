@@ -280,7 +280,13 @@ object ProfilePresetManager {
             profile.tunStack
         }
         prefs.edit().putString("tun_stack", effective).apply()
-        MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, effective == "GVISOR")
+        // Стек ядра читается при сборке конфига, поэтому храним его в MMKV
+        // под собственным ключом. Раньше здесь ошибочно писался PREF_USE_HEV_TUNNEL —
+        // это переключатель внешнего туннеля HevSocks5Tunnel, а не выбор стека.
+        MmkvManager.encodeSettings(
+            AppConfig.PREF_TUN_STACK,
+            TunStackMapping.toXrayValue(effective)
+        )
     }
 
     private fun applyFakeDnsSettings(prefs: android.content.SharedPreferences, profile: SettingsProfileData) {

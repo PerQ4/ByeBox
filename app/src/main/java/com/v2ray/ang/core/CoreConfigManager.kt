@@ -5,6 +5,7 @@ import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import com.perqa.byebox.data.TunStackMapping
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
 import com.v2ray.ang.dto.CoreConfigContext
@@ -538,6 +539,10 @@ object CoreConfigManager {
         if (needTun()) {
             val inboundTun = v2rayConfig.inbounds.firstOrNull { e -> e.tag == "tun" }
             inboundTun?.settings?.mtu = SettingsManager.getVpnMtu()
+            // Стек TUN: gVisor работает в userspace, system использует ядро Android.
+            // В ядре это поле называется noKernelTun (инвертированная логика).
+            inboundTun?.settings?.noKernelTun =
+                TunStackMapping.toNoKernelTun(SettingsManager.getTunStack())
             inboundTun?.sniffing = inbound1.sniffing
         }
     }

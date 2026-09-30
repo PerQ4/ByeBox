@@ -433,7 +433,7 @@ fun OnboardingScreen(
                                     appCount = perAppPackages.size,
                                     customDns = customDns,
                                     dns = remember(dnsServer) { DnsServer.entries.firstOrNull { it.name == dnsServer } ?: DnsServer.SYSTEM },
-                                    tun = remember(tunStack) { TunStack.entries.firstOrNull { it.name == tunStack } ?: TunStack.GVISOR },
+                                    tun = remember(tunStack) { TunStack.entries.firstOrNull { it.name == tunStack } ?: TunStack.SYSTEM },
                                     roundness = roundness,
                                     dark = remember(darkStyle) { DarkThemeStyle.entries.firstOrNull { it.name == darkStyle } ?: DarkThemeStyle.STANDARD },
                                     glass = glassBar,
