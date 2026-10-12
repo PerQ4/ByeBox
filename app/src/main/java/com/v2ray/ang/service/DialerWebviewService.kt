@@ -42,6 +42,13 @@ class DialerWebviewService : IDialerService {
                 mediaPlaybackRequiresUserGesture = false
                 // Prevent aggressive caching issues
                 cacheMode = WebSettings.LOAD_DEFAULT
+                // Диалог поднимается только как локальный http://127.0.0.1 — доступ
+                // к файлам и content:// не нужен. Отключаем его, чтобы страница
+                // (JS из ответа ядра) не могла читать локальные файлы приложения.
+                allowFileAccess = false
+                allowContentAccess = false
+                allowFileAccessFromFileURLs = false
+                allowUniversalAccessFromFileURLs = false
             }
 
             webViewClient = object : WebViewClient() {

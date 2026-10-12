@@ -34,7 +34,13 @@ object SettingsBackup {
 
     /**
      * Exports all settings into a zip archive stored in the user's Downloads folder.
-     * @return the created file's display name, or null on failure.
+     *
+     * На API 29+ используется MediaStore.Downloads (публичные «Загрузки»).
+     * На API 24–28 публичный каталог требует WRITE_EXTERNAL_STORAGE, которого у
+     * приложения нет, поэтому архив пишется в app-private внешний каталог, а
+     * возвращаемая строка содержит путь, чтобы пользователь видел, где файл.
+     *
+     * @return имя/путь созданного файла, либо null при ошибке.
      */
     fun exportToDownloads(context: Context): String? {
         val workDir = File(context.cacheDir, "byebox_backup_${System.currentTimeMillis()}")
@@ -58,8 +64,9 @@ object SettingsBackup {
         val zipFile = File(context.cacheDir, displayName)
         return try {
             zipDirectory(workDir, zipFile)
-            val saved = saveToDownloads(context, zipFile, displayName)
-            if (saved) displayName else null
+            // saveToDownloads возвращает строку для показа пользователю
+            // (имя файла либо имя+путь), null — при ошибке.
+            saveToDownloads(context, zipFile, displayName)
         } catch (e: Exception) {
             null
         } finally {
@@ -110,7 +117,13 @@ object SettingsBackup {
         }
     }
 
-    private fun saveToDownloads(context: Context, zipFile: File, displayName: String): Boolean {
+    /**
+     * Сохраняет архив: на API 29+ — в публичные «Загрузки» через MediaStore,
+     * на API<29 — в app-private внешний каталог.
+     *
+     * @return строка для показа пользователю (имя файла либо имя+путь), null при ошибке.
+     */
+    private fun saveToDownloads(context: Context, zipFile: File, displayName: String): String? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, displayName)
@@ -118,17 +131,30 @@ object SettingsBackup {
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
             }
             val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            val itemUri = context.contentResolver.insert(collection, values) ?: return false
-            return context.contentResolver.openOutputStream(itemUri)?.use { out ->
+            val itemUri = context.contentResolver.insert(collection, values) ?: return null
+            val ok = context.contentResolver.openOutputStream(itemUri)?.use { out ->
                 zipFile.inputStream().use { it.copyTo(out) }
                 true
             } ?: false
+            return if (ok) displayName else null
         } else {
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!dir.exists() && !dir.mkdirs()) return false
+            // API 24–28: без разрешения WRITE_EXTERNAL_STORAGE публичный
+            // Environment.getExternalStoragePublicDirectory() кидает
+            // SecurityException. Разрешение в манифесте не запрашиваем,
+            // поэтому пишем в app-private внешний каталог (разрешений не
+            // требует, удаляется вместе с приложением).
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: context.filesDir
+            if (!dir.exists() && !dir.mkdirs()) return null
             val outFile = File(dir, displayName)
             zipFile.inputStream().use { input -> FileOutputStream(outFile).use { input.copyTo(it) } }
-            return true
+            LogUtil.w(
+                AppConfig.TAG,
+                "Backup: API<29 — сохранено в app-private каталог: ${outFile.absolutePath}"
+            )
+            // Возвращаем не только имя, но и реальный путь: сообщение об успехе
+            // показывает его пользователю, т.к. файл лежит не в «Загрузках».
+            return "${outFile.name} (${outFile.parentFile?.absolutePath})"
         }
     }
 

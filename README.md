@@ -138,6 +138,12 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ./gradlew assembleRelease    # signed release
 ```
 
+> **Release build.** `assembleRelease` produces a single-ABI
+> `byebox-arm64-v8a-release.apk`. Release builds run R8 (`isMinifyEnabled = true`)
+> and resource shrinking (`isShrinkResources = true`), so unused resources are
+> stripped automatically — anything referenced dynamically must be listed in
+> `res/raw/keep.xml`.
+
 > **Signing.** Both build types are signed from `keystore/byebox.jks`, which is
 > *not* committed. Either drop your own keystore at that path, or point Gradle to
 > it in `local.properties`:
@@ -307,6 +313,11 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ./gradlew assembleDebug      # debug
 ./gradlew assembleRelease    # подписанный release
 ```
+
+> **Release-сборка.** `assembleRelease` собирает одно-ABI APK
+> `byebox-arm64-v8a-release.apk`. В release включены R8 (`isMinifyEnabled = true`)
+> и удаление неиспользуемых ресурсов (`isShrinkResources = true`) — динамически
+> (по имени) используемые ресурсы нужно перечислить в `res/raw/keep.xml`.
 
 > **Подпись.** Обе сборки подписываются ключом `keystore/byebox.jks`, которого
 > **нет** в репозитории. Положите свой ключ по этому пути либо укажите его в

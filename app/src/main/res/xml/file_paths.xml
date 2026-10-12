@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-files-path name="updates" path="updates" />
-    <!-- shareQr кладёт сгенерированный QR в context.cacheDir -->
-    <cache-path name="cache" path="." />
+    <!--
+        Раньше здесь было <cache-path name="cache" path="." />, что через
+        FileProvider раскрывало ВЕСЬ context.cacheDir. Сейчас в коде не осталось
+        ни одного вызова FileProvider.getUriForFile() для cacheDir:
+          * QR-код показывается прямо в диалоге как Bitmap (ProxyTab.kt),
+            а не шарится файлом;
+          * установка APK использует external-files-path "updates"
+            (UpdateDownloader.kt).
+        Поэтому каталог сужен до выделенного подкаталога shared/, чтобы случайно
+        не отдать наружу чужие временные файлы из cacheDir. Если шаринг QR/файла
+        через FileProvider появится, кладите файл в cacheDir/shared/.
+    -->
+    <cache-path name="shared" path="shared/" />
 </paths>

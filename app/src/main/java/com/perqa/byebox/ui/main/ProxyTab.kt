@@ -91,7 +91,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -158,15 +157,11 @@ fun ProxyTab(
 ) {
     val tactileFeedback = rememberTactileFeedback()
     val context = LocalContext.current
-    var importUrl by remember { mutableStateOf("") }
-    var importUrlError by remember { mutableStateOf(false) }
     // rememberSaveable (вместо remember) — чтобы поиск и сортировка переживали
     // выход вкладки из композиции под rememberSaveableStateHolder в MainScreen.
     var nodeSearchQuery by rememberSaveable { mutableStateOf("") }
     var sortMode by rememberSaveable { mutableStateOf(NodeSortMode.DEFAULT) }
     var showProxyToolsSheet by remember { mutableStateOf(false) }
-    var controlPanelExpanded by remember { mutableStateOf(true) }
-    var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
     var collapsedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var swipingConfigId by remember { mutableStateOf<String?>(null) }
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
@@ -294,10 +289,6 @@ fun ProxyTab(
     val sourcesByName = remember(state.subscriptionSources) {
         state.subscriptionSources.associateBy { it.name }
     }
-    val autoControlPanelCollapsed by remember {
-        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 48 }
-    }
-    val controlPanelCollapsed = !controlPanelExpanded || (autoControlPanelCollapsed && !controlPanelManuallyExpanded)
 
     configDetails?.let { config ->
         ConfigDetailsSheet(
@@ -578,212 +569,6 @@ fun ProxyTab(
     }
 }
 
-@Composable
-fun ProxyControlPanel(
-    sourceCount: Int,
-    configCount: Int,
-    isPinging: Boolean,
-    importUrl: String,
-    onImportUrlChange: (String) -> Unit,
-    importUrlError: Boolean,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    collapsed: Boolean,
-    onToggleExpanded: () -> Unit,
-    sortMode: NodeSortMode,
-    language: String = "ru",
-    onOpenFilters: () -> Unit,
-    onRefreshSubscriptions: () -> Unit,
-    onPingAll: () -> Unit,
-    onAddConfig: () -> Unit
-) {
-    val tactileFeedback = rememberTactileFeedback()
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp)),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = Loc.get("configurations", language),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    Text(
-                        text = String.format(Loc.get("sources_nodes_fmt", language), sourceCount, configCount),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            fontWeight = FontWeight.Medium
-                        )
-                    )
-                }
-                if (isPinging) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
-                } else {
-                    TextButton(
-                        onClick = {
-                            tactileFeedback()
-                            onToggleExpanded()
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = if (collapsed) Loc.get("expand", language) else Loc.get("collapse", language),
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = isPinging) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .clip(RoundedCornerShape(999.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-            }
-
-            AnimatedVisibility(visible = !collapsed) {
-                Column {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ProxySearchField(
-                        value = searchQuery,
-                        onValueChange = onSearchQueryChange,
-                        onOpenFilters = {
-                            tactileFeedback()
-                            onOpenFilters()
-                        },
-                        language = language
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = importUrl,
-                        onValueChange = onImportUrlChange,
-                        placeholder = {
-                            Text(
-                                Loc.get("import_placeholder", language),
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        maxLines = 1,
-                        isError = importUrlError,
-                        supportingText = if (importUrlError) {
-                            { Text(Loc.get("import_error_hint", language)) }
-                        } else {
-                            null
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    CompositionLocalProvider(
-                        LocalTextStyle provides MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    tactileFeedback()
-                                    onRefreshSubscriptions()
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(20.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .weight(1f)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(Loc.get("refresh_short", language), fontWeight = FontWeight.Bold)
-                            }
-
-                            Button(
-                                onClick = {
-                                    tactileFeedback()
-                                    onPingAll()
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                ),
-                                shape = RoundedCornerShape(20.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .weight(0.72f)
-                            ) {
-                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(Loc.get("ping", language), fontWeight = FontWeight.Bold)
-                            }
-
-                            Button(
-                                onClick = {
-                                    tactileFeedback()
-                                    onAddConfig()
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                ),
-                                shape = RoundedCornerShape(20.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .weight(1.05f)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(Loc.get("add", language), fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    SortSummaryBar(
-                        selected = sortMode,
-                        searchQuery = searchQuery,
-                        language = language,
-                        onOpenFilters = {
-                            tactileFeedback()
-                            onOpenFilters()
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
 private fun List<ProxyConfig>.sortedFor(mode: NodeSortMode): List<ProxyConfig> {
     return when (mode) {
         NodeSortMode.DEFAULT -> this
@@ -977,63 +762,6 @@ fun ProxyToolsSheet(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun SortSummaryBar(
-    selected: NodeSortMode,
-    searchQuery: String,
-    onOpenFilters: () -> Unit,
-    language: String = "ru"
-) {
-    val label = if (searchQuery.isBlank()) {
-        String.format(Loc.get("sort_by_fmt", language), selected.label(language))
-    } else {
-        String.format(Loc.get("filter_by_fmt", language), searchQuery)
-    }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onOpenFilters),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
-        tonalElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(17.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowUp,
-                contentDescription = Loc.get("open_filters_cd", language),
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .size(18.dp)
-                    .rotate(90f)
-            )
         }
     }
 }

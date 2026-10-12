@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Сетевые политики ByeBox.
+
+    ВАЖНО: cleartext (обычный http) в base-config намеренно оставлен разрешённым
+    (true). Причина — функциональная совместимость:
+
+      1) подписки пользователя могут приходить обычными http-ссылками на
+         произвольные хосты, которые нельзя перечислить в domain-config заранее;
+      2) локальный диалог DialerWebviewService открывается по http://127.0.0.1.
+
+    Если сделать cleartext запрещённым глобально (false), оба сценария перестанут
+    работать («сеть падает»), поэтому здесь выбран безопасный для работы вариант.
+    Когда поддержка http-подписок будет убрана, стоит ужесточить политику:
+    выставить <base-config cleartextTrafficPermitted="false"> и добавить
+    domain-config с явными хостами, например:
+
+        <domain-config cleartextTrafficPermitted="true">
+            <domain includeSubdomains="false">127.0.0.1</domain>
+            <domain includeSubdomains="false">localhost</domain>
+        </domain-config>
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

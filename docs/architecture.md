@@ -42,10 +42,10 @@ Prebuilt `.so` лежат в `tgwsproxy/app/src/main/jniLibs/` (только `ar
 | Пакет | Файлов | Ответственность |
 |---|---|---|
 | `ui/main` | 19 | Экраны, диалоги, компоненты, локализация, ViewModel |
-| `ui/main/dashboard` | 8 | Главный экран: кнопка подключения, карточки статуса, быстрые действия |
+| `ui/main/dashboard` | 7 | Главный экран: кнопка подключения, карточки статуса, профили, TGWS |
 | `core` | 12 | Логирование, пинг, трафик, обновление, бэкап, генерация Xray-конфига |
-| `data` | 5 | Модели (`ProxyConfig`), подписки, пресеты, ключи настроек |
-| `service` | 3 | Плитки быстрых настроек, уведомление VPN |
+| `data` | 6 | Модели (`ProxyConfig`), подписки, пресеты, ключи настроек, маппинг TUN |
+| `service` | 2 | Плитки быстрых настроек |
 | `theme` | 3 | Цвета, типографика, тема Material 3 |
 
 ### 2.2 `com.v2ray.ang` — унаследованное от v2rayNG
@@ -101,7 +101,10 @@ Prebuilt `.so` лежат в `tgwsproxy/app/src/main/jniLibs/` (только `ar
 ### 4.2 ViewModel и единое состояние
 
 `MainScreenViewModel` — единственный крупный ViewModel приложения. Он держит
-~40 отдельных `MutableStateFlow`, которые затем **склеиваются в один** `MainUiState`:
+64 отдельных `MutableStateFlow` (плюс поток `AppLogger.logs`). 57 потоков
+**склеиваются в один** `MainUiState` через `combine(...)`, а остальные 8
+(порядок вкладок, режим приложения, периодический пинг, онбординг) читаются
+напрямую:
 
 ```
 _configs ─┐
@@ -112,8 +115,8 @@ _downloadSpeed ─┤                            │
 _vpnModeEnabled ─┘                            └──▶ UI перерисовывается целиком
 ```
 
-`MainUiState` (в `MainScreenViewModel.kt`) — это `@Immutable data class` примерно
-из 60 полей: список конфигов, активный конфиг, статус соединения, скорости, тема,
+`MainUiState` (в `MainScreenViewModel.kt`) — это `@Immutable data class` из 57
+полей: список конфигов, активный конфиг, статус соединения, скорости, тема,
 профиль маршрутизации, DNS, tun-стек, флаги фич и т.д. Такой «плоский» подход
 означает, что любое изменение перерисовывает нужные экраны реактивно, без ручного
 кэширования состояния в composable-функциях.
@@ -230,6 +233,9 @@ Shadowsocks, reality, `xtls-rprx-vision`, TLS, WebSocket, gRPC.
 `PREF_USE_HEV_TUNNEL = false`: ByeBox всегда работает через нативный TUN Xray.
 Библиотека `libhev-socks5-tunnel.so` остаётся в `app/src/main/jniLibs/` как
 fallback — при неудачной загрузке `isHevLibAvailable()` пишет `false`.
+В `jniLibs` лежат сборки под `arm64-v8a`, `armeabi-v7a` и `x86_64`, но
+`ndk.abiFilters` в `app/build.gradle.kts` оставляет в APK только `arm64-v8a`
+(сборка одно-ABI; `x86_64` в APK не попадает).
 
 **Стек TUN** (`MainUiState.tunStack`) — выбор сетевого стека *внутри* ядра:
 `gvisor` (userspace, совместимость) или `system` (ядро Android, скорость).
@@ -314,7 +320,8 @@ WorkManager подключён в мультипроцессном режиме 
 
 `UpdateChecker` разбирает тело релиза по маркеру `<!-- byebox:versionCode=N -->`
 и сравнивает версии **по `versionCode`**, попутно отбрасывая пре-релизы, если
-пользователь не подписан на канал STAGE. Формат версий и публикация — см.
+пользователь не подписан на канал `DEV` (`UpdateChannel.STABLE` / `UpdateChannel.DEV`).
+Формат версий и публикация — см.
 `docs/version_naming_policy.md` и `docs/release_process.md`.
 
 ## 9. Прочее
@@ -329,15 +336,17 @@ WorkManager подключён в мультипроцессном режиме 
 - **Форматирование:** `JsonConfigEditorDialog` — просмотр/правка сырого JSON конфига.
 - **Профили настроек:** `ProfilePresetManager` — именованные пресеты с
   `applyProfile`, `switchActiveProfile`, `reconcileAssignments`.
-- **Сборка:** `version.properties` → `BuildConfig`; release с `isMinifyEnabled = true`
-  и правилами в `app/proguard-rules.pro`: keep для `go.**` / `libv2ray.**`
+- **Сборка:** `version.properties` → `BuildConfig`; release с `isMinifyEnabled = true`,
+  `isShrinkResources = true` и правилами в `app/proguard-rules.pro`: keep для `go.**` / `libv2ray.**`
   (Go-мост gomobile), DTO `com.v2ray.ang.dto.**` (Gson создаёт их рефлексией),
   `androidx.work.impl.**`, `com.google.mlkit.**` (регистры через
   ComponentDiscovery) и `Serializable`. Правило для Room нужно, потому что Room
   приходит транзитивно вместе с WorkManager, и его сгенерированные `*_Impl`-классы
   создаются рефлексией — самого Room в коде приложения нет.
-- **Тесты:** `app/src/test` — 6 файлов, в основном на `XrayConfigGenerator`,
-  `ProxyConfig.toConfigLink`, round-trip форматтеров, `SemVer`, пресеты.
+- **Тесты:** `app/src/test` — 10 файлов: `XrayConfigGenerator`, `ProxyConfig.toConfigLink`,
+  round-trip форматтеров, `SemVer`, `TunStackMapping` / TUN-стек в конфиге, пресеты
+  (`SettingsProfileData`), `UpdateChecker`, `ProxyProtocolLabel` и паритет словарей
+  (`LocParityTest`).
 
 ## 10. Известные расхождения
 

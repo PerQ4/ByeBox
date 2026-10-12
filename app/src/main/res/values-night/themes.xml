@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Ночной вариант манифестной темы окна. Тёмный parent нужен, чтобы при запуске
+    приложения в тёмной системной теме не было светлой вспышки до отрисовки
+    Compose-темы. Имя стиля обязано совпадать с values/themes.xml.
+-->
+<resources>
+
+    <style name="Theme.ByeBox" parent="android:Theme.Material.NoActionBar" />
+</resources>

@@ -81,14 +81,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -173,28 +169,6 @@ fun BottomEdgeFade(modifier: Modifier = Modifier) {
             )
     )
 }
-
-fun Modifier.verticalOverflowFade(
-    fadeFraction: Float = 0.22f,
-    enabled: Boolean = true
-): Modifier = this
-    .clipToBounds()
-    .graphicsLayer {
-        compositingStrategy = CompositingStrategy.Offscreen
-    }
-    .drawWithContent {
-        drawContent()
-        if (enabled && size.height > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.Black,
-                    (1f - fadeFraction).coerceIn(0f, 1f) to Color.Black,
-                    1f to Color.Transparent
-                ),
-                blendMode = BlendMode.DstIn
-            )
-        }
-    }
 
 @Composable
 fun FloatingContextAction(

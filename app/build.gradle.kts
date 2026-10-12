@@ -67,7 +67,8 @@ android {
         buildConfigField("int", "VERSION_STAGE_NUMBER", "$vStageNumber")
         buildConfigField("String", "BUILD_DATE", "\"$vBuildDate\"")
         buildConfigField("int", "BUILD_NUMBER", "$vCode")
-        multiDexEnabled = true
+        // multiDexEnabled не задаём: при minSdk 24 native multidex включён по
+        // умолчанию, флаг был избыточен.
         // Единственный поддерживаемый ABI — arm64-v8a. ABI-сплиты и universal APK
         // намеренно отключены: при `abiFilters` они давали два БАЙТ-ИДЕНТИЧНЫХ
         // APK (~79 МБ каждый) и только раздували вывод сборки.
@@ -223,6 +224,11 @@ dependencies {
   implementation(libs.preference.ktx)
   implementation(libs.work.runtime.ktx)
   implementation(libs.work.multiprocess)
+  // androidx.multidex оставлен намеренно: ByeBoxApplication наследуется от
+  // androidx.multidex.MultiDexApplication. При minSdk 24 сам флаг
+  // multiDexEnabled избыточен (убран выше), но зависимость нужна для
+  // компиляции класса приложения. Удалять её можно только вместе со сменой
+  // базового класса ByeBoxApplication на android.app.Application.
   implementation(libs.multidex)
   implementation(libs.zxing.core)
   implementation(libs.androidx.camera.camera2)
