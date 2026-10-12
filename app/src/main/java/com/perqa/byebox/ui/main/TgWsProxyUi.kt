@@ -52,6 +52,7 @@ import com.amurcanov.tgwsproxy.ProxyController
 import com.amurcanov.tgwsproxy.ProxyService
 import com.amurcanov.tgwsproxy.R as TgwsR
 import com.amurcanov.tgwsproxy.SettingsStore
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 private fun generateRandomSecret(): String {
@@ -59,26 +60,6 @@ private fun generateRandomSecret(): String {
     java.security.SecureRandom().nextBytes(bytes)
     return bytes.joinToString("") { "%02x".format(it) }
 }
-
-private val tgClientPackages = listOf(
-    "org.telegram.messenger",
-    "com.radolyn.ayugram",
-    "com.exteragram.messenger",
-    "org.telegram.plus",
-    "ir.ilmili.telegraph",
-    "org.telegram.BifToGram",
-    "tw.nekomimi.nekogram",
-    "xyz.nextalone.nagram",
-    "uz.unnarsx.cherrygram",
-    "org.telegram.mdgram",
-    "org.forkclient.messenger.beta",
-    "app.nicegram",
-    "top.qwq2333.nullgram",
-    "com.iMe.android",
-    "ru.dahl.messenger",
-    "com.scriptsaz.litegram",
-    "org.thunderdog.challegram"
-)
 
 @Composable
 private fun TgwsPortRow(
@@ -363,8 +344,12 @@ fun TgWsProxySettingsContent(
 
     var showPicker by remember { mutableStateOf(false) }
     var poolExpanded by remember { mutableStateOf(false) }
-    val clientApps = remember(viewModel) {
-        (viewModel?.installedApps ?: emptyList()).filter { it.packageName in tgClientPackages }
+    val installedAppsFlow = remember(viewModel) {
+        viewModel?.installedAppsState ?: MutableStateFlow<List<InstalledAppInfo>>(emptyList())
+    }
+    val installed by installedAppsFlow.collectAsStateWithLifecycle()
+    val clientApps = remember(installed) {
+        installed.filter { it.packageName in telegramPackages }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -455,7 +440,11 @@ fun TgWsProxySettingsContent(
             SettingsGroup(title = Loc.get("tgws_dc_title", language)) {
                 val dcNames = listOf("dc1", "dc2", "dc3", "dc4", "dc5", "dc203")
                 dcNames.forEachIndexed { i, name ->
-                    val v by settingsStore.dcByName(name).collectAsStateWithLifecycle(initialValue = "")
+                    // dcByName — это функция, возвращающая новый Flow на каждый вызов.
+                    // Без remember коллектор пересоздаётся на каждой рекомпозиции и
+                    // поле мигает initialValue. Фиксируем Flow по имени.
+                    val dcFlow = remember(name) { settingsStore.dcByName(name) }
+                    val v by dcFlow.collectAsStateWithLifecycle(initialValue = "")
                     TgwsTextFieldRow(
                         title = name.uppercase(),
                         value = v,

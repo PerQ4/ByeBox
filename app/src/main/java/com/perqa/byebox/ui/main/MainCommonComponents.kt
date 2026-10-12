@@ -316,7 +316,7 @@ fun AppPickerSheet(
     var hideSystem by remember { mutableStateOf(true) }
     var localSelected by remember { mutableStateOf(selectedPackages) }
     var showExitDialog by remember { mutableStateOf(false) }
-    val hasChanges by remember {
+    val hasChanges by remember(selectedPackages) {
         derivedStateOf { localSelected != selectedPackages }
     }
 

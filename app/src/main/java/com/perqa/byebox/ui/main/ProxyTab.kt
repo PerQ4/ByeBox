@@ -485,7 +485,14 @@ fun ProxyTab(
                         showFlags = state.showFlagsEnabled,
                         language = state.language,
                         onInfo = subSource?.webPageUrl?.let { url ->
-                            { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                            {
+                                // webPageUrl приходит из данных подписки (недоверенный
+                                // ввод): при отсутствии обработчика был бы
+                                // ActivityNotFoundException.
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                }
+                            }
                         }
                     )
                 }
@@ -1896,7 +1903,7 @@ fun ConfigDetailsSheet(
     var pbk by remember(config) { mutableStateOf(config.pbk ?: "") }
     var sid by remember(config) { mutableStateOf(config.sid ?: "") }
 
-    val hasChanges by remember {
+    val hasChanges by remember(config) {
         derivedStateOf {
             isEditing && (
                 name != config.name ||
@@ -2431,7 +2438,7 @@ fun SubscriptionSettingsSheet(
     val tactileFeedback = rememberTactileFeedback()
     val context = LocalContext.current
 
-    val hasChanges by remember {
+    val hasChanges by remember(source) {
         derivedStateOf {
             editedName != source.name ||
                 editedUa != (source.userAgent ?: "") ||

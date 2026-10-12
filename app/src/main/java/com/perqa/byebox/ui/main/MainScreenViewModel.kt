@@ -247,6 +247,8 @@ class MainScreenViewModel(
     private val _tunStack = MutableStateFlow(readTunStack())
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     val installedApps: List<InstalledAppInfo> get() = _installedApps.value
+    /** Реактивный источник того же списка — для Compose (collectAsStateWithLifecycle). */
+    val installedAppsState: StateFlow<List<InstalledAppInfo>> get() = _installedApps
     private val _healthCheckUrl = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204")
     private val _vpnModeEnabled = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN")
     private val _socksPort = MutableStateFlow(MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808")

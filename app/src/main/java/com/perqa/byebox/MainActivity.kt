@@ -307,6 +307,14 @@ private fun MainUiState.runtimeSignature(): String {
     return listOf(
         activeConfigId.orEmpty(),
         dnsServer.name,
+        // Свои DNS и кастомные правила участвуют в сборке конфига ядра, поэтому
+        // их смена тоже должна перезапускать туннель (propagateActiveProfile
+        // обновляет конфиг, но работающее ядро старое до рестарта).
+        customDnsServer,
+        customDirectRules,
+        customProxyRules,
+        routingDomainStrategy,
+        outboundDomainResolveMethod,
         routingProfile.name,
         lanBypassEnabled,
         appRoutingMode.name,

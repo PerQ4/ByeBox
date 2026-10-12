@@ -1,6 +1,6 @@
 package com.perqa.byebox.ui.main.dashboard
 
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -106,7 +106,13 @@ fun ProfilePresetsCard(
             // снизу TGWS, нижний запас страницы и небольшой зазор
             // (14dp между блоками + 20dp запаса).
             val interAndReservePx = with(density) { 34.dp.toPx() }
-            val minPeekPx = with(density) { 110.dp.toPx() }
+            // Нижняя граница = примерно одна строка пресета. ВАЖНО: при
+            // подключённом VPN сверху появляется карточка сессии (+~58dp), и
+            // свободного места остаётся ~64dp. Если минимум выше этого, список
+            // не может сократиться на всю высоту карточки — остаток уходит вниз
+            // и панель TGWS съезжает. 56dp позволяет компенсации быть точной,
+            // а список всё равно остаётся прокручиваемым (видна строка).
+            val minPeekPx = with(density) { 56.dp.toPx() }
             val maxPeekPx = with(density) { 360.dp.toPx() }
             val availablePx = viewportHeightPx!! -
                 reservedCollapsedAbovePx!! -
@@ -121,7 +127,12 @@ fun ProfilePresetsCard(
     }
     val peekHeight = dynamicPeekHeight
     val peekHeightPx = with(density) { peekHeight.toPx() }
-    val overflowsCollapsed = collapsed && scrollState.maxValue > 0f
+    // Нельзя опираться на scrollState.maxValue: она зависит от высоты
+    // контейнера, а высота контейнера выводится из контента — получался
+    // самоусиливающийся цикл (нижний спейсер раздувает контейнер -> maxValue>0
+    // -> спейсер остаётся). Сравниваем измеренный контент с peek напрямую: это
+    // чистая функция от уже известных величин и не создаёт обратной связи.
+    val overflowsCollapsed = collapsed && contentHeightPx > peekHeightPx
     // Сворачивание имеет смысл только когда в свёрнутом виде список реально
     // обрезается (контент выше peek). Если весь список и так помещается
     // (пресетов меньше, чем нужно для обрезания), переключатель не нужен:
@@ -255,30 +266,34 @@ fun ProfilePresetsCard(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize(animationSpec = tween(320))
-        ) {
+        // Высоту тела списка анимируем ТОЛЬКО на переходе развернуть/свернуть.
+        // Изменение peek (например, из-за появления/исчезновения карточки
+        // сессии) применяем мгновенно: если анимировать и его, список
+        // «доигрывает» прежнюю высоту 320 мс, и панель TGWS под ним плывёт.
+        val expandedBodyPx = if (contentHeightPx > 0f) contentHeightPx else peekHeightPx
+        val collapsedBodyPx = if (contentHeightPx > 0f) {
+            minOf(contentHeightPx, peekHeightPx)
+        } else {
+            peekHeightPx
+        }
+        val collapseProgress by animateFloatAsState(
+            targetValue = if (collapsed) 1f else 0f,
+            animationSpec = tween(320),
+            label = "presetsCollapse"
+        )
+        val bodyHeightPx = expandedBodyPx + (collapsedBodyPx - expandedBodyPx) * collapseProgress
+
+        Box(modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = if (collapsed) {
-                    // Свёрнутая высота = min(контент, peek): при малом числе пресетов
-                    // (меньше, чем нужно для обрезания) контейнер сжимается ровно под
-                    // контент, а не занимает всю свободную высоту экрана — иначе блок
-                    // с 1-2 пресетами выглядит разложенным с пустой прокручиваемой зоной.
-                    val bodyHeightPx = if (contentHeightPx > 0f) {
-                        minOf(contentHeightPx, peekHeightPx)
-                    } else {
-                        peekHeightPx
-                    }
-                    Modifier
-                        .fillMaxWidth()
-                        .height(with(density) { bodyHeightPx.toDp() })
-                        .verticalScroll(scrollState)
-                        .nestedScroll(parentScrollBlocker)
-                } else {
-                    Modifier
-                }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(with(density) { bodyHeightPx.toDp() })
+                    // verticalScroll держим всегда: он измеряет контент без
+                    // ограничения по высоте, поэтому contentHeightPx всегда
+                    // равен настоящей высоте списка, а не высоте контейнера.
+                    // Когда список помещается целиком, прокрутки нет (maxValue 0).
+                    .verticalScroll(scrollState)
+                    .nestedScroll(parentScrollBlocker)
             ) {
                 Column(
                     modifier = Modifier

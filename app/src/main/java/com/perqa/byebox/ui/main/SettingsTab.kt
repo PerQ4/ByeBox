@@ -1522,13 +1522,16 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                     }
                     SettingsSubMenu.LOGS -> { /* handled above */ }
                     SettingsSubMenu.TILES -> {
-                        val appModePref = appCtx.getSharedPreferences("byebox_settings", android.content.Context.MODE_PRIVATE)
-                            .getString("pref_app_mode", "")
+                        // Пустая строка pref_app_mode трактуется как "both" (как и на
+                        // дашборде). Раньше "" не попадало в условие, и TGWS-плитка
+                        // пропадала на установке после онбординга. Значение берём из
+                        // viewModel, чтобы список обновлялся при смене режима.
+                        val appMode by viewModel.appMode.collectAsStateWithLifecycle()
                         QuickSettingsTilesPage(
                             scaleFactor = state.tapImpactScale,
                             cornerRoundness = state.cornerRoundness,
                             language = state.language,
-                            showTgws = appModePref == "tgws" || appModePref == "both"
+                            showTgws = appMode.isEmpty() || appMode == "tgws" || appMode == "both"
                         )
                     }
                     null -> {}

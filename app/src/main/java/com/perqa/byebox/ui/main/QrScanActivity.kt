@@ -93,6 +93,16 @@ class QrScanActivity : ComponentActivity() {
         val lifecycleOwner = LocalLifecycleOwner.current
         val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
+        // remember {} не вызывается при выходе с экрана, поэтому сканер ML Kit
+        // (Closeable) и single-thread executor жили до сборки мусора и копились
+        // при каждом открытии сканера. Закрываем явно.
+        DisposableEffect(Unit) {
+            onDispose {
+                runCatching { analysisExecutor.shutdown() }
+                runCatching { scanner.close() }
+            }
+        }
+
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             if (hasCameraPermission) {
                 AndroidView(

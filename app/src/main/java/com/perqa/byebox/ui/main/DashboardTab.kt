@@ -162,7 +162,9 @@ fun DashboardTab(
                     }
                 )
             } else {
-                activeScreen = "manager"
+                // Запись state прямо в композиции запрещена правилами Compose —
+                // выносим в эффект (поведение прежнее: возврат в менеджер).
+                LaunchedEffect(Unit) { activeScreen = "manager" }
             }
         }
     }

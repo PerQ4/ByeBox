@@ -139,24 +139,40 @@ fun ModeChip(
     }
 }
 
-private val telegramPackages = listOf(
+/**
+ * Пакеты клиентов Telegram, которым можно применить прокси и которые
+ * показываются в пикере обхода трафика.
+ *
+ * Единый список на всё приложение: и `applyToTelegramPackages` (применение
+ * прокси), и `TgWsProxySettingsContent` (пикер клиента) читают его отсюда,
+ * чтобы списки не разъезжались. При добавлении нового форка правьте только тут.
+ */
+internal val telegramPackages = listOf(
+    // Официальные клиенты Telegram
     "org.telegram.messenger",
-    "com.radolyn.ayugram",
+    "org.telegram.messenger.beta",
+    // Telegram X
+    "org.thunderdog.challegram",
+    // Популярные форки
     "com.exteragram.messenger",
+    "com.radolyn.ayugram",
+    "com.exteraless.app",
     "org.telegram.plus",
-    "ir.ilmili.telegraph",
-    "org.telegram.BifToGram",
     "tw.nekomimi.nekogram",
     "xyz.nextalone.nagram",
     "uz.unnarsx.cherrygram",
     "org.telegram.mdgram",
+    "org.forkgram.messenger",
     "org.forkclient.messenger.beta",
     "app.nicegram",
     "top.qwq2333.nullgram",
+    "it.belloworld.mercurygram",
+    "org.telegram.group",
+    "ir.ilmili.telegraph",
+    "org.telegram.BifToGram",
     "com.iMe.android",
     "ru.dahl.messenger",
-    "com.scriptsaz.litegram",
-    "org.thunderdog.challegram"
+    "com.scriptsaz.litegram"
 )
 
 fun applyToTelegramPackages(context: Context, url: String, language: String = "ru") {

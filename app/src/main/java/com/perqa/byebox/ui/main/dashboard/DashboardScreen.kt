@@ -57,8 +57,13 @@ fun DashboardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
-            .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() },
+            // onGloballyPositioned обязан стоять ДО verticalScroll. Если поставить
+            // его после, он измеряет высоту прокручиваемого КОНТЕНТА, а не
+            // вьюпорта: viewportHeightPx начинает «дышать» вместе с содержимым
+            // (в логах 2879 -> 2779 без изменения экрана), и высота списка
+            // пресетов уезжает — панель TGWS плавает.
+            .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (showVpn) {
@@ -163,11 +168,14 @@ fun DashboardScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onGloballyPositioned {
-                            tgwsCollapsedHeightPx = kotlin.math.min(
-                                tgwsCollapsedHeightPx,
-                                it.size.height.toFloat()
-                            ).let { current ->
-                                if (current <= 0f) it.size.height.toFloat() else current
+                            // Резерв должен отражать высоту именно СВЁРНУТОЙ
+                            // карточки. Раньше min() навсегда фиксировал первое
+                            // (свёрнутое) значение, и если свёрнутая высота
+                            // менялась (язык, длина статуса), резерв оставался
+                            // устаревшим. В развёрнутом виде не измеряем, иначе
+                            // в резерв уйдёт раздутая высота.
+                            if (!tgwsExpanded) {
+                                tgwsCollapsedHeightPx = it.size.height.toFloat()
                             }
                         }
                 ) {
