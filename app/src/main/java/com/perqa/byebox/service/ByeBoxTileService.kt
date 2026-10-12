@@ -14,6 +14,8 @@ import android.annotation.SuppressLint
 import androidx.core.content.ContextCompat
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.R
+import com.perqa.byebox.data.PreferenceKeys
+import com.perqa.byebox.ui.main.Loc
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.MmkvManager
@@ -87,6 +89,7 @@ class ByeBoxTileService : TileService() {
 
     fun updateTileState(active: Boolean = CoreServiceManager.isRunning(), connecting: Boolean = false) {
         val tile = qsTile ?: return
+        val lang = currentLanguage()
         currentState = when {
             connecting -> 1
             active -> 2
@@ -108,23 +111,29 @@ class ByeBoxTileService : TileService() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = when {
-                connecting -> "Подключение…"
+                connecting -> Loc.get("tile_state_connecting", lang)
                 active -> {
                     val guid = MmkvManager.getSelectServer()
                     val config = guid?.let { MmkvManager.decodeServerConfig(it) }
-                    config?.remarks.orEmpty().ifBlank { "Подключено" }
+                    config?.remarks.orEmpty().ifBlank { Loc.get("tile_state_connected", lang) }
                 }
-                else -> "Отключено"
+                else -> Loc.get("tile_state_disconnected", lang)
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             tile.stateDescription = when {
-                connecting -> "VPN подключается"
-                active -> "VPN активен"
-                else -> "VPN выключен"
+                connecting -> Loc.get("tile_state_desc_connecting", lang)
+                active -> Loc.get("tile_state_desc_active", lang)
+                else -> Loc.get("tile_state_desc_off", lang)
             }
         }
         tile.updateTile()
+    }
+
+    /** Язык интерфейса из настроек приложения (для текстов плитки). */
+    private fun currentLanguage(): String {
+        return getSharedPreferences(PreferenceKeys.BYEBOX_SETTINGS, MODE_PRIVATE)
+            .getString(PreferenceKeys.LANGUAGE, "system") ?: "system"
     }
 
     private fun openMainAndCollapse() {

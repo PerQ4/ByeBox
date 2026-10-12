@@ -7,6 +7,8 @@ import android.service.quicksettings.TileService
 import android.os.Build
 import com.perqa.byebox.data.SettingsProfileData
 import com.perqa.byebox.data.ProfilePresetManager
+import com.perqa.byebox.data.PreferenceKeys
+import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.R
 import com.v2ray.ang.core.CoreServiceManager
 
@@ -50,15 +52,16 @@ class ByeBoxProfileTileService : TileService() {
         val activeId = ProfilePresetManager.getActiveProfileId(context)
         val profile = profileOverride ?: list.find { it.id == activeId } ?: list.first()
 
+        val lang = currentLanguage()
         tile.state = Tile.STATE_INACTIVE
-        tile.label = "Быстрый: ${profile.name}"
+        tile.label = String.format(Loc.get("tile_profile_label", lang), profile.name)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val desc = "DNS: ${profile.dnsServer}"
+            val desc = String.format(Loc.get("tile_profile_dns", lang), profile.dnsServer)
             tile.subtitle = desc.take(20) + if (desc.length > 20) "…" else ""
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            tile.stateDescription = "Быстрое переключение ByeBox: ${profile.name}"
+            tile.stateDescription = String.format(Loc.get("tile_profile_state_desc", lang), profile.name)
         }
 
         tile.updateTile()
@@ -66,5 +69,11 @@ class ByeBoxProfileTileService : TileService() {
 
     private fun isVpnServiceRunning(context: Context): Boolean {
         return com.v2ray.ang.handler.MmkvManager.decodeSettingsBool(com.v2ray.ang.AppConfig.PREF_TILE_VPN_RUNNING, false)
+    }
+
+    /** Язык интерфейса из настроек приложения (для текстов плитки). */
+    private fun currentLanguage(): String {
+        return getSharedPreferences(PreferenceKeys.BYEBOX_SETTINGS, MODE_PRIVATE)
+            .getString(PreferenceKeys.LANGUAGE, "system") ?: "system"
     }
 }

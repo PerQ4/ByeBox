@@ -1,16 +1,18 @@
 package com.perqa.byebox
 
+import android.app.Application
 import android.content.Context
-import androidx.multidex.MultiDexApplication
 import androidx.work.Configuration
 import com.perqa.byebox.data.PreferenceKeys
 import com.perqa.byebox.data.TunStackMapping
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.enums.NotificationChannelType
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.LogUtil
 
-class ByeBoxApplication : MultiDexApplication(), Configuration.Provider {
+class ByeBoxApplication : Application(), Configuration.Provider {
     companion object {
         lateinit var instance: ByeBoxApplication
     }
@@ -27,6 +29,9 @@ class ByeBoxApplication : MultiDexApplication(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Каналы уведомлений берут имена из строковых ресурсов; Application
+        // отдаёт контекст для их резолва (см. NotificationChannelType).
+        NotificationChannelType.init(this)
         MMKV.initialize(this)
         SettingsManager.initApp(this)
         SettingsManager.initAssets(this, assets)
@@ -35,8 +40,9 @@ class ByeBoxApplication : MultiDexApplication(), Configuration.Provider {
         // внешний туннель HevSocks5Tunnel принудительно выключен.
         // Это НЕ выбор сетевого стека: gVisor/system задаётся отдельно,
         // ключом PREF_TUN_STACK, и выбирается пользователем в настройках.
-        MMKV.mmkvWithID("SETTING", MMKV.MULTI_PROCESS_MODE)
-            .encode(AppConfig.PREF_USE_HEV_TUNNEL, false)
+        // Пишем через MmkvManager, а не напрямую в MMKV: хранилище SETTING
+        // зашифровано, и прямое открытие без ключа сломало бы чтение.
+        MmkvManager.encodeSettings(AppConfig.PREF_USE_HEV_TUNNEL, false)
 
         migrateTunStackOnce()
 
@@ -54,9 +60,8 @@ class ByeBoxApplication : MultiDexApplication(), Configuration.Provider {
      * до этого релиза (поле noKernelTun не выставлялось вовсе).
      */
     private fun migrateTunStackOnce() {
-        val mmkv = MMKV.mmkvWithID("SETTING", MMKV.MULTI_PROCESS_MODE)
         val key = AppConfig.PREF_TUN_STACK
-        if (mmkv.decodeString(key).isNullOrBlank()) {
+        if (MmkvManager.decodeSettingsString(key).isNullOrBlank()) {
             val legacy = getSharedPreferences(
                 PreferenceKeys.BYEBOX_SETTINGS,
                 Context.MODE_PRIVATE
@@ -64,7 +69,7 @@ class ByeBoxApplication : MultiDexApplication(), Configuration.Provider {
             // Явный выбор пользователя уважаем; если выбора не было (null),
             // toXrayValue вернёт system — фактическое поведение до 1.5.4.
             val value = TunStackMapping.toXrayValue(legacy.orEmpty())
-            mmkv.encode(key, value)
+            MmkvManager.encodeSettings(key, value)
             LogUtil.i(AppConfig.TAG, "Migrated TUN stack setting to MMKV: $value")
         }
     }

@@ -1,6 +1,10 @@
 package com.v2ray.ang.handler
 
+import android.content.Context
+import android.util.Log
+import com.perqa.byebox.ByeBoxApplication
 import com.tencent.mmkv.MMKV
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.DEFAULT_SUBSCRIPTION_ID
 import com.v2ray.ang.AppConfig.PREF_IS_BOOTED
 import com.v2ray.ang.AppConfig.PREF_ROUTING_RULESET
@@ -32,13 +36,91 @@ object MmkvManager {
     private const val KEY_SUB_IDS = "SUB_IDS"
     private const val KEY_WEBDAV_CONFIG = "WEBDAV_CONFIG"
 
-    private val mainStorage by lazy { MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE) }
-    private val profileFullStorage by lazy { MMKV.mmkvWithID(ID_PROFILE_FULL_CONFIG, MMKV.MULTI_PROCESS_MODE) }
-    private val serverRawStorage by lazy { MMKV.mmkvWithID(ID_SERVER_RAW, MMKV.MULTI_PROCESS_MODE) }
-    private val serverAffStorage by lazy { MMKV.mmkvWithID(ID_SERVER_AFF, MMKV.MULTI_PROCESS_MODE) }
-    private val subStorage by lazy { MMKV.mmkvWithID(ID_SUB, MMKV.MULTI_PROCESS_MODE) }
-    private val assetStorage by lazy { MMKV.mmkvWithID(ID_ASSET, MMKV.MULTI_PROCESS_MODE) }
-    private val settingsStorage by lazy { MMKV.mmkvWithID(ID_SETTING, MMKV.MULTI_PROCESS_MODE) }
+    private val mainStorage by lazy { openStorage(ID_MAIN) }
+    private val profileFullStorage by lazy { openStorage(ID_PROFILE_FULL_CONFIG) }
+    private val serverRawStorage by lazy { openStorage(ID_SERVER_RAW) }
+    private val serverAffStorage by lazy { openStorage(ID_SERVER_AFF) }
+    private val subStorage by lazy { openStorage(ID_SUB) }
+    private val assetStorage by lazy { openStorage(ID_ASSET) }
+    private val settingsStorage by lazy { openStorage(ID_SETTING) }
+
+    //endregion
+
+    //region encryption
+
+    /**
+     * Открывает MMKV-хранилище с шифрованием «at rest» через Android Keystore.
+     *
+     * Порядок:
+     *  1. получаем/создаём сырой 16-байтный ключ (он хранится зашифрованным в Keystore);
+     *  2. если хранилище уже помечено зашифрованным — открываем сразу с ключом;
+     *  3. иначе файл ещё не зашифрован: открываем без ключа и вызываем reKey(rawKey),
+     *     который перешифровывает файл на месте, и только после успеха ставим флаг.
+     *
+     * При любой ошибке безопасно откатываемся к незашифрованному режиму:
+     * работающее приложение важнее шифрования, а данные не должны теряться.
+     */
+    private fun openStorage(id: String): MMKV {
+        val context = appContext()
+        val rawKey = if (context != null) MmkvKeyStore.rawKeyOrNull(context) else null
+        if (context == null || rawKey == null) {
+            // Keystore недоступен — открываем как раньше, без шифрования.
+            // Если хранилище уже было зашифровано, данные останутся недоступны
+            // до восстановления доступа к ключу (приложение при этом работает).
+            if (context != null && MmkvKeyStore.storageState(context, id) == MmkvKeyStore.STATE_ENCRYPTED) {
+                Log.e(AppConfig.TAG, "MMKV '$id': ключ недоступен, данные временно не читаются")
+            }
+            return MMKV.mmkvWithID(id, MMKV.MULTI_PROCESS_MODE)
+        }
+        return when (MmkvKeyStore.storageState(context, id)) {
+            MmkvKeyStore.STATE_ENCRYPTED -> MMKV.mmkvWithID(id, MMKV.MULTI_PROCESS_MODE, rawKey)
+            MmkvKeyStore.STATE_LOST -> {
+                // Keystore-ключ был сброшен: расшифровать старое хранилище нельзя.
+                // Сбрасываем только его, чтобы приложение не падало.
+                Log.w(AppConfig.TAG, "MMKV '$id': ключ утерян, хранилище сброшено")
+                MmkvKeyStore.resetStorage(context, id)
+                migrateStorageToEncrypted(context, id, rawKey)
+            }
+            else -> migrateStorageToEncrypted(context, id, rawKey)
+        }
+    }
+
+    /**
+     * Одноразовый переход хранилища с незашифрованного файла на шифрование.
+     * Идемпотентен: флаг ставится только после успешного reKey.
+     */
+    private fun migrateStorageToEncrypted(context: Context, id: String, rawKey: String): MMKV {
+        return try {
+            val plain = MMKV.mmkvWithID(id, MMKV.MULTI_PROCESS_MODE)
+            val reKeyed = try {
+                plain.reKey(rawKey)
+            } catch (t: Throwable) {
+                Log.w(AppConfig.TAG, "MMKV '$id': reKey завершился ошибкой", t)
+                false
+            }
+            if (reKeyed && MmkvKeyStore.markEncrypted(context, id)) {
+                plain
+            } else {
+                Log.w(AppConfig.TAG, "MMKV '$id': шифрование не выполнено, работаем без него")
+                if (reKeyed) {
+                    // Флаг записать не удалось — откатываем шифрование, чтобы
+                    // состояние и файл остались согласованными.
+                    runCatching { plain.reKey(null) }
+                }
+                plain
+            }
+        } catch (t: Throwable) {
+            Log.e(AppConfig.TAG, "MMKV '$id': не удалось открыть хранилище", t)
+            MMKV.mmkvWithID(id, MMKV.MULTI_PROCESS_MODE)
+        }
+    }
+
+    /** Application-контекст для Keystore/SharedPreferences, либо null до инициализации. */
+    private fun appContext(): Context? = try {
+        ByeBoxApplication.instance.applicationContext
+    } catch (t: Throwable) {
+        null
+    }
 
     //endregion
 

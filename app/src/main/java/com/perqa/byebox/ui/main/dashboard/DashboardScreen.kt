@@ -78,25 +78,13 @@ fun DashboardScreen(
                 ) {
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    StatusPillBar(
-                        status = state.connectionStatus,
-                        downloadSpeed = state.downloadSpeed,
-                        uploadSpeed = state.uploadSpeed,
-                        dnsServer = state.dnsServer,
-                        language = state.language,
-                        cornerRoundness = state.cornerRoundness,
-                        sessionUpload = state.sessionUpload,
-                        sessionDownload = state.sessionDownload
+                    // Трафик читается в изолированном composable, поэтому тик раз
+                    // в секунду перекомпоновывает только индикатор и карточку
+                    // сессии, а не весь экран.
+                    LiveTrafficStatus(
+                        state = state,
+                        viewModel = viewModel
                     )
-
-                    if (state.connectionStatus == ConnectionStatus.CONNECTED) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        SessionDurationCard(
-                            duration = state.sessionDuration,
-                            language = state.language,
-                            cornerRoundness = state.cornerRoundness
-                        )
-                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -203,5 +191,38 @@ fun DashboardScreen(
                     .navigationBarsPadding()
             )
         }
+    }
+}
+
+/**
+ * Индикатор трафика и карточка длительности сессии. Единственная точка, где
+ * читается [MainScreenViewModel.liveTraffic]: тик раз в секунду обновляет только
+ * этот участок композиции, не инвалидируя весь DashboardScreen.
+ */
+@Composable
+private fun LiveTrafficStatus(
+    state: MainUiState,
+    viewModel: MainScreenViewModel
+) {
+    val liveTraffic by viewModel.liveTraffic.collectAsStateWithLifecycle()
+
+    StatusPillBar(
+        status = state.connectionStatus,
+        downloadSpeed = liveTraffic.downloadSpeed,
+        uploadSpeed = liveTraffic.uploadSpeed,
+        dnsServer = state.dnsServer,
+        language = state.language,
+        cornerRoundness = state.cornerRoundness,
+        sessionUpload = liveTraffic.sessionUpload,
+        sessionDownload = liveTraffic.sessionDownload
+    )
+
+    if (state.connectionStatus == ConnectionStatus.CONNECTED) {
+        Spacer(modifier = Modifier.height(10.dp))
+        SessionDurationCard(
+            duration = liveTraffic.sessionDuration,
+            language = state.language,
+            cornerRoundness = state.cornerRoundness
+        )
     }
 }

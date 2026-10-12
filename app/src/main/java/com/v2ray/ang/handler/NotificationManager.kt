@@ -154,7 +154,8 @@ object NotificationManager {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(): String {
         val channelId = AppConfig.RAY_NG_CHANNEL_ID
-        val channelName = AppConfig.RAY_NG_CHANNEL_NAME
+        val channelName = getService()?.getString(R.string.notif_channel_background_service)
+            ?: AppConfig.RAY_NG_CHANNEL_NAME
         val chan = NotificationChannel(
             channelId,
             channelName, NotificationManager.IMPORTANCE_HIGH

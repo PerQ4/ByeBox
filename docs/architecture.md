@@ -70,7 +70,7 @@ Prebuilt `.so` лежат в `tgwsproxy/app/src/main/jniLibs/` (только `ar
 
 | Компонент | Класс | Роль |
 |---|---|---|
-| Application | `ByeBoxApplication` | `MultiDexApplication` + `Configuration.Provider` для WorkManager |
+| Application | `ByeBoxApplication` | `android.app.Application` + `Configuration.Provider` для WorkManager |
 | Activity | `MainActivity` | Единственная Compose-Activity, три вкладки |
 | Activity | `QrScanActivity` | Сканирование QR с камеры (ZXing + ML Kit) |
 | Service | `CoreVpnService` | Основной foreground-сервис VPN-туннеля |
@@ -78,12 +78,13 @@ Prebuilt `.so` лежат в `tgwsproxy/app/src/main/jniLibs/` (только `ar
 | Service | `ByeBoxTileService`, `ByeBoxProfileTileService` | Плитки быстрых настроек |
 | Receiver | `BootReceiver` | Автозапуск при `BOOT_COMPLETED` |
 
-`ByeBoxApplication.onCreate()` делает четыре вещи, порядок важен:
+`ByeBoxApplication.onCreate()` делает пять вещей, порядок важен:
 
-1. `MMKV.initialize(this)` — без этого нет хранилища.
-2. `SettingsManager.initApp` + `initAssets` — дефолтные значения и загрузка geo-ассетов.
-3. Выключает `PREF_USE_HEV_TUNNEL`, чтобы `CoreVpnService` поднимал нативный TIN.
-4. `TgwsLang.sync(this)` — язык из настроек приложения применяется к строкам TGWS.
+1. `NotificationChannelType.init(this)` — контекст для строковых имён каналов уведомлений.
+2. `MMKV.initialize(this)` — без этого нет хранилища.
+3. `SettingsManager.initApp` + `initAssets` — дефолтные значения и загрузка geo-ассетов.
+4. Выключает `PREF_USE_HEV_TUNNEL`, чтобы `CoreVpnService` поднимал нативный TUN.
+5. `TgwsLang.sync(this)` — язык из настроек приложения применяется к строкам TGWS.
 
 `WorkManagerInitializer` в манифесте отключён (мультипроцессная конфигурация), поэтому
 приложение само отдаёт `workManagerConfiguration` — иначе любой вызов WorkManager
@@ -128,10 +129,12 @@ _vpnModeEnabled ─┘                            └──▶ UI перерис
 
 ### 4.3 Локализация
 
-Отдельного ресурсного подхода нет: `Loc.kt` (2231 строка) хранит три словаря
+Основной механизм — ресурсный: `Loc.kt` (2051 строка) хранит три словаря
 (`ru`, `en`, `zh`) как `Map<String, String>`. Обращения вида `Loc.get("share", language)`.
 При добавлении строки правится **все три** словаря — забытый ключ даёт пустой текст,
-а не ошибку компиляции. У TGWS-слоя своя локаль: `TProxyLocale.wrap(context)`.
+а не ошибку компиляции. Дополнительно есть `res/values*/strings.xml` (имя приложения,
+подпись плитки, имена каналов уведомлений). У TGWS-слоя своя локаль:
+`TProxyLocale.wrap(context)`.
 
 ## 5. Хранилище
 
@@ -364,3 +367,5 @@ WorkManager подключён в мультипроцессном режиме 
 
 Исправлено в 1.5.4: выбор стека TUN больше не путается с HevTunnel и реально
 доходит до конфига (6.5); зависимость `androidx.datastore.preferences` удалена.
+Зависимость `androidx.multidex` удалена: при minSdk 24 работает native multidex,
+а `ByeBoxApplication` наследует `android.app.Application`.

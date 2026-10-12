@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import com.perqa.byebox.MainActivity
 import com.perqa.byebox.findActivity
 import com.perqa.byebox.theme.DarkThemeStyle
@@ -76,10 +77,12 @@ fun MainScreen(
     val viewModel: MainScreenViewModel = viewModel ?: viewModel { MainScreenViewModel(context.applicationContext) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(state.toastMessage) {
-        state.toastMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearToast()
+    // Тост-сообщения приходят очередью: показываем их по одному, не теряя
+    // серию быстрых сообщений (раньше следующее перетирало предыдущее).
+    LaunchedEffect(Unit) {
+        viewModel.toastMessages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            delay(1800L)
         }
     }
 

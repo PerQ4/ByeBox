@@ -38,17 +38,23 @@ import com.perqa.byebox.core.SettingsBackup
 import com.perqa.byebox.core.TgwsLang
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.URI
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
+import java.net.URI
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.IntentFilter
@@ -151,16 +157,25 @@ fun DnsServer.localizedAddress(language: String): String = when (this) {
     else -> address
 }
 
-data class MainUiState(
-    val configs: List<ProxyConfig> = emptyList(),
-    val subscriptionSources: List<SubscriptionSource> = emptyList(),
-    val activeConfigId: String? = null,
-    val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
+/**
+ * Живые данные трафика и сессии. Раньше эти поля лежали в [MainUiState] и
+ * пересобирались через `combine` каждую секунду, из-за чего тик трафика
+ * инвалидировал весь экран. Теперь это отдельный поток, который должен читать
+ * только индикатор трафика (`StatusPillBar` / карточка сессии).
+ */
+data class LiveTraffic(
     val downloadSpeed: String = "0.0 KB/s",
     val uploadSpeed: String = "0.0 KB/s",
     val sessionDuration: String = "--:--",
     val sessionUpload: String = "",
     val sessionDownload: String = "",
+)
+
+data class MainUiState(
+    val configs: List<ProxyConfig> = emptyList(),
+    val subscriptionSources: List<SubscriptionSource> = emptyList(),
+    val activeConfigId: String? = null,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
     val routingProfile: RoutingProfile = RoutingProfile.BYPASS_LAN_CN_RU,
     val dnsServer: DnsServer = DnsServer.SYSTEM,
@@ -171,7 +186,6 @@ data class MainUiState(
     val healthCheckUrl: String = "https://www.gstatic.com/generate_204",
     val logs: List<String> = emptyList(),
     val isPinging: Boolean = false,
-    val toastMessage: String? = null,
     val tunStack: TunStack = TunStack.SYSTEM,
     val vpnModeEnabled: Boolean = true,
     val socksPort: String = "10808",
@@ -233,11 +247,13 @@ class MainScreenViewModel(
     private val _activeConfigId = MutableStateFlow<String?>(null)
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
-    private val _downloadSpeed = MutableStateFlow("0.0 KB/s")
-    private val _uploadSpeed = MutableStateFlow("0.0 KB/s")
-    private val _sessionDuration = MutableStateFlow("--:--")
-    private val _sessionUpload = MutableStateFlow("")
-    private val _sessionDownload = MutableStateFlow("")
+    private val _liveTraffic = MutableStateFlow(LiveTraffic())
+    /**
+     * Живой трафик и статистика сессии. Вынесен из [MainUiState] отдельным
+     * потоком: тик раз в секунду обновляет только его, не пересобирая весь
+     * остальной UI. Читать должны лишь индикатор трафика и карточка сессии.
+     */
+    val liveTraffic: StateFlow<LiveTraffic> get() = _liveTraffic
     private val _appTheme = MutableStateFlow(readEnum(KEY_APP_THEME, AppTheme.SYSTEM_DYNAMIC))
     private val _routingProfile = MutableStateFlow(readEnum(KEY_ROUTING_PROFILE, RoutingProfile.BYPASS_LAN_CN_RU))
     private val _dnsServer = MutableStateFlow(readEnum(KEY_DNS_SERVER, DnsServer.SYSTEM))
@@ -320,10 +336,18 @@ class MainScreenViewModel(
     private val _pingingConfigIds = MutableStateFlow<Set<String>>(emptySet())
     private val _logs = AppLogger.logs
     private val _isPinging = MutableStateFlow(false)
-    private val _toastMessage = MutableStateFlow<String?>(null)
+    // Тост-сообщения складываются в очередь, чтобы серия сообщений не терялась:
+    // раньше одно значение перетиралось следующим до показа.
+    private val _toastChannel = Channel<String>(Channel.BUFFERED)
+    val toastMessages: Flow<String> = _toastChannel.receiveAsFlow()
 
     private var trafficJob: Job? = null
-    private var lastToastAt: Long = 0L
+
+    // Сериализация тяжёлой загрузки из MMKV и защита от устаревших результатов
+    // (запрос с меньшим номером не должен перетереть более свежий снимок).
+    private val loadMutex = Mutex()
+    private val loadRequestSeq = AtomicInteger(0)
+    private val loadAppliedSeq = AtomicInteger(0)
 
     private val mMsgReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -346,8 +370,6 @@ class MainScreenViewModel(
                 AppConfig.MSG_STATE_STOP_SUCCESS -> {
                     _connectionStatus.value = ConnectionStatus.DISCONNECTED
                     trafficJob?.cancel()
-                    _downloadSpeed.value = "0.0 KB/s"
-                    _uploadSpeed.value = "0.0 KB/s"
                     resetSessionUi()
                     loadDataFromMmkv()
                     triggerHaptic(HapticType.MEDIUM)
@@ -355,8 +377,6 @@ class MainScreenViewModel(
                 AppConfig.MSG_STATE_START_FAILURE -> {
                     _connectionStatus.value = ConnectionStatus.DISCONNECTED
                     trafficJob?.cancel()
-                    _downloadSpeed.value = "0.0 KB/s"
-                    _uploadSpeed.value = "0.0 KB/s"
                     resetSessionUi()
                     addLog("[ERROR] Сбой подключения: $content")
                     showToast(Loc.get("toast_connection_failure", _language.value))
@@ -376,8 +396,6 @@ class MainScreenViewModel(
         _subscriptionSources,
         _activeConfigId,
         _connectionStatus,
-        _downloadSpeed,
-        _uploadSpeed,
         _appTheme,
         _routingProfile,
         _dnsServer,
@@ -388,7 +406,6 @@ class MainScreenViewModel(
         _healthCheckUrl,
         _logs,
         _isPinging,
-        _toastMessage,
         _tunStack,
         _vpnModeEnabled,
         _socksPort,
@@ -425,10 +442,7 @@ class MainScreenViewModel(
         _updateDownload,
         _autoCheckUpdates,
         _updateChannel,
-        _sessionUpload,
-        _sessionDownload,
-        _autoReconnectNetwork,
-        _sessionDuration
+        _autoReconnectNetwork
     ) { a ->
         val f = TypedFlows(a)
         MainUiState(
@@ -436,59 +450,53 @@ class MainScreenViewModel(
             subscriptionSources = f.get(1),
             activeConfigId = f.get(2),
             connectionStatus = f.get(3),
-            downloadSpeed = f.get(4),
-            uploadSpeed = f.get(5),
-            appTheme = f.get(6),
-            routingProfile = f.get(7),
-            dnsServer = f.get(8),
-            lanBypassEnabled = f.get(9),
-            appRoutingMode = f.get(10),
-            appRoutingPackages = f.get(11),
-            installedApps = f.get(12),
-            healthCheckUrl = f.get(13),
-            logs = f.get(14),
-            isPinging = f.get(15),
-            toastMessage = f.get(16),
-            tunStack = f.get(17),
-            vpnModeEnabled = f.get(18),
-            socksPort = f.get(19),
-            proxySharingEnabled = f.get(20),
-            muxEnabled = f.get(21),
-            fakeDnsEnabled = f.get(22),
-            fragmentEnabled = f.get(23),
-            ipv6Enabled = f.get(24),
-            startOnBootEnabled = f.get(25),
-            logLevel = f.get(26),
-            blockingEnabled = f.get(27),
-            sniffingEnabled = f.get(28),
-            confirmRemoveEnabled = f.get(29),
-            preferIpv6Enabled = f.get(30),
-            tapImpactScale = f.get(31),
-            cornerRoundness = f.get(32),
-            pulseEnabled = f.get(33),
-            glassmorphicBar = f.get(34),
-            maxBlurEnabled = f.get(35),
-            language = f.get(36),
-            darkThemeStyle = f.get(37),
-            profiles = f.get(38),
-            activeProfileId = f.get(39),
-            compactLayoutEnabled = f.get(40),
-            showFlagsEnabled = f.get(41),
-            customDnsServer = f.get(42),
-            customDirectRules = f.get(43),
-            customProxyRules = f.get(44),
-            routingDomainStrategy = f.get(45),
-            outboundDomainResolveMethod = f.get(46),
-            updateInfo = f.get(47),
-            isCheckingUpdate = f.get(48),
-            pingingConfigIds = f.get(49),
-            updateDownload = f.get(50),
-            autoCheckUpdates = f.get(51),
-            updateChannel = f.get(52),
-            sessionUpload = f.get(53),
-            sessionDownload = f.get(54),
-            autoReconnectNetwork = f.get(55),
-            sessionDuration = f.get(56)
+            appTheme = f.get(4),
+            routingProfile = f.get(5),
+            dnsServer = f.get(6),
+            lanBypassEnabled = f.get(7),
+            appRoutingMode = f.get(8),
+            appRoutingPackages = f.get(9),
+            installedApps = f.get(10),
+            healthCheckUrl = f.get(11),
+            logs = f.get(12),
+            isPinging = f.get(13),
+            tunStack = f.get(14),
+            vpnModeEnabled = f.get(15),
+            socksPort = f.get(16),
+            proxySharingEnabled = f.get(17),
+            muxEnabled = f.get(18),
+            fakeDnsEnabled = f.get(19),
+            fragmentEnabled = f.get(20),
+            ipv6Enabled = f.get(21),
+            startOnBootEnabled = f.get(22),
+            logLevel = f.get(23),
+            blockingEnabled = f.get(24),
+            sniffingEnabled = f.get(25),
+            confirmRemoveEnabled = f.get(26),
+            preferIpv6Enabled = f.get(27),
+            tapImpactScale = f.get(28),
+            cornerRoundness = f.get(29),
+            pulseEnabled = f.get(30),
+            glassmorphicBar = f.get(31),
+            maxBlurEnabled = f.get(32),
+            language = f.get(33),
+            darkThemeStyle = f.get(34),
+            profiles = f.get(35),
+            activeProfileId = f.get(36),
+            compactLayoutEnabled = f.get(37),
+            showFlagsEnabled = f.get(38),
+            customDnsServer = f.get(39),
+            customDirectRules = f.get(40),
+            customProxyRules = f.get(41),
+            routingDomainStrategy = f.get(42),
+            outboundDomainResolveMethod = f.get(43),
+            updateInfo = f.get(44),
+            isCheckingUpdate = f.get(45),
+            pingingConfigIds = f.get(46),
+            updateDownload = f.get(47),
+            autoCheckUpdates = f.get(48),
+            updateChannel = f.get(49),
+            autoReconnectNetwork = f.get(50)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -498,7 +506,7 @@ class MainScreenViewModel(
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "pref_dynamic_profiles" || key == "pref_active_profile_id" || key == KEY_DARK_THEME_STYLE ||
-            key?.startsWith("base_") == true) {
+            key?.startsWith("base_") == true || key?.startsWith("applied_") == true) {
             loadDataFromMmkv()
         }
     }
@@ -694,14 +702,16 @@ class MainScreenViewModel(
                 val uploadBps = MmkvManager.decodeSettingsLong(AppConfig.PREF_SPEED_UPLOAD_BPS, 0L)
 
                 withContext(Dispatchers.Main) {
-                    _downloadSpeed.value = formatBytesPerSec(downloadBps)
-                    _uploadSpeed.value = formatBytesPerSec(uploadBps)
                     val elapsed = SessionStatsManager.elapsedMillis()
-                    _sessionDuration.value = if (elapsed > 0L) SessionStatsManager.formatElapsedFull(elapsed) else "--:--"
                     val sessionUp = SessionStatsManager.uploadBytes()
                     val sessionDown = SessionStatsManager.downloadBytes()
-                    _sessionUpload.value = if (sessionUp > 0L) SessionStatsManager.formatBytes(sessionUp, _language.value) else ""
-                    _sessionDownload.value = if (sessionDown > 0L) SessionStatsManager.formatBytes(sessionDown, _language.value) else ""
+                    _liveTraffic.value = LiveTraffic(
+                        downloadSpeed = formatBytesPerSec(downloadBps),
+                        uploadSpeed = formatBytesPerSec(uploadBps),
+                        sessionDuration = if (elapsed > 0L) SessionStatsManager.formatElapsedFull(elapsed) else "--:--",
+                        sessionUpload = if (sessionUp > 0L) SessionStatsManager.formatBytes(sessionUp, _language.value) else "",
+                        sessionDownload = if (sessionDown > 0L) SessionStatsManager.formatBytes(sessionDown, _language.value) else ""
+                    )
                 }
             }
         }
@@ -716,9 +726,13 @@ class MainScreenViewModel(
     }
 
     private fun resetSessionUi() {
-        _sessionDuration.value = "--:--"
-        _sessionUpload.value = ""
-        _sessionDownload.value = ""
+        _liveTraffic.value = _liveTraffic.value.copy(
+            downloadSpeed = "0.0 KB/s",
+            uploadSpeed = "0.0 KB/s",
+            sessionDuration = "--:--",
+            sessionUpload = "",
+            sessionDownload = ""
+        )
     }
 
     private fun getActiveConfig(): ProxyConfig? {
@@ -766,7 +780,9 @@ class MainScreenViewModel(
                     }
                 )
                 addLog("[SYSTEM] Тестирование пинга завершено: ${summary.ok} ok, ${summary.failed} timeout.")
-                loadDataFromMmkv()
+                // Нужны свежие пинги из MMKV прямо сейчас — дожидаемся загрузки,
+                // а не запускаем её асинхронно (иначе _configs.value ещё старый).
+                loadDataFromMmkvAwait()
 
                 val responsive = _configs.value
                     .filter { it.ping != null && it.ping < 999 && it.failureCount < 3 }
@@ -1608,18 +1624,22 @@ class MainScreenViewModel(
     }
 
     fun showToast(message: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastToastAt < 1800L) return
-        lastToastAt = now
-        _toastMessage.value = message
+        // Сообщение складывается в очередь (Channel); UI показывает их по одному.
+        // Раньше значение перетиралось и серия сообщений терялась.
+        _toastChannel.trySend(message)
     }
 
     private fun showToggleToast(onKey: String, offKey: String, enabled: Boolean) {
         showToast(Loc.get(if (enabled) onKey else offKey, _language.value))
     }
 
+    /**
+     * Оставлен для совместимости публичного API. Очередь тостов чистится
+     * автоматически по мере показа, отдельное сбрасывание не требуется.
+     */
+    @Deprecated("Очередь тостов обрабатывается автоматически")
     fun clearToast() {
-        _toastMessage.value = null
+        // no-op
     }
 
     fun triggerHaptic(type: HapticType) {
@@ -1698,7 +1718,53 @@ class MainScreenViewModel(
         prefs.edit().putBoolean(key, value)?.apply()
     }
 
+    /**
+     * Планирует перечитывание состояния из MMKV. Тяжёлый парсинг выполняется на
+     * [Dispatchers.IO], поэтому главный поток (в т.ч. слушатель настроек и
+     * broadcast-ресивер) больше не блокируется. Порядок гарантируется мьютексом
+     * и номерами запросов: устаревший запрос не перетрёт более свежий снимок.
+     */
     fun loadDataFromMmkv() {
+        val seq = loadRequestSeq.incrementAndGet()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                loadMutex.withLock {
+                    if (seq < loadAppliedSeq.get()) return@withLock
+                    runCatching { performLoadDataFromMmkv() }
+                        .onSuccess { loadAppliedSeq.set(seq) }
+                        .onFailure { e ->
+                            LogUtil.e(
+                                AppConfig.TAG,
+                                "Не удалось перечитать состояние из MMKV: ${e.message}",
+                                e
+                            )
+                        }
+                }
+            }
+        }
+    }
+
+    /** Как [loadDataFromMmkv], но дожидается применения снимка (для мест, где
+     *  состояние нужно сразу, например выбора лучшего сервера после пинга). */
+    private suspend fun loadDataFromMmkvAwait() {
+        val seq = loadRequestSeq.incrementAndGet()
+        withContext(Dispatchers.IO) {
+            loadMutex.withLock {
+                if (seq < loadAppliedSeq.get()) return@withLock
+                runCatching { performLoadDataFromMmkv() }
+                    .onSuccess { loadAppliedSeq.set(seq) }
+                    .onFailure { e ->
+                        LogUtil.e(
+                            AppConfig.TAG,
+                            "Не удалось перечитать состояние из MMKV: ${e.message}",
+                            e
+                        )
+                    }
+            }
+        }
+    }
+
+    private fun performLoadDataFromMmkv() {
         val serverGuids = MmkvManager.decodeAllServerList()
         val proxyConfigs = serverGuids.mapNotNull { guid ->
             MmkvManager.decodeServerConfig(guid)?.toProxyConfig(guid)
@@ -1732,15 +1798,25 @@ class MainScreenViewModel(
         _vpnModeEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN"
         _socksPort.value = MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808"
         _proxySharingEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING, false)
-        _muxEnabled.value = prefs.getBoolean("base_mux_enabled", false) ?: false
-        _fakeDnsEnabled.value = prefs.getBoolean("base_fake_dns_enabled", true) ?: true
-        _fragmentEnabled.value = prefs.getBoolean("base_fragment_enabled", false) ?: false
+        // Значения, которые ядро читает из MMKV, берём оттуда (это и есть
+        // реально применённая настройка), с откатом на base_* для совместимости.
+        _muxEnabled.value = MmkvManager.decodeSettingsBool(
+            AppConfig.PREF_MUX_ENABLED, readBoolean("base_mux_enabled", false)
+        )
+        _fakeDnsEnabled.value = MmkvManager.decodeSettingsBool(
+            AppConfig.PREF_FAKE_DNS_ENABLED, readBoolean("base_fake_dns_enabled", true)
+        )
+        _fragmentEnabled.value = MmkvManager.decodeSettingsBool(
+            AppConfig.PREF_FRAGMENT_ENABLED, readBoolean("base_fragment_enabled", false)
+        )
         _ipv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED, false)
         _startOnBootEnabled.value = MmkvManager.decodeStartOnBoot()
         _lanBypassEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_BYPASS_LAN) != "2"
         _healthCheckUrl.value = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: "https://www.gstatic.com/generate_204"
         _blockingEnabled.value = MmkvManager.decodeSettingsBool("pref_blocking", false)
-        _sniffingEnabled.value = prefs.getBoolean("base_sniffing_enabled", true) ?: true
+        _sniffingEnabled.value = MmkvManager.decodeSettingsBool(
+            AppConfig.PREF_SNIFFING_ENABLED, readBoolean("base_sniffing_enabled", true)
+        )
         _confirmRemoveEnabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_CONFIRM_REMOVE, true)
         _preferIpv6Enabled.value = MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6, false)
         _tapImpactScale.value = prefs.getFloat("pref_tap_impact_scale", 0.90f) ?: 0.90f
@@ -1754,15 +1830,36 @@ class MainScreenViewModel(
         _darkThemeStyle.value = readEnum(KEY_DARK_THEME_STYLE, DarkThemeStyle.STANDARD)
         _compactLayoutEnabled.value = prefs.getBoolean("pref_compact_layout", false) ?: false
         _showFlagsEnabled.value = prefs.getBoolean("pref_show_flags", true) ?: true
-        _customDnsServer.value = prefs.getString("base_custom_dns", "") ?: ""
-        _customDirectRules.value = prefs.getString("base_custom_direct_rules", "") ?: ""
-        _customProxyRules.value = prefs.getString("base_custom_proxy_rules", "") ?: ""
-        
-        _routingProfile.value = readEnum("base_routing_profile", RoutingProfile.BYPASS_LAN_CN_RU)
-        _dnsServer.value = readEnum("base_dns_server", DnsServer.SYSTEM)
-        _appRoutingMode.value = readEnum("base_app_routing_mode", AppRoutingMode.OFF)
-        _appRoutingPackages.value = readString("base_app_routing_packages_str", "")
-        _tunStack.value = readEnum("base_tun_stack", TunStack.SYSTEM)
+        _customDnsServer.value = readString(
+            ProfilePresetManager.APPLIED_CUSTOM_DNS, readString("base_custom_dns", "")
+        )
+        _customDirectRules.value = MmkvManager.decodeSettingsString(
+            "pref_custom_direct_rules", readString("base_custom_direct_rules", "")
+        ) ?: ""
+        _customProxyRules.value = MmkvManager.decodeSettingsString(
+            "pref_custom_proxy_rules", readString("base_custom_proxy_rules", "")
+        ) ?: ""
+
+        // Читаем «применённое» представление (его пишет applyProfile), чтобы UI
+        // показывал то, что реально ушло в ядро, а не устаревший base_*.
+        _routingProfile.value = readEnum(
+            ProfilePresetManager.APPLIED_ROUTING_PROFILE,
+            readEnum("base_routing_profile", RoutingProfile.BYPASS_LAN_CN_RU)
+        )
+        _dnsServer.value = readEnum(
+            ProfilePresetManager.APPLIED_DNS_SERVER,
+            readEnum("base_dns_server", DnsServer.SYSTEM)
+        )
+        _appRoutingMode.value = readEnum(
+            ProfilePresetManager.APPLIED_APP_ROUTING_MODE,
+            readEnum("base_app_routing_mode", AppRoutingMode.OFF)
+        )
+        _appRoutingPackages.value = readString(
+            ProfilePresetManager.APPLIED_APP_ROUTING_PACKAGES_STR,
+            readString("base_app_routing_packages_str", "")
+        )
+        // Стек TUN ядро читает из MMKV — это единственный источник истины.
+        _tunStack.value = readTunStack()
         _routingDomainStrategy.value = MmkvManager.decodeSettingsString(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY) ?: "AsIs"
         _outboundDomainResolveMethod.value = MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD) ?: "0"
     }

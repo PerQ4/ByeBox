@@ -44,12 +44,15 @@ git clone https://github.com/amurcanov/tg-ws-proxy-android.git tgwsproxy
 
 Артефакты:
 
-- `app/build/outputs/apk/release/byebox-arm64-v8a-release.apk` — **основной** (и единственный) ассет для GitHub.
+- `app/build/outputs/apk/release/app-release.apk` — **основной** (и единственный) ассет для GitHub.
 
 > ℹ️ Сборка одно-Abi (`arm64-v8a`). ABI-сплиты и universal APK отключены: при заданном
-> `abiFilters` они давали два байт-идентичных APK. Имя `byebox-arm64-v8a-*` присваивается
-> задачей `rename<Вариант>Apks` (см. `app/build.gradle.kts`), которая также обновляет
-> `output-metadata.json`.
+> `abiFilters` они давали два байт-идентичных APK.
+>
+> ℹ️ Сборка выдаёт стандартное имя AGP (`app-release.apk`). Задача, которая переименовывала
+> артефакт внутри build-каталога, удалена: она периодически оставляла частичный/битый APK
+> (`INSTALL_PARSE_FAILED`, ~295 КБ вместо полного). Нужное имя ассета задаётся при загрузке
+> на GitHub через `?name=...` (см. ниже).
 
 ## 2. Публикация на GitHub
 
@@ -78,12 +81,13 @@ curl -sS -X POST \
   https://api.github.com/repos/PerQ4/ByeBox/releases \
   -d "{\"tag_name\":\"$TAG\",\"name\":\"ByeBox 1.2.0 ($CODE)\",\"body\":$(python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))' <<<"$BODY"),\"prerelease\":false}"
 
-# 2.3. Загрузить APK в созданный релиз (подставьте upload_url из ответа)
+# 2.3. Загрузить APK в созданный релиз (подставьте upload_url из ответа).
+# Имя ассета задаётся параметром ?name= — именно его увидит апдейтер.
 UPLOAD_URL="https://uploads.github.com/repos/PerQ4/ByeBox/releases/<ID>/assets?name=byebox-arm64-v8a-release.apk"
 curl -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/vnd.android.package-archive" \
-  --data-binary @app/build/outputs/apk/release/byebox-arm64-v8a-release.apk \
+  --data-binary @app/build/outputs/apk/release/app-release.apk \
   "$UPLOAD_URL"
 ```
 

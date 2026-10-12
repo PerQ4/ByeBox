@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">ByeBox</string>
     <string name="qs_profile_tile_label">ByeBox Quick Switch</string>
+    <string name="notif_channel_subscription_update">Subscription Update Service</string>
+    <string name="notif_channel_core_test">Core Test Service</string>
+    <string name="notif_channel_background_service">v2rayNG Background Service</string>
 </resources>

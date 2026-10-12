@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">ByeBox</string>
     <string name="qs_profile_tile_label">Быстрое переключение ByeBox</string>
+    <string name="notif_channel_subscription_update">Служба обновления подписок</string>
+    <string name="notif_channel_core_test">Служба тестирования ядра</string>
+    <string name="notif_channel_background_service">Фоновая служба v2rayNG</string>
 </resources>

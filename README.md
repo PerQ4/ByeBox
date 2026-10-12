@@ -139,7 +139,8 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ```
 
 > **Release build.** `assembleRelease` produces a single-ABI
-> `byebox-arm64-v8a-release.apk`. Release builds run R8 (`isMinifyEnabled = true`)
+> `app/build/outputs/apk/release/app-release.apk` (uploaded to GitHub under the
+> asset name `byebox-arm64-v8a-release.apk`). Release builds run R8 (`isMinifyEnabled = true`)
 > and resource shrinking (`isShrinkResources = true`), so unused resources are
 > stripped automatically — anything referenced dynamically must be listed in
 > `res/raw/keep.xml`.
@@ -315,7 +316,8 @@ cargo ndk -t arm64-v8a --platform 24 -o tgwsproxy/app/src/main/jniLibs build --r
 ```
 
 > **Release-сборка.** `assembleRelease` собирает одно-ABI APK
-> `byebox-arm64-v8a-release.apk`. В release включены R8 (`isMinifyEnabled = true`)
+> `app/build/outputs/apk/release/app-release.apk` (на GitHub загружается под именем
+> `byebox-arm64-v8a-release.apk`). В release включены R8 (`isMinifyEnabled = true`)
 > и удаление неиспользуемых ресурсов (`isShrinkResources = true`) — динамически
 > (по имени) используемые ресурсы нужно перечислить в `res/raw/keep.xml`.
 

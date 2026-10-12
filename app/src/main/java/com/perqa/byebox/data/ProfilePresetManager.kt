@@ -48,9 +48,25 @@ data class SettingsProfileData(
 }
 
 object ProfilePresetManager {
+    // Снимок фактически применённых к ядру настроек. Его читает UI
+    // (MainScreenViewModel.loadDataFromMmkv), чтобы показывать то, что реально
+    // применено, а не устаревшие base_*-значения. Ключи base_* остаются
+    // настройками базового профиля и источником наследования INHERIT —
+    // перезаписывать их значениями активного пресета нельзя, иначе применение
+    // пресета затрёт пользовательский базовый профиль.
+    const val APPLIED_ROUTING_PROFILE = "applied_routing_profile"
+    const val APPLIED_DNS_SERVER = "applied_dns_server"
+    const val APPLIED_CUSTOM_DNS = "applied_custom_dns"
+    const val APPLIED_APP_ROUTING_MODE = "applied_app_routing_mode"
+    const val APPLIED_APP_ROUTING_PACKAGES_STR = "applied_app_routing_packages_str"
+
+    private const val PREF_DYNAMIC_PROFILES = "pref_dynamic_profiles"
+    private const val PREF_PROFILES_CORRUPT_BACKUP = "pref_dynamic_profiles_corrupt_backup"
+    private const val PREF_PROFILES_CORRUPT_AT = "pref_dynamic_profiles_corrupt_at"
+
     fun loadProfiles(context: Context): List<SettingsProfileData> {
         val prefs = context.getSharedPreferences("byebox_settings", Context.MODE_PRIVATE)
-        val jsonStr = prefs.getString("pref_dynamic_profiles", null)
+        val jsonStr = prefs.getString(PREF_DYNAMIC_PROFILES, null)
 
         val baseProfile = loadBaseProfile(context)
 
@@ -67,11 +83,42 @@ object ProfilePresetManager {
                     }
                 }
                 list
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // Раньше повреждённый JSON молча превращался в пустой список, и
+                // все кастомные профили для UI исчезали. Теперь ошибку логируем,
+                // а исходную строку сохраняем в бэкап — данные не удаляются и
+                // могут быть восстановлены вручную.
+                backupCorruptedProfiles(prefs, jsonStr, e)
                 emptyList()
             }
         }
         return listOf(baseProfile) + customProfiles
+    }
+
+    /** Сохраняет повреждённый JSON профилей и пишет ошибку в лог. */
+    private fun backupCorruptedProfiles(
+        prefs: android.content.SharedPreferences,
+        raw: String,
+        cause: Throwable
+    ) {
+        try {
+            prefs.edit()
+                .putString(PREF_PROFILES_CORRUPT_BACKUP, raw)
+                .putLong(PREF_PROFILES_CORRUPT_AT, System.currentTimeMillis())
+                .apply()
+        } catch (e: Exception) {
+            com.v2ray.ang.util.LogUtil.e(
+                AppConfig.TAG,
+                "Не удалось сохранить бэкап повреждённых профилей: ${e.message}",
+                e
+            )
+        }
+        com.v2ray.ang.util.LogUtil.e(
+            AppConfig.TAG,
+            "Не удалось разобрать $PREF_DYNAMIC_PROFILES. Исходные данные " +
+                "(${raw.length} симв.) сохранены в $PREF_PROFILES_CORRUPT_BACKUP: ${cause.message}",
+            cause
+        )
     }
 
     fun saveProfiles(context: Context, list: List<SettingsProfileData>) {
@@ -225,7 +272,10 @@ object ProfilePresetManager {
             "PROXY_ALL" -> 2
             else -> 0
         }
-        prefs.edit().putString("routing_profile", effective).apply()
+        prefs.edit()
+            .putString("routing_profile", effective)
+            .putString(APPLIED_ROUTING_PROFILE, effective)
+            .apply()
         SettingsManager.resetRoutingRulesetsFromPresets(context, index)
     }
 
@@ -247,7 +297,11 @@ object ProfilePresetManager {
             "CUSTOM" -> effectiveCustom.ifBlank { "1.1.1.1" }
             else -> "1.1.1.1"
         }
-        prefs.edit().putString("dns_server", effectiveServer).apply()
+        prefs.edit()
+            .putString("dns_server", effectiveServer)
+            .putString(APPLIED_DNS_SERVER, effectiveServer)
+            .putString(APPLIED_CUSTOM_DNS, effectiveCustom)
+            .apply()
         MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dns)
         MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, if (effectiveServer != "SYSTEM") dns else AppConfig.DNS_VPN)
     }
@@ -263,7 +317,11 @@ object ProfilePresetManager {
         } else {
             profile.appRoutingPackages
         }
-        prefs.edit().putString("app_routing_mode", effectiveMode).apply()
+        prefs.edit()
+            .putString("app_routing_mode", effectiveMode)
+            .putString(APPLIED_APP_ROUTING_MODE, effectiveMode)
+            .putString(APPLIED_APP_ROUTING_PACKAGES_STR, effectivePackages.sorted().joinToString("\n"))
+            .apply()
         if (effectiveMode == "OFF") {
             MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, false)
         } else {

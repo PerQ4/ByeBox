@@ -1,5 +1,3 @@
-import com.android.build.api.artifact.SingleArtifact
-import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -224,12 +222,6 @@ dependencies {
   implementation(libs.preference.ktx)
   implementation(libs.work.runtime.ktx)
   implementation(libs.work.multiprocess)
-  // androidx.multidex оставлен намеренно: ByeBoxApplication наследуется от
-  // androidx.multidex.MultiDexApplication. При minSdk 24 сам флаг
-  // multiDexEnabled избыточен (убран выше), но зависимость нужна для
-  // компиляции класса приложения. Удалять её можно только вместе со сменой
-  // базового класса ByeBoxApplication на android.app.Application.
-  implementation(libs.multidex)
   implementation(libs.zxing.core)
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
@@ -245,72 +237,11 @@ dependencies {
    implementation("androidx.graphics:graphics-path:1.1.0")
 }
 
-// Имя APK задаётся переименованием готового артефакта варианта.
-//
-// Почему не `VariantOutput.outputFileName`: в AGP 9.0 это публичное свойство удалено,
-// поэтому используем отдельную задачу, привязанную к `SingleArtifact.APK` варианта.
-// Привязка через `inputs.dir(apkDir)` даёт неявную зависимость от задачи упаковки,
-// так что переименование гарантированно выполняется ПОСЛЕ её завершения.
-// Задача обновляет `output-metadata.json` и падает с ошибкой, если переименование
-// не удалось, — вместо прежнего «тихого» renameTo, из-за которого получались битые APK.
-androidComponents {
-    onVariants { variant ->
-        val apkDir = variant.artifacts.get(SingleArtifact.APK)
-        val variantSuffix = variant.name.replaceFirstChar { it.uppercase() }
-        val renameTask = tasks.register("rename${variantSuffix}Apks") {
-            // Каталог APK — это и вход, и место переименования. Объявлять его ещё и
-            // `outputs.dir` нельзя: Gradle видит пересечение входа и выхода и падает
-            // с циклической зависимостью задачи на саму себя. `inputs.dir` уже даёт
-            // неявную зависимость от задачи упаковки; идемпотентность обеспечиваем
-            // повторным выполнением (файлы перезаписываются через REPLACE_EXISTING).
-            inputs.dir(apkDir)
 
-            doLast {
-                val dir = apkDir.get().asFile
-                if (!dir.isDirectory) return@doLast
 
-                // app-<variant>.apk -> byebox-arm64-v8a-<variant>.apk
-                // (сборка одно-Abi, см. defaultConfig.ndk.abiFilters).
-                val renamed = linkedMapOf<String, String>()
-                dir.listFiles { file ->
-                    file.isFile && file.name.startsWith("app-") && file.name.endsWith(".apk")
-                }?.forEach { apk ->
-                    val newName = apk.name.replaceFirst("app-", "byebox-arm64-v8a-")
-                    val target = File(dir, newName)
-                    // REPLACE_EXISTING: на повторной сборке в каталоге может остаться
-                    // byebox-*.apk от прошлого прогона — перезаписываем, а не падаем.
-                    try {
-                        Files.move(
-                            apk.toPath(),
-                            target.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
-                        )
-                    } catch (e: Exception) {
-                        throw GradleException(
-                            "rename${variantSuffix}Apks: не удалось переименовать " +
-                                "${apk.absolutePath} -> ${target.absolutePath}",
-                            e
-                        )
-                    }
-                    renamed[apk.name] = newName
-                }
-
-                // Синхронизируем output-metadata.json, иначе AGP/инструменты видят
-                // несуществующие app-*.apk.
-                val metadata = File(dir, "output-metadata.json")
-                if (renamed.isNotEmpty() && metadata.isFile) {
-                    var json = metadata.readText()
-                    renamed.forEach { (old, new) -> json = json.replace("\"$old\"", "\"$new\"") }
-                    metadata.writeText(json)
-                }
-            }
-        }
-
-        // Переименование — часть соответствующего assemble* (после упаковки).
-        val assembleName = "assemble$variantSuffix"
-        tasks.matching { it.name == assembleName }.configureEach {
-            dependsOn(renameTask)
-        }
-    }
-}
-
+// Имя APK задаётся НЕ здесь намеренно: задача, которая переименовывает
+// (перемещает) готовый артефакт внутри build-каталога во время сборки,
+// периодически оставляла частичный/битый APK (`INSTALL_PARSE_FAILED`, ~295 КБ
+// вместо полного). Поэтому сборка выдаёт стандартные имена AGP
+// (`app-debug.apk` / `app-release.apk`), а итоговое имя при публикации задаётся
+// вне Gradle — см. docs/release_process.md.

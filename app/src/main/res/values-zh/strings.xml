@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">ByeBox</string>
     <string name="qs_profile_tile_label">ByeBox 快速切换</string>
+    <string name="notif_channel_subscription_update">订阅更新服务</string>
+    <string name="notif_channel_core_test">核心测试服务</string>
+    <string name="notif_channel_background_service">v2rayNG 后台服务</string>
 </resources>
