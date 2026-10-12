@@ -23,6 +23,19 @@ grep -E "VERSION_NAME|VERSION_CODE" \
   app/build/generated/source/buildConfig/release/com/perqa/byebox/BuildConfig.java
 ```
 
+## Модуль tgwsproxy
+
+`settings.gradle.kts` подключает `:tgwsproxy` из каталога `tgwsproxy/` (`tgwsproxy/app`).
+Это **отдельный репозиторий**, которого нет в git ByeBox, поэтому свежий клон падает уже
+на этапе конфигурации. Перед сборкой склонируйте его рядом с проектом:
+
+```bash
+git clone https://github.com/amurcanov/tg-ws-proxy-android.git tgwsproxy
+```
+
+Если каталога нет, Gradle завершается с явной ошибкой и этой же инструкцией, а не
+непонятным «project directory not found».
+
 ## 1. Сборка APK
 
 ```bash
@@ -31,8 +44,12 @@ grep -E "VERSION_NAME|VERSION_CODE" \
 
 Артефакты:
 
-- `app/build/outputs/apk/release/byebox-universal-release.apk` — **основной** ассет для GitHub.
-- `app/build/outputs/apk/release/byebox-arm64-v8a-release.apk` — байт-идентичный ABI-сплит.
+- `app/build/outputs/apk/release/byebox-arm64-v8a-release.apk` — **основной** (и единственный) ассет для GitHub.
+
+> ℹ️ Сборка одно-Abi (`arm64-v8a`). ABI-сплиты и universal APK отключены: при заданном
+> `abiFilters` они давали два байт-идентичных APK. Имя `byebox-arm64-v8a-*` присваивается
+> задачей `rename<Вариант>Apks` (см. `app/build.gradle.kts`), которая также обновляет
+> `output-metadata.json`.
 
 ## 2. Публикация на GitHub
 
@@ -62,11 +79,11 @@ curl -sS -X POST \
   -d "{\"tag_name\":\"$TAG\",\"name\":\"ByeBox 1.2.0 ($CODE)\",\"body\":$(python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))' <<<"$BODY"),\"prerelease\":false}"
 
 # 2.3. Загрузить APK в созданный релиз (подставьте upload_url из ответа)
-UPLOAD_URL="https://uploads.github.com/repos/PerQ4/ByeBox/releases/<ID>/assets?name=byebox-universal-release.apk"
+UPLOAD_URL="https://uploads.github.com/repos/PerQ4/ByeBox/releases/<ID>/assets?name=byebox-arm64-v8a-release.apk"
 curl -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/vnd.android.package-archive" \
-  --data-binary @app/build/outputs/apk/release/byebox-universal-release.apk \
+  --data-binary @app/build/outputs/apk/release/byebox-arm64-v8a-release.apk \
   "$UPLOAD_URL"
 ```
 
@@ -79,7 +96,7 @@ curl -sS -X POST \
 - [ ] Тег `v<versionName>` совпадает с версией в APK.
 - [ ] В описании релиза есть строка `<!-- byebox:versionCode=N -->`.
 - [ ] Для alpha/beta/rc выставлен флаг **pre-release**.
-- [ ] На релиз загружен `byebox-universal-release.apk`.
+- [ ] На релиз загружен `byebox-arm64-v8a-release.apk`.
 - [ ] Блок версии в `README.md` (Version / Build / Released / Download) обновлён.
 
 ## 4. Важно про переход 9.0 → 1.2.0

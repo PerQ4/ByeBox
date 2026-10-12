@@ -199,6 +199,31 @@ fun CockpitServerCard(
     }
 }
 
+/**
+ * Пульсирующая точка статуса. Transition создаётся только внутри этого
+ * composable, поэтому вне CONNECTING/RECONNECTING «вечных» анимаций нет.
+ */
+@Composable
+private fun PulsingStatusDot(color: Color) {
+    val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
+    val dotAlpha by dotPulse.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotAlpha"
+    )
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .graphicsLayer { alpha = dotAlpha }
+            .clip(CircleShape)
+            .background(color)
+    )
+}
+
 @Composable
 fun StatusPillBar(
     status: ConnectionStatus,
@@ -230,16 +255,6 @@ fun StatusPillBar(
     // Session traffic totals share the DNS row so the status card stays two
     // rows tall regardless of connection state.
     val statusText = statusLabel
-    val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
-    val dotAlpha by dotPulse.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "dotAlpha"
-    )
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -257,13 +272,17 @@ fun StatusPillBar(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .graphicsLayer { alpha = if (isBusy) dotAlpha else 1f }
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
+                if (isBusy) {
+                    // Пульс точки существует только в CONNECTING/RECONNECTING.
+                    PulsingStatusDot(color = statusColor)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = statusText,

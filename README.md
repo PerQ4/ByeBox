@@ -15,7 +15,7 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.5.4** | `34` | 2026-09-30 | [universal APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-universal-release.apk) |
+| **1.5.4** | `34` | 2026-09-30 | [arm64-v8a APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-arm64-v8a-release.apk) |
 | 1.5.3 | `33` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3) |
 | 1.5.3-beta.1 | `32` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3-beta.1) |
 | 1.5.2 | `30` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.2) |
@@ -89,7 +89,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> Latest **stable** release is **`1.5.4`** (`versionCode 34`) — the **TUN stack** setting now actually reaches the Xray core config (`noKernelTun`); before this release it was written to an unrelated key and silently discarded. The universal APK targets `arm64-v8a`.
+> Latest **stable** release is **`1.5.4`** (`versionCode 34`) — the **TUN stack** setting now actually reaches the Xray core config (`noKernelTun`); before this release it was written to an unrelated key and silently discarded. The APK targets `arm64-v8a` (single-ABI build).
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -259,7 +259,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий стабильный релиз — **`1.5.4`** (`versionCode 34`) — настройка **стека TUN** теперь действительно доходит до конфига ядра Xray (`noKernelTun`); раньше она писалась в несвязанный ключ и молча терялась. Universal-APK рассчитан на `arm64-v8a`.
+> Текущий стабильный релиз — **`1.5.4`** (`versionCode 34`) — настройка **стека TUN** теперь действительно доходит до конфига ядра Xray (`noKernelTun`); раньше она писалась в несвязанный ключ и молча терялась. APK рассчитан на `arm64-v8a` (сборка с одним ABI).
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 

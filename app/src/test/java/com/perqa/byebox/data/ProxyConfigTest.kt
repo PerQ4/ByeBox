@@ -1,13 +1,27 @@
 package com.perqa.byebox.data
 
+import android.app.Application
+import android.util.Base64
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+/**
+ * Раньше класс работал в «голом» JUnit, где android.util.Base64 бросал
+ * RuntimeException. Ветки VMESS/Shadowsocks из-за этого были помечены
+ * @Ignore, а тест на «сломанный» конфиг проходил лишь потому, что
+ * ProxyConfig.toConfigLink() глотает все исключения и возвращает "".
+ * Robolectric даёт настоящий android.util.Base64, поэтому все ветки теперь
+ * проверяются детерминированно.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], application = Application::class)
 class ProxyConfigTest {
 
     private val baseConfig = ProxyConfig(
@@ -119,12 +133,33 @@ class ProxyConfigTest {
         assertTrue(link.contains("#Test Server") || link.contains("#Test%20Server"))
     }
 
-    @Test @Ignore("requires android.util.Base64 (Android SDK)")
-    fun `toConfigLink for VMESS produces base64`() {
-        val vmess = baseConfig.copy(protocol = "VMESS", security = "tls", network = "ws", wsPath = "/ws", wsHost = "host.com")
+    @Test
+    fun `toConfigLink for VMESS produces base64 JSON with core fields`() {
+        val vmess = baseConfig.copy(
+            protocol = "VMESS",
+            security = "tls",
+            network = "ws",
+            wsPath = "/ws",
+            wsHost = "host.com"
+        )
         val link = vmess.toConfigLink()
         assertTrue("VMESS link should start with vmess://", link.startsWith("vmess://"))
-        assertTrue("VMESS link should be longer than 20 chars", link.length > 20)
+
+        // Полезная нагрузка — это JSON, закодированный в base64 без переносов.
+        val decoded = String(Base64.decode(link.removePrefix("vmess://"), Base64.NO_WRAP))
+        val json = JSONObject(decoded)
+        assertEquals("2", json.getString("v"))
+        assertEquals("Test Server", json.getString("ps"))
+        assertEquals("server.example.com", json.getString("add"))
+        assertEquals(443, json.getInt("port"))
+        assertEquals(baseConfig.uuid, json.getString("id"))
+        assertEquals("tls", json.getString("tls"))
+        assertEquals("tls", json.getString("scy"))
+        assertEquals("ws", json.getString("net"))
+        assertEquals("none", json.getString("type"))
+        assertEquals("/ws", json.getString("path"))
+        assertEquals("host.com", json.getString("host"))
+        assertEquals("microsoft.com", json.getString("sni"))
     }
 
     @Test
@@ -136,21 +171,27 @@ class ProxyConfigTest {
         assertTrue(link.contains("sni=sni.tr.com"))
     }
 
-    @Test @Ignore("requires android.util.Base64 (Android SDK)")
-    fun `toConfigLink for Shadowsocks`() {
+    @Test
+    fun `toConfigLink for Shadowsocks base64-encodes the password`() {
         val ss = baseConfig.copy(protocol = "Shadowsocks", uuid = "mypassword")
         val link = ss.toConfigLink()
         assertTrue("Shadowsocks link should start with ss://", link.startsWith("ss://"))
         assertTrue(link.contains("@server.example.com:443"))
+
+        val userInfo = link.removePrefix("ss://").substringBefore('@')
+        assertEquals("mypassword", String(Base64.decode(userInfo, Base64.NO_WRAP)))
     }
 
     @Test
-    fun `toConfigLink returns empty for broken config`() {
+    fun `toConfigLink for empty protocol falls back to the ss branch`() {
+        // Пустой протокол не бросает исключение: он попадает в ветку else
+        // (Shadowsocks-подобная ссылка). Тест фиксирует реальное поведение и
+        // больше не зависит от RuntimeException внутри android.util.Base64.
         val broken = ProxyConfig(
             id = "bad", name = "", protocol = "", address = "", port = 0, uuid = ""
         )
         val link = broken.toConfigLink()
-        assertTrue("empty config without Base64 should return empty", link.isEmpty())
+        assertTrue("empty protocol should fall back to the ss:// branch", link.startsWith("ss://"))
     }
 
     @Test

@@ -165,7 +165,10 @@ fun ProfilePresetsCard(
 
     // Внутренний список должен прокручиваться сам, не увлекая за собой страницу:
     // пока список свёрнут и имеет запас прокрутки, «съедаем» остаток жеста,
-    // чтобы внешняя вертикальная прокрутка страницы не срабатывала.
+    // чтобы внешняя вертикальная прокрутка страницы не срабатывала. НО когда
+    // внутренний список уже на краю (вверху при движении вниз / внизу при
+    // движении вверх), гасить жест нельзя — остаток нужно отдать родительской
+    // странице, иначе до карточки Telegram, лежащей под пресетами, не добраться.
     val blockParentScroll = collapsed && scrollState.maxValue > 0f
     val parentScrollBlocker = remember(blockParentScroll) {
         object : NestedScrollConnection {
@@ -173,12 +176,20 @@ fun ProfilePresetsCard(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource
-            ): Offset =
-                if (blockParentScroll && available.y != 0f) {
-                    Offset(0f, available.y)
-                } else {
+            ): Offset {
+                if (!blockParentScroll || available.y == 0f) return Offset.Zero
+                // available.y > 0 — жест/контент движется вниз (к началу списка),
+                // available.y < 0 — вверх (к концу списка).
+                val atTopEdge = scrollState.value <= 0 && available.y > 0f
+                val atBottomEdge = scrollState.value >= scrollState.maxValue && available.y < 0f
+                // На краю внутреннему списку некуда скроллить — пропускаем остаток
+                // в родителя. Иначе гасим жест, пока список прокручивается сам.
+                return if (atTopEdge || atBottomEdge) {
                     Offset.Zero
+                } else {
+                    Offset(0f, available.y)
                 }
+            }
         }
     }
 

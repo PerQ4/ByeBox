@@ -51,6 +51,9 @@ object CoreServiceManager {
     private var processFinder: XrayProcessFinder? = null
     private var browserDialer: IDialerService? = null
 
+    /** true, если [mMsgReceive] сейчас зарегистрирован на сервисе. */
+    @Volatile private var msgReceiverRegistered = false
+
     var serviceControl: SoftReference<ServiceControl>? = null
         set(value) {
             field = value
@@ -226,6 +229,8 @@ object CoreServiceManager {
             MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_FAILURE, message)
             MmkvManager.encodeSettings(AppConfig.PREF_TILE_VPN_RUNNING, false)
             NotificationManager.cancelNotification()
+            // Ресивер мог успеть зарегистрироваться до сбоя — снимаем его.
+            unregisterMsgReceiver(service)
             return false
         }
     }
@@ -247,6 +252,7 @@ object CoreServiceManager {
         mFilter.addAction(Intent.ACTION_SCREEN_OFF)
         mFilter.addAction(Intent.ACTION_USER_PRESENT)
         ContextCompat.registerReceiver(service, mMsgReceive, mFilter, Utils.receiverFlags())
+        msgReceiverRegistered = true
 
         currentConfig = config
         var tunFd = vpnInterface?.fd ?: 0
@@ -318,7 +324,7 @@ object CoreServiceManager {
         com.perqa.byebox.core.SessionStatsManager.stop()
 
         try {
-            service.unregisterReceiver(mMsgReceive)
+            unregisterMsgReceiver(service)
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
         }
@@ -407,6 +413,21 @@ object CoreServiceManager {
      */
     private fun getService(): Service? {
         return serviceControl?.get()?.getService()
+    }
+
+    /**
+     * Разрегистрирует [mMsgReceive], если он был зарегистрирован.
+     * Идемпотентно: повторные вызовы и попытки снять незарегистрированный
+     * ресивер не приводят к ошибкам.
+     */
+    private fun unregisterMsgReceiver(service: Service) {
+        if (!msgReceiverRegistered) return
+        msgReceiverRegistered = false
+        try {
+            service.unregisterReceiver(mMsgReceive)
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
+        }
     }
 
     /**

@@ -24,8 +24,10 @@ import com.perqa.byebox.theme.ByeBoxTheme
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainScreenViewModel
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -53,6 +55,13 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_TOGGLE_VPN = "com.perqa.byebox.action.TOGGLE_VPN"
         const val ACTION_CHECK_UPDATES = "com.perqa.byebox.action.CHECK_UPDATES"
+
+        // MainActivity экспортирована (LAUNCHER + deep-link), поэтому управляющие
+        // action обрабатываем только при наличии внутреннего токена, который
+        // добавляем сами при создании шорткатов. Иначе любое приложение могло бы
+        // переключать VPN явным интентом.
+        private const val EXTRA_INTERNAL_TOKEN = "com.perqa.byebox.extra.INTERNAL_TOKEN"
+        private const val INTERNAL_TOKEN = "byebox:internal:9f3c1a7d"
     }
 
     private val viewModel by viewModels<MainScreenViewModel> {
@@ -72,7 +81,11 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             startVpnServiceInternal()
         } else {
-            Toast.makeText(this, "Разрешение на VPN отклонено", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                Loc.get("vpn_permission_denied", viewModel.uiState.value.language),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -80,7 +93,11 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (!isGranted) {
-            Toast.makeText(this, "Доступ к уведомлениям отклонен. Вы не увидите статус VPN.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                Loc.get("notif_permission_denied", viewModel.uiState.value.language),
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -95,23 +112,25 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch {
-            viewModel.uiState.collect { state ->
-                val activeConfig = state.configs.find { it.id == state.activeConfigId }
-                if (activeConfig != null) {
-                    val isServiceRunning = state.connectionStatus == ConnectionStatus.CONNECTED ||
-                            MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
-                    if (isServiceRunning) {
-                        val runtimeSignature = state.runtimeSignature()
-                        if (lastRuntimeSignature == null) {
-                            lastRuntimeSignature = runtimeSignature
-                        } else if (lastRuntimeSignature != runtimeSignature) {
-                            lastRuntimeSignature = runtimeSignature
-                            CoreServiceManager.stopVService(this@MainActivity)
-                            delay(500)
-                            requestStartVpn()
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    val activeConfig = state.configs.find { it.id == state.activeConfigId }
+                    if (activeConfig != null) {
+                        val isServiceRunning = state.connectionStatus == ConnectionStatus.CONNECTED ||
+                                MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
+                        if (isServiceRunning) {
+                            val runtimeSignature = state.runtimeSignature()
+                            if (lastRuntimeSignature == null) {
+                                lastRuntimeSignature = runtimeSignature
+                            } else if (lastRuntimeSignature != runtimeSignature) {
+                                lastRuntimeSignature = runtimeSignature
+                                CoreServiceManager.stopVService(this@MainActivity)
+                                delay(500)
+                                requestStartVpn()
+                            }
+                        } else {
+                            lastRuntimeSignature = null
                         }
-                    } else {
-                        lastRuntimeSignature = null
                     }
                 }
             }
@@ -167,6 +186,7 @@ class MainActivity : ComponentActivity() {
                         .setIntent(
                             Intent(this, MainActivity::class.java).apply {
                                 action = ACTION_TOGGLE_VPN
+                                putExtra(EXTRA_INTERNAL_TOKEN, INTERNAL_TOKEN)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                             }
                         )
@@ -178,6 +198,7 @@ class MainActivity : ComponentActivity() {
                         .setIntent(
                             Intent(this, MainActivity::class.java).apply {
                                 action = ACTION_CHECK_UPDATES
+                                putExtra(EXTRA_INTERNAL_TOKEN, INTERNAL_TOKEN)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                             }
                         )
@@ -189,13 +210,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isInternalControlIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        return intent.getStringExtra(EXTRA_INTERNAL_TOKEN) == INTERNAL_TOKEN
+    }
+
     private fun handleShortcutIntent(intent: Intent?) {
         when (intent?.action) {
             ACTION_TOGGLE_VPN -> {
+                // Игнорируем управляющие интенты извне пакета (MainActivity exported).
+                if (!isInternalControlIntent(intent)) {
+                    AppLogger.warn("MainActivity", "Ignored external ACTION_TOGGLE_VPN intent")
+                    return
+                }
                 val isRunning = MmkvManager.decodeSettingsBool(AppConfig.PREF_TILE_VPN_RUNNING, false)
                 handleVpnToggle(connect = !isRunning)
             }
-            ACTION_CHECK_UPDATES -> viewModel.checkForUpdates()
+            ACTION_CHECK_UPDATES -> {
+                if (!isInternalControlIntent(intent)) {
+                    AppLogger.warn("MainActivity", "Ignored external ACTION_CHECK_UPDATES intent")
+                    return
+                }
+                viewModel.checkForUpdates()
+            }
         }
     }
 
@@ -231,11 +268,16 @@ class MainActivity : ComponentActivity() {
         runCatching {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }.onFailure {
-            Toast.makeText(this, "Не удалось открыть настройки VPN", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                Loc.get("toast_vpn_settings_fail", viewModel.uiState.value.language),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
     fun requestQuickSettingsTile() {
+        val language = viewModel.uiState.value.language
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val statusBarManager = getSystemService(StatusBarManager::class.java)
             val componentName = ComponentName(this, ByeBoxTileService::class.java)
@@ -246,14 +288,14 @@ class MainActivity : ComponentActivity() {
                 mainExecutor
             ) { result ->
                 val message = when (result) {
-                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> "Плитка добавлена"
-                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> "Плитка уже добавлена"
-                    else -> "Плитку можно добавить из быстрых настроек"
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> Loc.get("tile_added", language)
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> Loc.get("tile_already_added", language)
+                    else -> Loc.get("tile_add_hint", language)
                 }
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
         } else {
-            Toast.makeText(this, "Добавьте плитку ByeBox из панели быстрых настроек", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, Loc.get("tile_add_manual", language), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -262,7 +304,7 @@ class MainActivity : ComponentActivity() {
         val activeConfig = state.configs.find { it.id == state.activeConfigId }
         val link = activeConfig?.effectiveShareLink().orEmpty()
         if (link.isBlank()) {
-            Toast.makeText(this, "Нет активной конфигурации для отправки", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, Loc.get("share_no_active", state.language), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -271,7 +313,7 @@ class MainActivity : ComponentActivity() {
             putExtra(Intent.EXTRA_SUBJECT, "ByeBox: ${activeConfig?.name ?: "VPN config"}")
             putExtra(Intent.EXTRA_TEXT, link)
         }
-        startActivity(Intent.createChooser(sendIntent, "Поделиться конфигурацией"))
+        startActivity(Intent.createChooser(sendIntent, Loc.get("share_config_chooser", state.language)))
     }
 
     private fun startVpnServiceInternal() {
@@ -279,7 +321,7 @@ class MainActivity : ComponentActivity() {
         val activeConfig = state.configs.find { it.id == state.activeConfigId }
 
         if (activeConfig == null || activeConfig.address.isBlank() || activeConfig.port <= 0) {
-            viewModel.showToast("Нет выбранной рабочей конфигурации")
+            viewModel.showToast(Loc.get("no_active_config", state.language))
             viewModel.resetConnectionState()
             return
         }
@@ -290,7 +332,7 @@ class MainActivity : ComponentActivity() {
             CoreServiceManager.startVService(this, activeConfig.id)
         } catch (e: Exception) {
             e.printStackTrace()
-            viewModel.showToast("Ошибка запуска VPN: ${e.message}")
+            viewModel.showToast(String.format(Loc.get("toast_vpn_start_fail", state.language), e.message ?: ""))
         }
     }
 

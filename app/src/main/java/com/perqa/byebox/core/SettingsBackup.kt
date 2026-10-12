@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.tencent.mmkv.MMKV
+import com.v2ray.ang.AppConfig
+import com.v2ray.ang.util.LogUtil
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -23,6 +25,12 @@ object SettingsBackup {
     private const val PREFS_NAME = "byebox_settings"
     private const val MMKV_ENTRY = "mmkv"
     private const val SP_ENTRY = "shared_prefs"
+
+    /** Максимальное число записей в импортируемом архиве. */
+    private const val MAX_ZIP_ENTRIES = 512
+
+    /** Максимальный суммарный размер распакованных данных (защита от zip-bomb). */
+    private const val MAX_UNCOMPRESSED_BYTES = 64L * 1024 * 1024
 
     /**
      * Exports all settings into a zip archive stored in the user's Downloads folder.
@@ -73,7 +81,13 @@ object SettingsBackup {
                 FileOutputStream(zipFile).use { output -> input.copyTo(output) }
             } ?: return false
 
-            unzip(zipFile, workDir)
+            val topLevelEntries = unzip(zipFile, workDir)
+
+            // Архив должен содержать хотя бы один из ожидаемых разделов бэкапа.
+            if (MMKV_ENTRY !in topLevelEntries && SP_ENTRY !in topLevelEntries) {
+                LogUtil.w(AppConfig.TAG, "Backup: не найдены ожидаемые записи ($MMKV_ENTRY/$SP_ENTRY)")
+                return false
+            }
 
             val mmkvSrc = File(workDir, MMKV_ENTRY)
             if (mmkvSrc.exists() && mmkvSrc.isDirectory) {
@@ -129,20 +143,66 @@ object SettingsBackup {
         }
     }
 
-    private fun unzip(zipFile: File, destDir: File) {
+    /**
+     * Распаковывает архив в [destDir], защищаясь от Zip Slip и zip-bomb.
+     *
+     * Все записи обязаны попадать строго внутрь [destDir] (проверка по canonicalPath),
+     * число записей и суммарный распакованный размер ограничены.
+     *
+     * @return множество имён записей верхнего уровня.
+     * @throws IllegalStateException при небезопасной записи или превышении лимитов.
+     */
+    private fun unzip(zipFile: File, destDir: File): Set<String> {
+        val destRoot = destDir.canonicalFile
+        val destPrefix = destRoot.path + File.separator
+        val topLevelEntries = mutableSetOf<String>()
+        var entryCount = 0
+        var totalBytes = 0L
+
         ZipInputStream(FileInputStream(zipFile)).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                val outFile = File(destDir, entry.name)
+                entryCount++
+                if (entryCount > MAX_ZIP_ENTRIES) {
+                    throw IllegalStateException("archive has too many entries")
+                }
+
+                val name = entry.name.orEmpty().replace('\\', '/')
+                val outFile = File(destDir, name)
+                val outPath = outFile.canonicalFile.path
+
+                // Запись должна находиться внутри destDir: отсекаем абсолютные пути,
+                // ".." и иные попытки выйти за пределы каталога распаковки.
+                if (outPath != destRoot.path && !outPath.startsWith(destPrefix)) {
+                    throw IllegalStateException("unsafe zip entry: $name")
+                }
+
                 if (entry.isDirectory) {
                     outFile.mkdirs()
                 } else {
                     outFile.parentFile?.mkdirs()
-                    FileOutputStream(outFile).use { fos -> zis.copyTo(fos) }
+                    FileOutputStream(outFile).use { fos ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = zis.read(buffer)
+                            if (n < 0) break
+                            totalBytes += n
+                            if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+                                throw IllegalStateException("archive exceeds size limit")
+                            }
+                            fos.write(buffer, 0, n)
+                        }
+                    }
                 }
+
+                name.trimStart('/').substringBefore('/')
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { topLevelEntries.add(it) }
+
                 zis.closeEntry()
                 entry = zis.nextEntry
             }
         }
+        return topLevelEntries
     }
 }

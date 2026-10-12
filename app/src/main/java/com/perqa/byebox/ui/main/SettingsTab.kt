@@ -115,6 +115,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -719,7 +721,10 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        IconButton(onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval - 5) }) {
+                                        IconButton(
+                                            onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval - 5) },
+                                            modifier = Modifier.semantics { contentDescription = Loc.get("ping_interval_dec", state.language) }
+                                        ) {
                                             Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                                         }
                                         Text(
@@ -727,7 +732,10 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        IconButton(onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval + 5) }) {
+                                        IconButton(
+                                            onClick = { viewModel.setPeriodicPingIntervalSec(periodicPingInterval + 5) },
+                                            modifier = Modifier.semantics { contentDescription = Loc.get("ping_interval_inc", state.language) }
+                                        ) {
                                             Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                                         }
                                     }
@@ -1225,7 +1233,12 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                         }
 
                         SettingsGroup(title = Loc.get("logging", state.language)) {
-                            val logLevels = listOf("debug" to "Debug", "info" to "Info", "warning" to "Warning", "error" to "Error")
+                            val logLevels = listOf(
+                                "debug" to Loc.get("log_debug", state.language),
+                                "info" to Loc.get("log_info", state.language),
+                                "warning" to Loc.get("log_warn", state.language),
+                                "error" to Loc.get("log_error", state.language)
+                            )
                             logLevels.forEachIndexed { index, (value, label) ->
                                 SettingsChoiceRow(
                                     title = label,
@@ -1822,6 +1835,7 @@ private fun TabReorderList(
             else MaterialTheme.colorScheme.surfaceContainerHigh
         },
         cornerRoundness = cornerRoundness,
+        language = language,
         modifier = Modifier.fillMaxWidth()
     ) { id, _ ->
         val (label, icon) = tabMeta(id, language)

@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration.UI_MODE_NIGHT_MASK
 import android.content.res.Configuration.UI_MODE_NIGHT_NO
-import android.os.Build
 import android.os.LocaleList
 import android.provider.Settings
 import android.text.Editable
@@ -527,15 +526,16 @@ object Utils {
     }
 
     /**
-     * Get the receiver flags based on the Android version.
+     * Get the receiver flags for dynamically registered receivers.
+     *
+     * Always returns [ContextCompat.RECEIVER_NOT_EXPORTED]: все broadcast-сообщения
+     * в приложении адресуются конкретному пакету ([android.content.Intent.setPackage]),
+     * поэтому экспорт наружу не нужен и позволял бы сторонним приложениям
+     * управлять VPN (останавливать/перезапускать ядро).
      *
      * @return The receiver flags.
      */
-    fun receiverFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ContextCompat.RECEIVER_EXPORTED
-    } else {
-        ContextCompat.RECEIVER_NOT_EXPORTED
-    }
+    fun receiverFlags(): Int = ContextCompat.RECEIVER_NOT_EXPORTED
 
     /**
      * Check if the package is Xray.

@@ -61,12 +61,10 @@ class QrScanActivity : ComponentActivity() {
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     @Composable
     private fun QrScanScreen(onResult: (String) -> Unit, onBack: () -> Unit) {
-        val sysLang = java.util.Locale.getDefault().language
-        val language = when {
-            sysLang.startsWith("ru") || sysLang.startsWith("be") || sysLang.startsWith("uk") || sysLang.startsWith("kk") || sysLang.startsWith("ky") -> "ru"
-            sysLang.startsWith("zh") -> "zh"
-            else -> "en"
-        }
+        // Язык берём из настроек приложения (как Loc.get), а не из системной локали,
+        // чтобы подсказки совпадали с выбранным в приложении языком.
+        val prefs = getSharedPreferences("byebox_settings", MODE_PRIVATE)
+        val language = prefs.getString("pref_language", "system") ?: "system"
         var hasCameraPermission by remember {
             mutableStateOf(
                 ContextCompat.checkSelfPermission(this@QrScanActivity, Manifest.permission.CAMERA) ==

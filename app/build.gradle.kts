@@ -1,3 +1,6 @@
+import com.android.build.api.artifact.SingleArtifact
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -24,7 +27,32 @@ val vName = buildString {
     append(vMajor).append('.').append(vMinor).append('.').append(vPatch)
     if (vStage.isNotEmpty()) append('-').append(vStage).append('.').append(vStageNumber)
 }
-val vBuildDate = SimpleDateFormat("yyMMdd", Locale.US).format(Date())
+// Дата сборки должна быть детерминированной — иначе одинаковый код даёт разные APK
+// и ломает воспроизводимость/кэш. Приоритет источников:
+//   1) SOURCE_DATE_EPOCH (env) — стандарт воспроизводимых сборок;
+//   2) дата последнего коммита git (YYMMDD);
+//   3) текущая дата — только как аварийный fallback (например, без git).
+val vBuildDate: String = run {
+    val dateFormat = SimpleDateFormat("yyMMdd", Locale.US)
+    val envEpoch = System.getenv("SOURCE_DATE_EPOCH")?.trim()?.toLongOrNull()
+    if (envEpoch != null && envEpoch >= 0L) {
+        dateFormat.format(Date(envEpoch * 1000L))
+    } else {
+        // git вызываем через providers.exec (не ProcessBuilder): запуск внешнего
+        // процесса напрямую на этапе конфигурации ломает configuration cache.
+        val gitDate = try {
+            providers.exec {
+                commandLine("git", "log", "-1", "--format=%cd", "--date=format:%y%m%d")
+                workingDir(rootProject.projectDir)
+                isIgnoreExitValue = true
+            }.standardOutput.asText.get().trim()
+                .takeIf { it.isNotEmpty() && it.matches(Regex("\\d{6}")) }
+        } catch (_: Exception) {
+            null
+        }
+        gitDate ?: dateFormat.format(Date())
+    }
+}
 
 android {
     namespace = "com.perqa.byebox"
@@ -40,17 +68,11 @@ android {
         buildConfigField("String", "BUILD_DATE", "\"$vBuildDate\"")
         buildConfigField("int", "BUILD_NUMBER", "$vCode")
         multiDexEnabled = true
+        // Единственный поддерживаемый ABI — arm64-v8a. ABI-сплиты и universal APK
+        // намеренно отключены: при `abiFilters` они давали два БАЙТ-ИДЕНТИЧНЫХ
+        // APK (~79 МБ каждый) и только раздували вывод сборки.
         ndk {
             abiFilters += listOf("arm64-v8a")
-        }
-    }
-
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = true
         }
     }
 
@@ -61,10 +83,26 @@ android {
         }
     }
 
+    // Встроенный пароль — НЕ секрет: он лежит в репозитории и нужен лишь чтобы сборка
+    // работала без local.properties. Его следует ротировать: сгенерируйте собственный
+    // keystore (keytool -genkeypair) и задайте оба пароля в local.properties
+    // (файл в .gitignore). Fallback не удаляем, иначе «чистая» сборка сломается.
+    val defaultStorePassword = "ByeBoxSign2024!"
+    val hasCustomStorePassword = localProps.containsKey("BYEBOX_KEYSTORE_PASSWORD")
+    val hasCustomKeyPassword = localProps.containsKey("BYEBOX_KEY_PASSWORD")
+
     val ksPath = localProps.getProperty("BYEBOX_KEYSTORE_PATH", "keystore/byebox.jks")
-    val ksPass = localProps.getProperty("BYEBOX_KEYSTORE_PASSWORD", "ByeBoxSign2024!")
+    val ksPass = localProps.getProperty("BYEBOX_KEYSTORE_PASSWORD", defaultStorePassword)
     val ksAlias = localProps.getProperty("BYEBOX_KEY_ALIAS", "byebox")
-    val kPass = localProps.getProperty("BYEBOX_KEY_PASSWORD", "ByeBoxSign2024!")
+    val kPass = localProps.getProperty("BYEBOX_KEY_PASSWORD", defaultStorePassword)
+
+    if (!hasCustomStorePassword || !hasCustomKeyPassword) {
+        logger.warn(
+            "!!! ВНИМАНИЕ: используется встроенный (демонстрационный) пароль keystore по умолчанию. " +
+                "Он не является секретом и подлежит ротации. Задайте BYEBOX_KEYSTORE_PASSWORD и " +
+                "BYEBOX_KEY_PASSWORD в local.properties или укажите собственный keystore."
+        )
+    }
 
     signingConfigs {
         create("byebox") {
@@ -84,6 +122,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            // Удаляем неиспользуемые ресурсы. Ресурсы, на которые есть ссылки из кода/манифеста,
+            // сохраняются автоматически; динамически (getIdentifier/по имени) здесь ничего не
+            // ищется — если это появится, добавьте res/raw/keep.xml. См. app/proguard-rules.pro.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("byebox")
         }
@@ -197,25 +239,72 @@ dependencies {
    implementation("androidx.graphics:graphics-path:1.1.0")
 }
 
-tasks.register("renameApks") {
-    val apkDir = layout.buildDirectory.dir("outputs/apk")
-    doLast {
-        val dir = apkDir.get().asFile
-        if (dir.exists()) {
-            dir.walk().forEach { f ->
-                if (f.isFile && f.name.endsWith(".apk") && f.name.startsWith("app-")) {
-                    val newName = f.name.replace("app-", "byebox-")
-                    val newFile = File(f.parentFile, newName)
-                    if (f.renameTo(newFile)) {
-                        println("Renamed: ${f.name} -> $newName")
+// Имя APK задаётся переименованием готового артефакта варианта.
+//
+// Почему не `VariantOutput.outputFileName`: в AGP 9.0 это публичное свойство удалено,
+// поэтому используем отдельную задачу, привязанную к `SingleArtifact.APK` варианта.
+// Привязка через `inputs.dir(apkDir)` даёт неявную зависимость от задачи упаковки,
+// так что переименование гарантированно выполняется ПОСЛЕ её завершения.
+// Задача обновляет `output-metadata.json` и падает с ошибкой, если переименование
+// не удалось, — вместо прежнего «тихого» renameTo, из-за которого получались битые APK.
+androidComponents {
+    onVariants { variant ->
+        val apkDir = variant.artifacts.get(SingleArtifact.APK)
+        val variantSuffix = variant.name.replaceFirstChar { it.uppercase() }
+        val renameTask = tasks.register("rename${variantSuffix}Apks") {
+            // Каталог APK — это и вход, и место переименования. Объявлять его ещё и
+            // `outputs.dir` нельзя: Gradle видит пересечение входа и выхода и падает
+            // с циклической зависимостью задачи на саму себя. `inputs.dir` уже даёт
+            // неявную зависимость от задачи упаковки; идемпотентность обеспечиваем
+            // повторным выполнением (файлы перезаписываются через REPLACE_EXISTING).
+            inputs.dir(apkDir)
+
+            doLast {
+                val dir = apkDir.get().asFile
+                if (!dir.isDirectory) return@doLast
+
+                // app-<variant>.apk -> byebox-arm64-v8a-<variant>.apk
+                // (сборка одно-Abi, см. defaultConfig.ndk.abiFilters).
+                val renamed = linkedMapOf<String, String>()
+                dir.listFiles { file ->
+                    file.isFile && file.name.startsWith("app-") && file.name.endsWith(".apk")
+                }?.forEach { apk ->
+                    val newName = apk.name.replaceFirst("app-", "byebox-arm64-v8a-")
+                    val target = File(dir, newName)
+                    // REPLACE_EXISTING: на повторной сборке в каталоге может остаться
+                    // byebox-*.apk от прошлого прогона — перезаписываем, а не падаем.
+                    try {
+                        Files.move(
+                            apk.toPath(),
+                            target.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING
+                        )
+                    } catch (e: Exception) {
+                        throw GradleException(
+                            "rename${variantSuffix}Apks: не удалось переименовать " +
+                                "${apk.absolutePath} -> ${target.absolutePath}",
+                            e
+                        )
                     }
+                    renamed[apk.name] = newName
+                }
+
+                // Синхронизируем output-metadata.json, иначе AGP/инструменты видят
+                // несуществующие app-*.apk.
+                val metadata = File(dir, "output-metadata.json")
+                if (renamed.isNotEmpty() && metadata.isFile) {
+                    var json = metadata.readText()
+                    renamed.forEach { (old, new) -> json = json.replace("\"$old\"", "\"$new\"") }
+                    metadata.writeText(json)
                 }
             }
         }
-    }
-}
 
-tasks.matching { it.name.startsWith("assemble") }.all {
-    finalizedBy("renameApks")
+        // Переименование — часть соответствующего assemble* (после упаковки).
+        val assembleName = "assemble$variantSuffix"
+        tasks.matching { it.name == assembleName }.configureEach {
+            dependsOn(renameTask)
+        }
+    }
 }
 

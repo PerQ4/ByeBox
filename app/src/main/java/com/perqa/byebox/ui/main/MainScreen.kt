@@ -5,10 +5,12 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -203,38 +206,42 @@ fun MainScreen(
                                 .weight(1f)
                                 .fillMaxWidth()
                         ) {
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = currentTabId == "main",
-                                enter = fadeIn(animationSpec = tween(300)),
-                                exit = fadeOut(animationSpec = tween(300))
-                            ) {
-                                DashboardTab(
-                                    state = state,
-                                    viewModel = viewModel,
-                                    onTabSelected = { selectedTab = it },
-                                    onShowBottomBar = { showBottomBar = it }
-                                )
-                            }
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = currentTabId == "proxies",
-                                enter = fadeIn(animationSpec = tween(300)),
-                                exit = fadeOut(animationSpec = tween(300))
-                            ) {
-                                ProxyTab(
-                                    state = state,
-                                    viewModel = viewModel
-                                )
-                            }
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = currentTabId == "settings",
-                                enter = fadeIn(animationSpec = tween(300)),
-                                exit = fadeOut(animationSpec = tween(300))
-                            ) {
-                                SettingsTab(
-                                    state = state,
-                                    viewModel = viewModel,
-                                    onShowBottomBar = { showBottomBar = it }
-                                )
+                            // Живёт строго одна вкладка за раз: AnimatedContent держит
+                            // только текущую и предыдущую во время кросс-фейда, а после
+                            // его завершения предыдущая выходит из композиции. Поэтому
+                            // две тяжёлые вкладки не компонуются одновременно надолго.
+                            // SaveableStateProvider сохраняет saveable-состояние вкладки
+                            // между выходами из композиции (поиск/фильтр/позиция списка
+                            // в ProxyTab; в SettingsTab — если его состояние saveable).
+                            val saveableStateHolder = rememberSaveableStateHolder()
+                            AnimatedContent(
+                                targetState = currentTabId,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(300)) togetherWith
+                                        fadeOut(animationSpec = tween(300))
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                                label = "tabContent"
+                            ) { tabId ->
+                                saveableStateHolder.SaveableStateProvider(tabId) {
+                                    when (tabId) {
+                                        "main" -> DashboardTab(
+                                            state = state,
+                                            viewModel = viewModel,
+                                            onTabSelected = { selectedTab = it },
+                                            onShowBottomBar = { showBottomBar = it }
+                                        )
+                                        "proxies" -> ProxyTab(
+                                            state = state,
+                                            viewModel = viewModel
+                                        )
+                                        else -> SettingsTab(
+                                            state = state,
+                                            viewModel = viewModel,
+                                            onShowBottomBar = { showBottomBar = it }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

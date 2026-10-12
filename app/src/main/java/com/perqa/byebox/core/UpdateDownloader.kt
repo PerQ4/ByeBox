@@ -27,9 +27,10 @@ object UpdateDownloader {
 
     /**
      * Streams the APK to app-private external storage, reporting progress, then
-     * verifies size and SHA-256 (when the release provides a digest).
+     * verifies size and the mandatory SHA-256 digest.
      *
-     * @throws IllegalStateException on HTTP, size or checksum failure.
+     * @throws IllegalStateException on HTTP, size or checksum failure, or when
+     *   the release metadata does not provide a SHA-256 digest.
      */
     suspend fun download(
         context: Context,
@@ -73,12 +74,18 @@ object UpdateDownloader {
                 throw IllegalStateException("incomplete download ($read/$total)")
             }
 
-            if (info.apkSha256.isNotBlank()) {
-                val actual = digest.digest().joinToString("") { "%02x".format(it) }
-                if (!actual.equals(info.apkSha256, ignoreCase = true)) {
-                    file.delete()
-                    throw IllegalStateException("checksum mismatch")
-                }
+            // SHA-256 обязателен: без ожидаемого дайджеста установка недопустима.
+            val expectedSha = info.apkSha256.trim()
+            if (expectedSha.isEmpty()) {
+                file.delete()
+                throw IllegalStateException(
+                    "в метаданных релиза отсутствует SHA-256 — установка отменена"
+                )
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                file.delete()
+                throw IllegalStateException("checksum mismatch")
             }
             file
         } finally {

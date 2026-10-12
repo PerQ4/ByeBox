@@ -59,11 +59,6 @@ object AppLogger {
             appContext?.let { ctx ->
                 val internalFile = File(ctx.filesDir, "box_log.txt")
                 if (!internalFile.exists()) internalFile.createNewFile()
-
-                ctx.getExternalFilesDir(null)?.let { externalDir ->
-                    val externalFile = File(externalDir, "box_log.txt")
-                    if (!externalFile.exists()) externalFile.createNewFile()
-                }
             }
         }
         info("SYSTEM", "ByeBox инициализирован. Готов к подключению.")
@@ -103,15 +98,38 @@ object AppLogger {
                 val internalFile = File(ctx.filesDir, "box_log.txt")
                 if (internalFile.exists()) internalFile.delete()
                 internalFile.createNewFile()
-
-                ctx.getExternalFilesDir(null)?.let { externalDir ->
-                    val externalFile = File(externalDir, "box_log.txt")
-                    if (externalFile.exists()) externalFile.delete()
-                    externalFile.createNewFile()
-                }
             }
         }
         log("[SYSTEM] Логи очищены.")
+    }
+
+    /**
+     * Маскирует секреты в URL подписки для безопасного логирования.
+     *
+     * Скрывает user-info (логин/пароль), все query-параметры (в них обычно
+     * передаётся токен подписки) и fragment. Если URL не удалось разобрать,
+     * возвращается "***", чтобы не допустить утечки исходной строки.
+     */
+    fun maskUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        return try {
+            val uri = java.net.URI(url)
+            val scheme = uri.scheme ?: return "***"
+            val host = uri.host ?: return "***"
+            val userInfo = if (uri.userInfo.isNullOrEmpty()) "" else "***@"
+            val port = if (uri.port > 0) ":${uri.port}" else ""
+            val path = uri.path.orEmpty().takeUnless { it == "/" }.orEmpty()
+            val query = if (uri.query.isNullOrEmpty()) "" else "?***"
+            val fragment = if (uri.fragment.isNullOrEmpty()) "" else "#***"
+            buildString {
+                append(scheme).append("://").append(userInfo).append(host).append(port)
+                append(path)
+                append(query)
+                append(fragment)
+            }
+        } catch (e: Exception) {
+            "***"
+        }
     }
 
     private fun log(formattedMessage: String) {
@@ -149,13 +167,11 @@ object AppLogger {
             runCatching {
                 appContext?.let { ctx ->
                     val content = lines.joinToString("")
+                    // Логи пишутся только во внутреннее хранилище: они могут
+                    // содержать ссылки подписок/токены. Экспорт выполняется
+                    // отдельным явным действием пользователя.
                     val internalFile = File(ctx.filesDir, "box_log.txt")
                     FileWriter(internalFile, true).use { it.write(content) }
-
-                    ctx.getExternalFilesDir(null)?.let { externalDir ->
-                        val externalFile = File(externalDir, "box_log.txt")
-                        FileWriter(externalFile, true).use { it.write(content) }
-                    }
                 }
             }
         }

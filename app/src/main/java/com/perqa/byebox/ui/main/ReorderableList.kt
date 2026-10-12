@@ -32,6 +32,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -42,6 +46,7 @@ fun <T> ReorderableList(
     cardColor: @Composable (item: T, isDragged: Boolean) -> Color,
     modifier: Modifier = Modifier,
     cornerRoundness: String = "expressive",
+    language: String = "ru",
     handleTint: @Composable (item: T, isDragged: Boolean) -> Color = { _, _ -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) },
     itemContent: @Composable RowScope.(item: T, isDragged: Boolean) -> Unit
 ) {
@@ -93,8 +98,29 @@ fun <T> ReorderableList(
                     Box(
                         modifier = Modifier
                             .padding(end = 12.dp)
-                            .size(40.dp)
+                            .size(48.dp)
                             .clip(RoundedCornerShape(settingsControlRadius(cornerRoundness)))
+                            .semantics {
+                                contentDescription = Loc.get("drag_handle", language)
+                                // Для TalkBack: явные действия «вверх»/«вниз»,
+                                // чтобы сортировку можно было выполнить без жеста drag.
+                                customActions = listOfNotNull(
+                                    if (index > 0) CustomAccessibilityAction(Loc.get("move_up", language)) {
+                                        val mutable = currentItems.toMutableList()
+                                        val moved = mutable.removeAt(index)
+                                        mutable.add(index - 1, moved)
+                                        onReorder(mutable)
+                                        true
+                                    } else null,
+                                    if (index < items.lastIndex) CustomAccessibilityAction(Loc.get("move_down", language)) {
+                                        val mutable = currentItems.toMutableList()
+                                        val moved = mutable.removeAt(index)
+                                        mutable.add(index + 1, moved)
+                                        onReorder(mutable)
+                                        true
+                                    } else null
+                                )
+                            }
                             .pointerInput(Unit) {
                                 detectDragGestures(
                                     onDragStart = {

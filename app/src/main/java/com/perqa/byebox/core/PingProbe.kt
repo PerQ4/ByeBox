@@ -69,7 +69,8 @@ object PingProbe {
     }
 
     suspend fun probeResource(rawUrl: String): Boolean = withContext(Dispatchers.IO) {
-        if (rawUrl.isBlank()) return@withContext true
+        // Пустой/невалидный URL — не считаем успешной проверкой ресурса.
+        if (rawUrl.isBlank()) return@withContext false
         val normalizedUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
         val connection = try {
             (URL(normalizedUrl).openConnection() as HttpURLConnection).apply {

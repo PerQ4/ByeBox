@@ -111,6 +111,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -159,8 +160,10 @@ fun ProxyTab(
     val context = LocalContext.current
     var importUrl by remember { mutableStateOf("") }
     var importUrlError by remember { mutableStateOf(false) }
-    var nodeSearchQuery by remember { mutableStateOf("") }
-    var sortMode by remember { mutableStateOf(NodeSortMode.DEFAULT) }
+    // rememberSaveable (вместо remember) — чтобы поиск и сортировка переживали
+    // выход вкладки из композиции под rememberSaveableStateHolder в MainScreen.
+    var nodeSearchQuery by rememberSaveable { mutableStateOf("") }
+    var sortMode by rememberSaveable { mutableStateOf(NodeSortMode.DEFAULT) }
     var showProxyToolsSheet by remember { mutableStateOf(false) }
     var controlPanelExpanded by remember { mutableStateOf(true) }
     var controlPanelManuallyExpanded by remember { mutableStateOf(false) }
@@ -1296,7 +1299,6 @@ fun SourceGroupCard(
                             tactileFeedback()
                             onInfo?.invoke()
                         },
-                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             imageVector = headerActionIcon,
@@ -1356,7 +1358,6 @@ fun SourceGroupCard(
                                 tactileFeedback()
                                 onInfo?.invoke()
                             },
-                            modifier = Modifier.size(30.dp)
                         ) {
                             Icon(
                                 imageVector = headerActionIcon,
@@ -3152,7 +3153,6 @@ fun ServerItemCard(
                                 tactileFeedback()
                                 showShareDialog = true
                             },
-                            modifier = Modifier.size(30.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Share,
@@ -3252,6 +3252,37 @@ private fun ProxyConfig.isEndpointOnlyDescription(desc: String): Boolean {
 
 @Composable
 fun PingPill(ping: Int?, isPinging: Boolean = false) {
+    if (isPinging) {
+        // Transition создаётся только на время пинга — в статичном состоянии
+        // «вечных» анимаций нет вовсе.
+        PingingPingPill(ping)
+    } else {
+        StaticPingPill(ping)
+    }
+}
+
+/** Статичный бейдж пинга — без infinite transition. */
+@Composable
+private fun StaticPingPill(ping: Int?) {
+    val (badgeContainer, badgeContent) = pingBadgeColors(ping)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(badgeContainer)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = ping?.let { "$it ms" } ?: "N/A",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = badgeContent
+        )
+    }
+}
+
+/** Анимированный бейдж пинга: пульс и бегущая дуга. Transition живёт только здесь. */
+@Composable
+private fun PingingPingPill(ping: Int?) {
     val infiniteTransition = rememberInfiniteTransition(label = "ping")
     val pulseAlpha by infiniteTransition.animateValue(
         initialValue = 0.15f,
@@ -3281,59 +3312,45 @@ fun PingPill(ping: Int?, isPinging: Boolean = false) {
         else -> MaterialTheme.colorScheme.error
     }
 
-    val (badgeContainer, badgeContent) = when {
-        ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
-        ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-        ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-        else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-    }
-
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                when {
-                    isPinging -> accentColor.copy(alpha = if (ping == null) 0.4f else 0.3f)
-                    else -> badgeContainer
-                }
-            )
-            .then(
-                if (isPinging) {
-                    Modifier.graphicsLayer { alpha = 0.7f + pulseAlpha * 0.3f }
-                } else {
-                    Modifier
-                }
-            )
+            .background(accentColor.copy(alpha = if (ping == null) 0.4f else 0.3f))
+            .graphicsLayer { alpha = 0.7f + pulseAlpha * 0.3f }
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        if (isPinging) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(12.dp))
-                    .drawWithContent {
-                        drawContent()
-                        val sweep = scanningFraction * 360f
-                        drawArc(
-                            color = accentColor,
-                            startAngle = sweep - 90f,
-                            sweepAngle = 80f,
-                            useCenter = false,
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                            topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()),
-                            size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx())
-                        )
-                    }
-            )
-        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(12.dp))
+                .drawWithContent {
+                    drawContent()
+                    val sweep = scanningFraction * 360f
+                    drawArc(
+                        color = accentColor,
+                        startAngle = sweep - 90f,
+                        sweepAngle = 80f,
+                        useCenter = false,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                        topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()),
+                        size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx())
+                    )
+                }
+        )
         Text(
-            text = when {
-                isPinging && ping == null -> "..."
-                else -> ping?.let { "$it ms" } ?: "N/A"
-            },
+            text = if (ping == null) "..." else "$ping ms",
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isPinging) MaterialTheme.colorScheme.onSurface else badgeContent
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+/** Цвета бейджа пинга (фон/контент) в зависимости от задержки. */
+@Composable
+private fun pingBadgeColors(ping: Int?): Pair<Color, Color> = when {
+    ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    ping < 60 -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+    ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+    else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
 }

@@ -30,5 +30,17 @@ plugins {
 }
 
 rootProject.name = "ByeBox"
+
+// Модуль :tgwsproxy — отдельный репозиторий (каталог tgwsproxy/ в .gitignore),
+// поэтому в свежем клоне его нет. Проверяем явно, чтобы вместо непонятной
+// ошибки конфигурации было понятное сообщение с инструкцией.
+val tgwsproxyDir = file("tgwsproxy/app")
+require(tgwsproxyDir.isDirectory) {
+    "Модуль tgwsproxy не найден (${tgwsproxyDir.path}).\n" +
+        "Это отдельный репозиторий. Клонируйте его в каталог tgwsproxy/:\n" +
+        "  git clone https://github.com/amurcanov/tg-ws-proxy-android.git tgwsproxy\n" +
+        "Подробности: docs/release_process.md (раздел «Модуль tgwsproxy»)."
+}
+
 include(":app", ":tgwsproxy")
-project(":tgwsproxy").projectDir = file("tgwsproxy/app")
+project(":tgwsproxy").projectDir = tgwsproxyDir

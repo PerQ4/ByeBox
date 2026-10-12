@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -150,7 +152,8 @@ private fun TgwsPoolRow(
     top: Boolean = false,
     bottom: Boolean = false,
     scaleFactor: Float,
-    cornerRoundness: String
+    cornerRoundness: String,
+    language: String
 ) {
     SettingsRowSurface(top = top, bottom = bottom, scaleFactor = scaleFactor, cornerRoundness = cornerRoundness) {
         Text(
@@ -163,7 +166,10 @@ private fun TgwsPoolRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            IconButton(onClick = { onValueChange((value - 1).coerceAtLeast(1)) }) {
+            IconButton(
+                onClick = { onValueChange((value - 1).coerceAtLeast(1)) },
+                modifier = Modifier.semantics { contentDescription = Loc.get("tgws_pool_dec", language) }
+            ) {
                 Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
             Text(
@@ -171,7 +177,10 @@ private fun TgwsPoolRow(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            IconButton(onClick = { onValueChange((value + 1).coerceAtMost(16)) }) {
+            IconButton(
+                onClick = { onValueChange((value + 1).coerceAtMost(16)) },
+                modifier = Modifier.semantics { contentDescription = Loc.get("tgws_pool_inc", language) }
+            ) {
                 Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
@@ -206,7 +215,10 @@ private fun TgwsBufKbRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val step = if (value < 256) 16 else 64
-            IconButton(onClick = { onValueChange((value - step).coerceAtLeast(0)) }) {
+            IconButton(
+                onClick = { onValueChange((value - step).coerceAtLeast(0)) },
+                modifier = Modifier.semantics { contentDescription = Loc.get("tgws_buf_dec", language) }
+            ) {
                 Text("−", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
             Text(
@@ -214,7 +226,10 @@ private fun TgwsBufKbRow(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            IconButton(onClick = { onValueChange((value + step).coerceAtMost(4096)) }) {
+            IconButton(
+                onClick = { onValueChange((value + step).coerceAtMost(4096)) },
+                modifier = Modifier.semantics { contentDescription = Loc.get("tgws_buf_inc", language) }
+            ) {
                 Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
@@ -377,7 +392,8 @@ fun TgWsProxySettingsContent(
                 value = poolSize,
                 onValueChange = { scope.launch { settingsStore.savePoolSize(it) } },
                 scaleFactor = scaleFactor,
-                cornerRoundness = cornerRoundness
+                cornerRoundness = cornerRoundness,
+                language = language
             )
             SettingsRowSurface(onClick = { poolExpanded = !poolExpanded }) {
                 Row(

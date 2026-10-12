@@ -137,10 +137,20 @@ class CoreVpnService : VpnService(), ServiceControl {
         super.onDestroy()
         LogUtil.i(AppConfig.TAG, "StartCore-VPN: Service destroyed")
 
-        // Ensure VPN interface is properly closed when the service is destroyed without
-        // going through stopAllService() (e.g. when killed unexpectedly). isRunning is
-        // set to false at the start of stopAllService(), so this guard prevents a double-close.
+        // Идемпотентная остановка: onDestroy вызывается и после штатного
+        // stopAllService() (тогда isRunning уже false — ничего не делаем), и при
+        // неожиданном уничтожении сервиса. Если ядро ещё запущено — останавливаем
+        // его и сбрасываем флаг запуска, чтобы QS-плитка не «залипала».
+        // Флаг isRunning защищает от рекурсии (stopCoreLoop -> shutdown -> onDestroy).
         if (isRunning) {
+            isRunning = false
+            try {
+                CoreServiceManager.stopCoreLoop()
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "StartCore-VPN: Failed to stop core in onDestroy", e)
+            }
+            MmkvManager.encodeSettings(AppConfig.PREF_TILE_VPN_RUNNING, false)
+
             try {
                 if (::mInterface.isInitialized) {
                     mInterface.close()
