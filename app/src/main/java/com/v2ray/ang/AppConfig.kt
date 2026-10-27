@@ -12,16 +12,28 @@ object AppConfig {
     /**
      * User-Agent по умолчанию для запросов подписок.
      *
-     * ВАЖНО: это должна быть РЕАЛЬНАЯ версия клиента v2rayNG, а не версия ByeBox
+     * ВАЖНО: это должна быть РЕАЛЬНАЯ версия клиента, а не версия ByeBox
      * (`BuildConfig.VERSION_NAME`). Панели подписок фильтруют клиентов по UA:
-     * например, `v2rayNG/1.5.5-beta.2` (версия ByeBox) они отклоняют с 503,
-     * а `v2rayNG/2.3.6` — отдают конфиги. Раньше сюда подставлялась версия
-     * приложения, из-за чего подписки переставали парситься.
+     * например, `v2rayNG/1.5.5-beta.2` (версия ByeBox) они отклоняют с 503.
+     * Happ/XTLS/QRATOR лучше отдают полный список узлов (включая
+     * auto/policy-group) клиентам с UA Happ, поэтому он выбран основным.
      */
-    const val DEFAULT_SUBSCRIPTION_USER_AGENT = "v2rayNG/2.3.6"
+    const val DEFAULT_SUBSCRIPTION_USER_AGENT = "Happ/2.5.0"
 
-    /** Запасной UA для панелей, которые не принимают основной. */
-    const val FALLBACK_SUBSCRIPTION_USER_AGENT = "v2rayNG/1.8.5"
+    /**
+     * Первый запасной UA. Некоторые панели (например, shukalove.site)
+     * отвечают 500 на Happ, но нормально отдают конфиги v2rayNG.
+     */
+    const val FALLBACK_SUBSCRIPTION_USER_AGENT = "v2rayNG/2.3.6"
+
+    /** Второй запасной UA для старых панелей. */
+    const val LEGACY_FALLBACK_SUBSCRIPTION_USER_AGENT = "v2rayNG/1.8.5"
+
+    /** Порядок перебора UA, когда пользователь не задал свой. */
+    val SUBSCRIPTION_USER_AGENT_FALLBACKS = listOf(
+        FALLBACK_SUBSCRIPTION_USER_AGENT,
+        LEGACY_FALLBACK_SUBSCRIPTION_USER_AGENT,
+    )
 
     /** Directory names used in the app's file system. */
     const val DIR_ASSETS = "assets"

@@ -1,7 +1,8 @@
 package com.perqa.byebox.ui.main.dashboard
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -240,10 +241,13 @@ fun ProfilePresetsCard(
 
     val firstConfigActive = displayConfigs.firstOrNull()?.let { it.id == state.activeProfileId } ?: false
     val firstConfigSwiping = displayConfigs.firstOrNull()?.id == swipingId
-    val headerBottomCorner = if (collapsed || displayConfigs.isEmpty() || firstConfigActive || firstConfigSwiping) 28.dp else 6.dp
+    // Expressive-радиус берём из тех же настроек, что и остальные карточки,
+    // чтобы заголовок и строки списка жили в одной форме.
+    val expressiveCorner = if (state.cornerRoundness == "expressive") 32.dp else 28.dp
+    val headerBottomCorner = if (collapsed || displayConfigs.isEmpty() || firstConfigActive || firstConfigSwiping) expressiveCorner else 6.dp
     val headerShape = RoundedCornerShape(
-        topStart = 28.dp,
-        topEnd = 28.dp,
+        topStart = expressiveCorner,
+        topEnd = expressiveCorner,
         bottomStart = headerBottomCorner,
         bottomEnd = headerBottomCorner
     )
@@ -289,7 +293,12 @@ fun ProfilePresetsCard(
         }
         val collapseProgress by animateFloatAsState(
             targetValue = if (collapsed) 1f else 0f,
-            animationSpec = tween(320),
+            // Пружина без отскока: высота тела не выходит за контент. Любой
+            // bounce здесь даёт overshoot и лишнюю пустую полосу под списком.
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
             label = "presetsCollapse"
         )
         val bodyHeightPx = expandedBodyPx + (collapsedBodyPx - expandedBodyPx) * collapseProgress
@@ -327,14 +336,14 @@ fun ProfilePresetsCard(
                         val isLast = index == visibleConfigs.lastIndex
 
                         val baseTopCorner = when {
-                            isActive -> 28.dp
-                            prevIsActive -> 28.dp
+                            isActive -> expressiveCorner
+                            prevIsActive -> expressiveCorner
                             else -> 6.dp
                         }
                         val baseBottomCorner = when {
-                            isActive -> 28.dp
-                            nextIsActive -> 28.dp
-                            isLast -> 28.dp
+                            isActive -> expressiveCorner
+                            nextIsActive -> expressiveCorner
+                            isLast -> expressiveCorner
                             else -> 6.dp
                         }
 
@@ -342,8 +351,8 @@ fun ProfilePresetsCard(
                         val nextIsSwipingNeighbor = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == swipingId
                         val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 96f).coerceIn(0f, 1f))
                         val neighborRoundnessProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 140f).coerceIn(0f, 1f))
-                        val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, 28.dp, neighborRoundnessProgress) else baseTopCorner
-                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, 28.dp, neighborRoundnessProgress) else baseBottomCorner
+                        val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, expressiveCorner, neighborRoundnessProgress) else baseTopCorner
+                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress) else baseBottomCorner
                         val neighborOffsetDp = if (prevIsSwipingNeighbor || nextIsSwipingNeighbor) {
                             kotlin.math.sign(swipingDragPx) * 3.dp.value * neighborFollowProgress
                         } else 0f

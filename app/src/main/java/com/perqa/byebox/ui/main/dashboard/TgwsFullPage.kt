@@ -1,11 +1,7 @@
 package com.perqa.byebox.ui.main.dashboard
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -37,10 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +47,8 @@ import com.amurcanov.tgwsproxy.ProxyController
 import com.amurcanov.tgwsproxy.ProxyService
 import com.amurcanov.tgwsproxy.R as TgwsR
 import com.amurcanov.tgwsproxy.SettingsStore
+import com.perqa.byebox.theme.ByeBoxShapes
+import com.perqa.byebox.theme.LocalByeBoxMotion
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainScreenViewModel
@@ -176,8 +175,16 @@ fun TgwsFullPage(
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(if (cornerRoundness == "expressive") 28.dp else 16.dp),
+            shape = ByeBoxShapes.card(cornerRoundness == "expressive"),
             color = MaterialTheme.colorScheme.surfaceContainer,
+            border = if (cornerRoundness == "expressive") {
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                )
+            } else {
+                null
+            },
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -185,29 +192,35 @@ fun TgwsFullPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
                         painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
                         contentDescription = null,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(28.dp),
                         colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
                         alpha = if (isActiveVisual) 1f else 0.6f
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = Loc.get("title_telegram", language),
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = (if (cornerRoundness == "expressive") {
+                            MaterialTheme.typography.titleLarge
+                        } else {
+                            MaterialTheme.typography.titleMedium
+                        }).copy(
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (isActiveVisual) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(10.dp)
                                 .clip(CircleShape)
                                 .background(
                                     if (isVerifiedRunning) MaterialTheme.colorScheme.primary
@@ -255,52 +268,73 @@ private fun TgwsStatusPillBar(
     cornerRoundness: String,
     language: String = "ru"
 ) {
-    val statusColor = when {
-        isActive && isVerified -> MaterialTheme.colorScheme.primary
-        isActive -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val dotPulse = rememberInfiniteTransition(label = "tgwsDotPulse")
-    val dotAlpha by dotPulse.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "tgwsDotAlpha"
+    val motion = LocalByeBoxMotion.current
+    val expressive = cornerRoundness == "expressive"
+    val statusColor by animateColorAsState(
+        targetValue = when {
+            isActive && isVerified -> MaterialTheme.colorScheme.primary
+            isActive -> MaterialTheme.colorScheme.tertiary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = motion.effectsDefault(),
+        label = "tgwsStatusColor"
     )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 32.dp else 20.dp),
+        shape = RoundedCornerShape(if (expressive) 32.dp else 20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+        ),
+        border = if (expressive) {
+            BorderStroke(1.dp, statusColor.copy(alpha = 0.16f))
+        } else {
+            null
+        }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = if (expressive) 14.dp else 12.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .graphicsLayer { alpha = if (isBusy) dotAlpha else 1f }
-                    .clip(CircleShape)
-                    .background(statusColor)
-            )
+            if (isBusy) {
+                // Пульс существует только пока идёт подключение.
+                PulsingStatusDot(color = statusColor)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = statusText,
-                style = MaterialTheme.typography.titleMedium.copy(
+                style = (if (expressive) {
+                    // Крупнее обычного, но с запасом под длинные строки статуса
+                    // и бейджи пула/порта справа.
+                    MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 19.sp,
+                        lineHeight = 26.sp
+                    )
+                } else {
+                    MaterialTheme.typography.titleMedium
+                }).copy(
                     fontWeight = FontWeight.Black,
                     color = statusColor
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                // liveRegion только на статусе: бейджи пула/порта не меняются
+                // раз в секунду и не должны попадать в озвучку.
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,

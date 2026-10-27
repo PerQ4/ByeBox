@@ -2,12 +2,10 @@ package com.perqa.byebox.ui.main
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -55,8 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.perqa.byebox.theme.LocalByeBoxMotion
 import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeChild
@@ -86,6 +86,10 @@ fun MainTabBar(
     modifier: Modifier = Modifier
 ) {
     val tactileFeedback = rememberTactileFeedback(scaleFactor)
+    val motion = LocalByeBoxMotion.current
+    // Ширина док-бара и активной пилюли должны идти одной пружиной, иначе
+    // контейнер и содержимое разъезжаются на несколько кадров.
+    val dockWidthSpec = motion.expand<Dp>()
     val containerColor = if (glassmorphic) {
         val alpha = if (maxBlurEnabled) 0.62f else 0.9f
         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha)
@@ -125,7 +129,7 @@ fun MainTabBar(
     } + Dimens.tabPillInsetV
     val containerWidth by animateDpAsState(
         targetValue = containerTarget,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        animationSpec = dockWidthSpec,
         label = "dockWidth"
     )
 
@@ -220,7 +224,7 @@ fun MainTabBar(
                 )
                 val pillWidth by animateDpAsState(
                     targetValue = if (active) activeWidths[id] ?: Dimens.tabInactiveWidth else Dimens.tabInactiveWidth,
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    animationSpec = dockWidthSpec,
                     label = "pillWidth"
                 )
 

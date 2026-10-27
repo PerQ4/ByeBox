@@ -325,9 +325,13 @@ object AngConfigManager {
                 // Re-map profile server assignments whose GUIDs were replaced
                 // during this refresh, and re-apply the active profile if needed.
                 reconcileProfileAssignmentsAfterRefresh()
+
+                // Возвращаем число реально сохранённых узлов: дубли внутри
+                // ответа панели уже схлопнуты batch-функциями.
+                return keyToProfile.size
             }
 
-            return configs.size
+            return 0
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to parse batch config", e)
         }
@@ -348,7 +352,7 @@ object AngConfigManager {
         // Read serverList once
         val serverList = MmkvManager.decodeServerList(subid)
 
-        configs.forEach { config ->
+        deduplicateConfigs(configs).forEach { config ->
             val key = Utils.getUuid()
             // Save profile directly without updating serverList
             MmkvManager.encodeProfileDirect(key, JsonUtil.toJson(config))
@@ -388,8 +392,11 @@ object AngConfigManager {
         val newServerList = mutableListOf<String>()
         val keptKeys = mutableSetOf<String>()
 
-        // Reuse existing GUIDs for configs that still match; mint new ones for new servers
-        configs.forEach { config ->
+        // Reuse existing GUIDs for configs that still match; mint new ones for new servers.
+        // Дубли внутри одного ответа панели (например, один и тот же узел из
+        // auto/policy-group и напрямую) схлопываем по сигнатуре: порядок и
+        // стабильность GUID при этом сохраняются.
+        deduplicateConfigs(configs).forEach { config ->
             val signature = configSignature(config)
             var key = signature?.let { oldBySignature[it] }.takeIf { it != null && it !in keptKeys }
             if (key == null) {
@@ -450,7 +457,20 @@ object AngConfigManager {
         val newServerList = mutableListOf<String>()
         val keptKeys = mutableSetOf<String>()
 
-        configs.forEach { (config, raw) ->
+        // Схлопываем дубли внутри одного batch (тот же узел, пришедший дважды).
+        // Для CUSTOM-конфигов configSignature содержит только адрес/порт
+        // (legacy CustomFmt.parse не извлекает остальное), поэтому там
+        // сравниваем сырой JSON: иначе разные узлы на одном хосте схлопнутся.
+        val deduplicated = mutableListOf<Pair<ProfileItem, String>>()
+        val seenSignatures = mutableSetOf<String>()
+        configs.forEach { pair ->
+            val signature = customConfigDedupKey(pair.first, pair.second)
+            if (signature == null || seenSignatures.add(signature)) {
+                deduplicated.add(pair)
+            }
+        }
+
+        deduplicated.forEach { (config, raw) ->
             val signature = configSignature(config)
             var key = signature?.let { oldBySignature[it] }.takeIf { it != null && it !in keptKeys }
             if (key == null) {
@@ -520,16 +540,97 @@ object AngConfigManager {
     }
 
     /**
-     * Returns a stable signature identifying a server's identity:
-     * address + port + password (uuid). Two configs with the same signature
-     * are considered the "same server" across subscription refreshes.
+     * Returns a stable signature identifying a server's identity.
+     *
+     * Раньше сигнатура была только `address|port|password`, из-за чего разные
+     * узлы на одном сервере (например, с разным транспортом/SNI/flow) считались
+     * одним и тем же, а один и тот же узел с разными метаданными — разными.
+     * Теперь в сигнатуру входят все поля, влияющие на подключение, но НЕ
+     * входят remarks/description/subscriptionId/addedTime (они не меняют узел).
      */
-    private fun configSignature(config: ProfileItem): String? {
+    internal fun configSignature(config: ProfileItem): String? {
         val server = config.server?.trim().orEmpty()
         val port = config.serverPort?.trim().orEmpty()
-        val password = config.password?.trim().orEmpty()
         if (server.isEmpty() && port.isEmpty()) return null
-        return "${server.lowercase()}|$port|$password"
+        fun norm(value: String?): String = value?.trim().orEmpty()
+        fun normLower(value: String?): String = value?.trim()?.lowercase().orEmpty()
+        fun normInt(value: Int?): String = value?.toString().orEmpty()
+        return listOf(
+            config.configType.name,
+            normLower(config.server),
+            port,
+            norm(config.password),
+            normLower(config.method),
+            normLower(config.flow),
+            norm(config.username),
+            normLower(config.network),
+            normLower(config.headerType),
+            normLower(config.host),
+            norm(config.path),
+            norm(config.serviceName),
+            normLower(config.mode),
+            normLower(config.authority),
+            normLower(config.xhttpMode),
+            norm(config.xhttpExtra),
+            norm(config.finalMask),
+            normLower(config.security),
+            normLower(config.sni),
+            norm(config.alpn),
+            norm(config.fingerPrint),
+            if (config.insecure == true) "1" else "",
+            norm(config.echConfigList),
+            norm(config.verifyPeerCertByName),
+            norm(config.pinnedCA256),
+            norm(config.publicKey),
+            norm(config.shortId),
+            norm(config.spiderX),
+            norm(config.mldsa65Verify),
+            norm(config.secretKey),
+            norm(config.preSharedKey),
+            norm(config.localAddress),
+            norm(config.reserved),
+            normInt(config.mtu),
+            norm(config.obfsPassword),
+            norm(config.portHopping),
+            norm(config.portHoppingInterval),
+            norm(config.pinSHA256),
+            normLower(config.quicSecurity),
+            norm(config.quicKey),
+            norm(config.seed),
+            normInt(config.kcpMtu),
+            normInt(config.kcpTti),
+            norm(config.proxyChainProfiles),
+            normLower(config.browserDialerMode),
+            normLower(config.policyGroupType),
+            norm(config.policyGroupSubscriptionId),
+            norm(config.policyGroupFilter),
+        ).joinToString("\u0001")
+    }
+
+    /**
+     * Убирает повторяющиеся конфиги внутри одного пакета (batch), сохраняя
+     * порядок первого вхождения. Конфиги без сигнатуры (custom) не схлопываем:
+     * для них нет надёжного ключа идентичности.
+     */
+    internal fun deduplicateConfigs(configs: List<ProfileItem>): List<ProfileItem> {
+        val seen = mutableSetOf<String>()
+        return configs.filter { config ->
+            val signature = configSignature(config)
+            signature == null || seen.add(signature)
+        }
+    }
+
+    /**
+     * Ключ дедупликации для custom/wireguard-пакетов, где есть сырой payload.
+     * Для CUSTOM/POLICYGROUP берём сам JSON (configSignature у них слишком
+     * грубая: только host+port), для остальных — обычную сигнатуру.
+     */
+    internal fun customConfigDedupKey(config: ProfileItem, raw: String): String? {
+        if (config.configType == EConfigType.CUSTOM || config.configType == EConfigType.POLICYGROUP) {
+            val payload = raw.trim()
+            if (payload.isNotEmpty()) return "raw:$payload"
+        }
+        return configSignature(config)
     }
 
     /**
@@ -657,8 +758,9 @@ object AngConfigManager {
                         val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
                         matchKey?.let { MmkvManager.setSelectServer(it) }
                         reconcileProfileAssignmentsAfterRefresh()
+                        return keyToProfile.size
                     }
-                    return configs.size
+                    return 0
                 }
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to parse custom config server JSON array", e)
@@ -930,6 +1032,25 @@ object AngConfigManager {
         return null
     }
 
+    /**
+     * Возвращает UA, которые нужно перебрать при загрузке подписки.
+     *
+     * Если пользователь задал свой UA — перебираем только его (никаких лишних
+     * запросов). Для «по умолчанию» (null/blank или явно сохранённый Happ,
+     * который раньше был отдельным пресетом) — Happ, затем v2rayNG: некоторые
+     * панели (например, shukalove.site) отвечают 500 на Happ.
+     */
+    internal fun subscriptionUserAgentCandidates(userAgent: String?): List<String> {
+        val trimmed = userAgent?.trim().orEmpty()
+        val isDefaultUa = trimmed.isEmpty() ||
+            trimmed.equals(AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT, ignoreCase = true)
+        return if (isDefaultUa) {
+            listOf(AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT) + AppConfig.SUBSCRIPTION_USER_AGENT_FALLBACKS
+        } else {
+            listOf(trimmed)
+        }
+    }
+
     fun updateConfigViaSub(it: SubscriptionCache): SubscriptionUpdateResult {
         try {
             // Check if disabled
@@ -971,41 +1092,68 @@ object AngConfigManager {
             // Шлюзы панелей нестабильны: один и тот же запрос может вернуть
             // 200, 503 или 504 (чередуется). Поэтому несколько попыток с
             // экспоненциальной паузой, а не одна.
-            var responsePair = fetchSubscriptionWithRetries(
-                url = url,
-                userAgent = userAgent,
-                hwid = hwid,
-                viaProxy = true,
-                attempts = 1,
-                proxyUsername = proxyUsername,
-                proxyPassword = proxyPassword
-            )
-            if (responsePair == null || responsePair.first.isEmpty()) {
-                responsePair = fetchSubscriptionWithRetries(
-                    url = url,
-                    userAgent = userAgent,
-                    hwid = hwid,
-                    viaProxy = false,
-                    attempts = 4,
-                    proxyUsername = proxyUsername,
-                    proxyPassword = proxyPassword
-                )
+            //
+            // UA-цепочка: если пользователь задал свой UA — используем только
+            // его и не делаем лишних запросов. Иначе основной Happ, а при
+            // отказе — v2rayNG (некоторые панели отвечают 500 на Happ).
+            val defaultUa = AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT
+            val userAgentCandidates = subscriptionUserAgentCandidates(userAgent)
+
+            var responsePair: Pair<String, Map<String, String>>? = null
+            var successfulUserAgent = userAgent?.takeIf { it.isNotBlank() } ?: defaultUa
+            for ((index, candidate) in userAgentCandidates.withIndex()) {
+                if (index == 0) {
+                    // Основной UA сначала пробуем через локальный прокси, как
+                    // раньше; запасные — сразу напрямую, чтобы не терять время.
+                    responsePair = fetchSubscriptionWithRetries(
+                        url = url,
+                        userAgent = candidate,
+                        hwid = hwid,
+                        viaProxy = true,
+                        attempts = 1,
+                        proxyUsername = proxyUsername,
+                        proxyPassword = proxyPassword
+                    )
+                }
+                if (responsePair == null || responsePair.first.isEmpty()) {
+                    responsePair = fetchSubscriptionWithRetries(
+                        url = url,
+                        userAgent = candidate,
+                        hwid = hwid,
+                        viaProxy = false,
+                        attempts = 4,
+                        proxyUsername = proxyUsername,
+                        proxyPassword = proxyPassword
+                    )
+                }
+                val fetched = responsePair
+                if (fetched != null && fetched.first.isNotEmpty()) {
+                    successfulUserAgent = candidate
+                    if (index > 0) {
+                        LogUtil.i(AppConfig.TAG, "Subscription fetched with fallback UA: $candidate")
+                    }
+                    break
+                }
             }
-            // Панели часто фильтруют клиентов по UA и принимают только
-            // определённые версии. Если свой UA не задан и каноничный не подошёл —
-            // пробуем запасной, иначе подписка молча «перестаёт парситься».
-            if ((responsePair == null || responsePair.first.isEmpty()) && userAgent.isNullOrBlank()) {
-                responsePair = fetchSubscriptionWithRetries(
-                    url = url,
-                    userAgent = AppConfig.FALLBACK_SUBSCRIPTION_USER_AGENT,
-                    hwid = hwid,
-                    viaProxy = false,
-                    attempts = 4,
-                    proxyUsername = proxyUsername,
-                    proxyPassword = proxyPassword
-                )
+            val fetchedSubscription = responsePair
+            if (fetchedSubscription == null || fetchedSubscription.first.isEmpty()) {
+                return SubscriptionUpdateResult(failureCount = 1)
             }
-            if (responsePair == null || responsePair.first.isEmpty()) {
+
+            var configText = fetchedSubscription.first
+            var headers = fetchedSubscription.second
+            var parsedCount = 0
+
+            // Remnawave/XTLS HWID: a panel with HWID Device Limit reports
+            // x-hwid-max-devices-reached: true and returns dummy nodes instead of
+            // real configs. Don't overwrite existing servers with those dummies.
+            // Проверяем ДО expanded-запроса и парсинга.
+            if (isHwidLimitReached(headers)) {
+                it.subscription.announce = hwidLimitMessage(configText)
+                LogUtil.e(
+                    AppConfig.TAG,
+                    "Update subscription: HWID device limit reached for ${it.subscription.url} - ${it.subscription.announce}"
+                )
                 return SubscriptionUpdateResult(failureCount = 1)
             }
 
@@ -1013,17 +1161,19 @@ object AngConfigManager {
             // full-content (JSON config array) form is available. Request it with an UA that
             // the panel maps to an expanded-fetch client (e.g. " Happ"), so all profiles
             // (including auto/policy-group nodes) are imported, not just the URI lines.
-            val expandNow = responsePair.second.entries
+            val expandNow = headers.entries
                 .firstOrNull { it.key.equals("subscriptions-expand-now", ignoreCase = true) }
                 ?.value
                 ?.trim()
             if (!expandNow.isNullOrEmpty() && expandNow == "1") {
-                val finalUserAgent = if (userAgent.isNullOrBlank()) {
-                    AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT
+                // Если UA уже содержит Happ (например, дефолтный Happ/2.5.0),
+                // не добавляем второй раз: «Happ/2.5.0 Happ» панель может
+                // интерпретировать как неизвестного клиента.
+                val expandedUserAgent = if (successfulUserAgent.contains("Happ", ignoreCase = true)) {
+                    successfulUserAgent
                 } else {
-                    userAgent
+                    "$successfulUserAgent Happ"
                 }
-                val expandedUserAgent = "$finalUserAgent Happ"
                 val expandedResponse = try {
                     val httpPort = SettingsManager.getHttpPort()
                     HttpUtil.getUrlContentAndHeaders(
@@ -1054,30 +1204,37 @@ object AngConfigManager {
                     null
                 }
                 if (expandedResponse != null && expandedResponse.first.isNotEmpty()) {
+                    if (isHwidLimitReached(expandedResponse.second)) {
+                        it.subscription.announce = hwidLimitMessage(expandedResponse.first)
+                        LogUtil.e(
+                            AppConfig.TAG,
+                            "Update subscription: HWID device limit reached (expanded) for ${it.subscription.url} - ${it.subscription.announce}"
+                        )
+                        return SubscriptionUpdateResult(failureCount = 1)
+                    }
                     LogUtil.i(AppConfig.TAG, "Subscription expanded: ${expandedResponse.first.length} bytes")
-                    responsePair = expandedResponse
+                    parsedCount = parseConfigViaSub(expandedResponse.first, it.guid, false)
+                    if (parsedCount > 0) {
+                        // Expanded-ответ успешно распарсен — исходный URI-список
+                        // больше НЕ парсим, иначе узлы задвоятся.
+                        configText = expandedResponse.first
+                        headers = mergeHeaders(headers, expandedResponse.second)
+                    } else {
+                        // Expanded не распарсился (пустой/битый) — падаем
+                        // обратно на исходный текст, ничего не потеряв.
+                        LogUtil.w(
+                            AppConfig.TAG,
+                            "Subscription expanded response parsed no configs, falling back to original"
+                        )
+                    }
                 }
             }
-            val configText = responsePair.first
-            val headers = responsePair.second
 
-            // Remnawave/XTLS HWID: a panel with HWID Device Limit reports
-            // x-hwid-max-devices-reached: true and returns dummy nodes instead of
-            // real configs. Don't overwrite existing servers with those dummies.
-            val hwidLimitReached = headers.entries
-                .firstOrNull { it.key.equals("x-hwid-max-devices-reached", ignoreCase = true) }
-                ?.value
-                ?.trim()
-            if (hwidLimitReached == "true") {
-                val remark = extractHwidDummyRemark(configText)
-                val limitMsg = remark?.takeIf { it.isNotBlank() }
-                    ?: "Слишком много устройств: освободите слот в боте («Настройка» → «Сессии») или докупите устройства"
-                it.subscription.announce = limitMsg
-                LogUtil.e(AppConfig.TAG, "Update subscription: HWID device limit reached for ${it.subscription.url} - $limitMsg")
-                return SubscriptionUpdateResult(failureCount = 1)
+            val count = if (parsedCount > 0) {
+                parsedCount
+            } else {
+                parseConfigViaSub(configText, it.guid, false)
             }
-
-            val count = parseConfigViaSub(configText, it.guid, false)
             if (count > 0) {
                 it.subscription.lastUpdated = System.currentTimeMillis()
 
@@ -1233,7 +1390,19 @@ object AngConfigManager {
                         it.subscription.remarks = domain
                     }
                 }
-                
+
+                // Если панель прислала один и тот же текст и в profile-description,
+                // и в announce — не показываем в UI два одинаковых блока.
+                // Оставляем description, дублирующий announce убираем.
+                val descriptionText = it.subscription.description?.trim()
+                val announceText = it.subscription.announce?.trim()
+                if (descriptionText != null && descriptionText.isNotEmpty() &&
+                    announceText != null && announceText.isNotEmpty() &&
+                    descriptionText.equals(announceText, ignoreCase = true)
+                ) {
+                    it.subscription.announce = null
+                }
+
                 MmkvManager.encodeSubscription(it.guid, it.subscription)
                 LogUtil.i(AppConfig.TAG, "Subscription updated: ${it.subscription.remarks}, $count configs")
                 return SubscriptionUpdateResult(
@@ -1312,6 +1481,40 @@ object AngConfigManager {
         }
         val host = runCatching { URI(url.orEmpty()).host?.removePrefix("www.") }.getOrNull()
         return host != null && current == host
+    }
+
+    /**
+     * True when the panel reported that the HWID device limit is reached and
+     * the body contains dummy nodes instead of real configs.
+     */
+    private fun isHwidLimitReached(headers: Map<String, String>): Boolean {
+        return headers.entries
+            .firstOrNull { it.key.equals("x-hwid-max-devices-reached", ignoreCase = true) }
+            ?.value
+            ?.trim() == "true"
+    }
+
+    /** Human-readable message for the HWID device limit case. */
+    private fun hwidLimitMessage(configText: String): String {
+        return extractHwidDummyRemark(configText)?.takeIf { it.isNotBlank() }
+            ?: "Слишком много устройств: освободите слот в боте («Настройка» → «Сессии») или докупите устройства"
+    }
+
+    /**
+     * Merges subscription headers case-insensitively. Values from [override]
+     * win over [base] with the same header name in any letter case.
+     */
+    private fun mergeHeaders(
+        base: Map<String, String>,
+        override: Map<String, String>
+    ): Map<String, String> {
+        if (override.isEmpty()) return base
+        val merged = LinkedHashMap<String, String>(base)
+        override.forEach { (key, value) ->
+            merged.keys.firstOrNull { it.equals(key, ignoreCase = true) }?.let { merged.remove(it) }
+            merged[key] = value
+        }
+        return merged
     }
 
     /**

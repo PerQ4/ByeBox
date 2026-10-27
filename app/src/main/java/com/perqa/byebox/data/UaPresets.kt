@@ -1,12 +1,14 @@
 package com.perqa.byebox.data
 
+import com.v2ray.ang.AppConfig
+
 /**
  * Built-in User-Agent presets offered in the subscription editor.
  *
  * Each preset maps a human-readable label (with an optional Loc key) to the
  * exact UA string sent in the `User-agent` header when updating the
- * subscription. An empty value means "use the app default
- * (`v2rayNG/{version}`)".
+ * subscription. A blank stored UA means "use the app default", which is
+ * [AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT] (Happ/2.5.0).
  */
 data class UaPreset(
     val label: String,
@@ -15,9 +17,20 @@ data class UaPreset(
 )
 
 object UaPresets {
+
+    /**
+     * Первый и дефолтный пресет. Значение обязано совпадать с
+     * [AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT], иначе «По умолчанию» в UI
+     * и реальный UA запроса разъедутся.
+     */
+    val defaultPreset: UaPreset = UaPreset(
+        label = "По умолчанию (${AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT})",
+        value = AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT,
+        locKey = "sub_ua_preset_default"
+    )
+
     val all: List<UaPreset> = listOf(
-        UaPreset(label = "По умолчанию (v2rayNG)", value = "", locKey = "sub_ua_preset_default"),
-        UaPreset(label = "Happ 2.5.0", value = "Happ/2.5.0"),
+        defaultPreset,
         UaPreset(label = "INCY 4.3.8", value = "INCY/4.3.8"),
         UaPreset(label = "v2rayNG 2.3.6", value = "v2rayNG/2.3.6"),
         UaPreset(label = "Clash Meta 2.12", value = "ClashMetaForAndroid/2.12.0.Meta"),

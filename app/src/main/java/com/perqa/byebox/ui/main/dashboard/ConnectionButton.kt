@@ -4,12 +4,16 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,9 +40,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.perqa.byebox.theme.LocalByeBoxMotion
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.rememberTactileFeedback
@@ -188,6 +195,15 @@ fun ConnectionButton(
     onClick: () -> Unit
 ) {
     val tactileFeedback = rememberTactileFeedback()
+    val motion = LocalByeBoxMotion.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    // Лёгкое «продавливание» кнопки: expressive-отклик без перерисовки экрана.
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.955f else 1f,
+        animationSpec = motion.spatialFast(),
+        label = "connectPressScale"
+    )
 
     val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
 
@@ -198,8 +214,15 @@ fun ConnectionButton(
             ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
             ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surface
         },
+        animationSpec = motion.effectsDefault(),
         label = "buttonColor"
     )
+    val statusLabel = when (status) {
+        ConnectionStatus.CONNECTED -> Loc.get("btn_connected", language)
+        ConnectionStatus.CONNECTING -> Loc.get("btn_connecting", language)
+        ConnectionStatus.RECONNECTING -> Loc.get("btn_reconnecting", language)
+        ConnectionStatus.DISCONNECTED -> Loc.get("btn_disconnected", language)
+    }
     val contentColor = when (status) {
         ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.onPrimary
         ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.onTertiary
@@ -259,13 +282,22 @@ fun ConnectionButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(150.dp)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                }
                 .shadow(
                     elevation = if (status != ConnectionStatus.DISCONNECTED) 12.dp else 4.dp,
                     shape = CircleShape
                 )
                 .clip(CircleShape)
                 .background(buttonBgColor)
-                .clickable {
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    role = Role.Button,
+                    onClickLabel = statusLabel
+                ) {
                     tactileFeedback()
                     onClick()
                 }
@@ -304,12 +336,7 @@ fun ConnectionButton(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = when (status) {
-                            ConnectionStatus.CONNECTED -> Loc.get("btn_connected", language)
-                            ConnectionStatus.CONNECTING -> Loc.get("btn_connecting", language)
-                            ConnectionStatus.RECONNECTING -> Loc.get("btn_reconnecting", language)
-                            ConnectionStatus.DISCONNECTED -> Loc.get("btn_disconnected", language)
-                        },
+                        text = statusLabel,
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,

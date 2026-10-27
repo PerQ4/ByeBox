@@ -4,11 +4,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,8 +51,9 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.amurcanov.tgwsproxy.ProxyController
@@ -57,6 +61,9 @@ import com.amurcanov.tgwsproxy.ProxyService
 import com.amurcanov.tgwsproxy.R as TgwsR
 import com.amurcanov.tgwsproxy.SettingsStore
 import com.amurcanov.tgwsproxy.ui.openTelegram
+import com.perqa.byebox.theme.ByeBoxExpressiveTheme
+import com.perqa.byebox.theme.ByeBoxShapes
+import com.perqa.byebox.theme.LocalByeBoxMotion
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.ModeChip
 import com.perqa.byebox.ui.main.ProxyStatusPanel
@@ -126,52 +133,77 @@ fun TelegramProxyCard(
     }
     val isActiveVisual = isRunning || isStarting
 
-    val cardShape = RoundedCornerShape(if (cornerRoundness == "expressive") 28.dp else 16.dp)
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            // clip ДО clickable: иначе ripple рисуется прямоугольником и не
-            // учитывает скругление карточки. Вложенные интерактивные элементы
-            // (пилюля, шеврон, кнопки контента) перехватывают свои нажатия сами.
-            .clip(cardShape)
-            .clickable { onToggle() },
-        shape = cardShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            TelegramHeader(
-                title = Loc.get("title_telegram", language),
-                statusText = statusText,
-                isActive = isActiveVisual,
-                isVerified = isVerifiedRunning,
-                isExpanded = isExpanded,
-                language = language,
-                onToggle = onToggle,
-                onToggleService = { if (isActiveVisual) disconnectAction() else connectAction() }
-            )
+    val motion = LocalByeBoxMotion.current
+    val expressive = cornerRoundness == "expressive"
+    val cardShape = ByeBoxShapes.card(expressive)
 
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                TelegramExpandedContent(
-                    context = context,
-                    language = language,
-                    isVerifiedRunning = isVerifiedRunning,
-                    isStarting = isStarting,
-                    isRunning = isRunning,
-                    cfEnabled = cfEnabled,
-                    poolSize = poolSize,
-                    port = port,
-                    bindIp = bindIp,
-                    secretKey = secretKey,
-                    applyMode = applyMode,
-                    onApplyModeChange = { applyMode = it },
-                    cornerRoundness = cornerRoundness
+    ByeBoxExpressiveTheme {
+        Surface(
+            modifier = modifier
+                .fillMaxWidth()
+                // clip ДО clickable: иначе ripple рисуется прямоугольником и не
+                // учитывает скругление карточки. Вложенные интерактивные элементы
+                // (пилюля, шеврон, кнопки контента) перехватывают свои нажатия сами.
+                .clip(cardShape)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (isExpanded) {
+                        Loc.get("collapse", language)
+                    } else {
+                        Loc.get("expand", language)
+                    }
+                ) { onToggle() },
+            shape = cardShape,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = if (expressive) {
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                 )
+            } else {
+                null
+            },
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TelegramHeader(
+                    title = Loc.get("title_telegram", language),
+                    statusText = statusText,
+                    isActive = isActiveVisual,
+                    isVerified = isVerifiedRunning,
+                    isExpanded = isExpanded,
+                    language = language,
+                    onToggle = onToggle,
+                    onToggleService = { if (isActiveVisual) disconnectAction() else connectAction() },
+                    expressive = expressive
+                )
+
+                AnimatedVisibility(
+                    visible = isExpanded,
+                    // Spring без отскока: высота раскрытия не должна выходить за
+                    // контент, иначе внутри карточки появляется пустая полоса.
+                    enter = expandVertically(animationSpec = motion.expand()) +
+                        fadeIn(animationSpec = motion.effectsDefault()),
+                    exit = shrinkVertically(animationSpec = motion.expand()) +
+                        fadeOut(animationSpec = motion.effectsFast())
+                ) {
+                    TelegramExpandedContent(
+                        context = context,
+                        language = language,
+                        isVerifiedRunning = isVerifiedRunning,
+                        isStarting = isStarting,
+                        isRunning = isRunning,
+                        cfEnabled = cfEnabled,
+                        poolSize = poolSize,
+                        port = port,
+                        bindIp = bindIp,
+                        secretKey = secretKey,
+                        applyMode = applyMode,
+                        onApplyModeChange = { applyMode = it },
+                        cornerRoundness = cornerRoundness
+                    )
+                }
             }
         }
     }
@@ -186,24 +218,34 @@ internal fun TelegramHeader(
     isExpanded: Boolean,
     language: String,
     onToggle: () -> Unit,
-    onToggleService: () -> Unit
+    onToggleService: () -> Unit,
+    expressive: Boolean = true
 ) {
-    val pillColor = when {
-        isActive && isVerified -> MaterialTheme.colorScheme.primary
-        isActive -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val pillContentColor = when {
-        isActive && isVerified -> MaterialTheme.colorScheme.onPrimary
-        isActive -> MaterialTheme.colorScheme.onTertiary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val pillText = statusText
+    val motion = LocalByeBoxMotion.current
+    val pillShape = RoundedCornerShape(20.dp)
+    val pillColor by animateColorAsState(
+        targetValue = when {
+            isActive && isVerified -> MaterialTheme.colorScheme.primary
+            isActive -> MaterialTheme.colorScheme.tertiary
+            else -> MaterialTheme.colorScheme.surfaceVariant
+        },
+        animationSpec = motion.effectsDefault(),
+        label = "tgwsPillColor"
+    )
+    val pillContentColor by animateColorAsState(
+        targetValue = when {
+            isActive && isVerified -> MaterialTheme.colorScheme.onPrimary
+            isActive -> MaterialTheme.colorScheme.onTertiary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = motion.effectsDefault(),
+        label = "tgwsPillContent"
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -212,50 +254,67 @@ internal fun TelegramHeader(
                 Image(
                     painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(28.dp),
                     colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
                     alpha = if (isActive) 1f else 0.6f
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = (if (expressive) {
+                        MaterialTheme.typography.titleLarge
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    }).copy(
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.onSurface
-                    )
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = pillColor,
+            // Пилюля остаётся визуально компактной, но зона нажатия — 48dp:
+            // иначе на неё трудно попасть и она не проходит по доступности.
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable { onToggleService() }
+                    .heightIn(min = 48.dp)
+                    .clip(pillShape)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = statusText
+                    ) { onToggleService() },
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Surface(
+                    shape = pillShape,
+                    color = pillColor
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(pillContentColor)
-                    )
-                    Text(
-                        text = pillText,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = pillContentColor
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(pillContentColor)
                         )
-                    )
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = pillContentColor
+                            ),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
@@ -332,12 +391,12 @@ internal fun TelegramExpandedContent(
             ModeChip(
                 label = Loc.get("tgws_packages", language),
                 selected = applyMode == "packages",
-                modifier = Modifier.weight(1f).height(44.dp)
+                modifier = Modifier.weight(1f).height(48.dp)
             ) { onApplyModeChange("packages") }
             ModeChip(
                 label = Loc.get("tgws_link", language),
                 selected = applyMode == "link",
-                modifier = Modifier.weight(1f).height(44.dp)
+                modifier = Modifier.weight(1f).height(48.dp)
             ) { onApplyModeChange("link") }
         }
 

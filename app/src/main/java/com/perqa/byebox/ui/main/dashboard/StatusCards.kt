@@ -7,7 +7,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,11 +40,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.perqa.byebox.data.ProxyConfig
+import com.perqa.byebox.theme.ByeBoxShapes
+import com.perqa.byebox.theme.LocalByeBoxMotion
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.DnsServer
 import com.perqa.byebox.ui.main.Loc
@@ -105,13 +113,24 @@ fun CockpitServerCard(
     language: String = "ru",
     cornerRoundness: String = "expressive"
 ) {
+    val expressive = cornerRoundness == "expressive"
+    val cardShape = ByeBoxShapes.inner(expressive)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(if (cornerRoundness == "expressive") 22.dp else 16.dp))
+            .clip(cardShape)
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable { onNavigateToProxy() }
-            .padding(14.dp),
+            .border(
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(
+                        alpha = if (expressive) 0.45f else 0f
+                    )
+                ),
+                cardShape
+            )
+            .clickable(role = Role.Button, onClick = onNavigateToProxy)
+            .padding(if (expressive) 16.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -183,7 +202,7 @@ fun CockpitServerCard(
         }
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .background(pillBg)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
@@ -204,7 +223,7 @@ fun CockpitServerCard(
  * composable, поэтому вне CONNECTING/RECONNECTING «вечных» анимаций нет.
  */
 @Composable
-private fun PulsingStatusDot(color: Color) {
+internal fun PulsingStatusDot(color: Color, size: androidx.compose.ui.unit.Dp = 10.dp) {
     val dotPulse = rememberInfiniteTransition(label = "statusDotPulse")
     val dotAlpha by dotPulse.animateFloat(
         initialValue = 0.3f,
@@ -217,7 +236,7 @@ private fun PulsingStatusDot(color: Color) {
     )
     Box(
         modifier = Modifier
-            .size(10.dp)
+            .size(size)
             .graphicsLayer { alpha = dotAlpha }
             .clip(CircleShape)
             .background(color)
@@ -236,6 +255,8 @@ fun StatusPillBar(
     sessionDownload: String = "",
     modifier: Modifier = Modifier
 ) {
+    val motion = LocalByeBoxMotion.current
+    val expressive = cornerRoundness == "expressive"
     val statusColor by animateColorAsState(
         targetValue = when (status) {
             ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
@@ -243,6 +264,7 @@ fun StatusPillBar(
             ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
             ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
         },
+        animationSpec = motion.effectsDefault(),
         label = "statusPillColor"
     )
     val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
@@ -258,15 +280,23 @@ fun StatusPillBar(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 32.dp else 20.dp),
+        shape = ByeBoxShapes.card(expressive),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+        ),
+        border = if (expressive) {
+            BorderStroke(1.dp, statusColor.copy(alpha = 0.16f))
+        } else {
+            null
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp)
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = if (expressive) 14.dp else 12.dp
+                )
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -286,13 +316,26 @@ fun StatusPillBar(
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = statusText,
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = (if (expressive) {
+                        // Крупнее обычного статуса, но с запасом под длинные
+                        // локализованные строки («Переподключение») и трафик справа.
+                        MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 19.sp,
+                            lineHeight = 26.sp
+                        )
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    }).copy(
                         fontWeight = FontWeight.Black,
                         color = statusColor
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        // liveRegion только на статусе: трафик обновляется раз
+                        // в секунду и не должен «болтать» скринридером.
+                        .semantics { liveRegion = LiveRegionMode.Polite }
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -460,12 +503,21 @@ fun SessionDurationCard(
     cornerRoundness: String = "expressive",
     modifier: Modifier = Modifier
 ) {
+    val expressive = cornerRoundness == "expressive"
+    val container = if (expressive) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    val contentColor = if (expressive) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 32.dp else 20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+        shape = ByeBoxShapes.card(expressive),
+        colors = CardDefaults.cardColors(containerColor = container)
     ) {
         Row(
             modifier = Modifier
@@ -476,23 +528,31 @@ fun SessionDurationCard(
             Icon(
                 imageVector = Icons.Default.QueryBuilder,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = contentColor.copy(alpha = 0.85f),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = Loc.get("session_label", language),
                 style = MaterialTheme.typography.labelMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    fontWeight = FontWeight.Black
-                )
+                    color = contentColor.copy(alpha = 0.75f),
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = duration,
-                style = MaterialTheme.typography.titleMedium.copy(
+                style = (if (expressive) {
+                    MaterialTheme.typography.titleLarge
+                } else {
+                    MaterialTheme.typography.titleMedium
+                }).copy(
                     fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = contentColor,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                 ),
                 maxLines = 1,

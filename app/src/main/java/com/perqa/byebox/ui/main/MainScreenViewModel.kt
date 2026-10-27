@@ -932,12 +932,20 @@ class MainScreenViewModel(
     fun setSubscriptionUserAgent(sourceId: String, userAgent: String) {
         val cleanUa = userAgent.trim()
         val sub = MmkvManager.decodeSubscription(sourceId) ?: return
-        val prev = sub.userAgent ?: ""
-        if (prev == cleanUa) return
-        sub.userAgent = cleanUa.ifBlank { null }
+        // Пустой UA и явно выбранный дефолтный Happ — это одно и то же
+        // («по умолчанию»). Храним null, чтобы старые подписки и пресет
+        // не расходились, а fallback-цепочка UA продолжала работать.
+        val normalized = cleanUa.ifBlank { AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT }
+        val targetStored = if (normalized.equals(AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT, ignoreCase = true)) {
+            null
+        } else {
+            cleanUa
+        }
+        if (sub.userAgent?.takeIf { it.isNotBlank() } == targetStored) return
+        sub.userAgent = targetStored
         MmkvManager.encodeSubscription(sourceId, sub)
         loadDataFromMmkv()
-        addLog("[SYSTEM] User-Agent источника: ${sub.remarks} -> \"${sub.userAgent ?: "(по умолчанию v2rayNG)"}\"")
+        addLog("[SYSTEM] User-Agent источника: ${sub.remarks} -> \"${sub.userAgent ?: "(по умолчанию ${AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT})"}\"")
         showToast(Loc.get("toast_ua_saved", _language.value))
     }
 

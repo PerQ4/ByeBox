@@ -2158,8 +2158,15 @@ fun SubscriptionSettingsSheet(
     viewModel: MainScreenViewModel,
     language: String = "ru"
 ) {
+    // Пустой userAgent означает «по умолчанию», а дефолт теперь Happ/2.5.0.
+    // Показываем его как выбранный пресет, а не пустое поле.
+    val effectiveUa = source.userAgent?.trim()?.takeIf { it.isNotEmpty() }
+        ?: UaPresets.defaultPreset.value
     var editedName by remember(source.id) { mutableStateOf(source.name) }
-    var editedUa by remember(source.id) { mutableStateOf(source.userAgent ?: "") }
+    var editedUa by remember(source.id) { mutableStateOf(effectiveUa) }
+    // Базовая (уже сохранённая) UA: пресет применяется сразу, поэтому после
+    // выбора из списка он не должен считаться несохранённым изменением.
+    var savedUa by remember(source.id) { mutableStateOf(effectiveUa) }
     var editedHwid by remember(source.id) { mutableStateOf(source.hwid ?: "") }
     var showAdvanced by remember(source.id) { mutableStateOf(true) }
     var presetsExpanded by remember { mutableStateOf(false) }
@@ -2170,7 +2177,7 @@ fun SubscriptionSettingsSheet(
     val hasChanges by remember(source) {
         derivedStateOf {
             editedName != source.name ||
-                editedUa != (source.userAgent ?: "") ||
+                editedUa.trim() != savedUa ||
                 editedHwid != (source.hwid ?: "")
         }
     }
@@ -2293,7 +2300,9 @@ fun SubscriptionSettingsSheet(
 
             if (showAdvanced) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val selectedPreset = UaPresets.all.firstOrNull { it.value == editedUa }
+                    val selectedPreset = UaPresets.all.firstOrNull {
+                        it.value.equals(editedUa.trim(), ignoreCase = true)
+                    }
                     val selectedLabel = selectedPreset?.let {
                         it.locKey?.let { key -> Loc.get(key, language) } ?: it.label
                     }
@@ -2328,10 +2337,15 @@ fun SubscriptionSettingsSheet(
                                     onClick = {
                                         tactileFeedback()
                                         editedUa = preset.value
+                                        savedUa = preset.value
                                         presetsExpanded = false
+                                        // Применяем пресет сразу: иначе выбор
+                                        // теряется, если закрыть лист без Save
+                                        // (главная причина «слетающего» UA).
+                                        viewModel.setSubscriptionUserAgent(source.id, preset.value)
                                     },
                                     trailingIcon = {
-                                        if (editedUa == preset.value) {
+                                        if (editedUa.trim().equals(preset.value, ignoreCase = true)) {
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = null,
@@ -2351,7 +2365,7 @@ fun SubscriptionSettingsSheet(
                         shape = RoundedCornerShape(14.dp),
                         label = { Text(Loc.get("sub_ua", language), maxLines = 1) },
                         supportingText = { Text(Loc.get("sub_ua_hint", language), maxLines = 2) },
-                        placeholder = { Text(Loc.get("sub_ua_default", language)) }
+                        placeholder = { Text(UaPresets.defaultPreset.value) }
                     )
                     OutlinedTextField(
                         value = editedHwid,
@@ -2419,7 +2433,7 @@ fun SubscriptionSettingsSheet(
                         if (source.name != editedName) {
                             viewModel.renameSubscriptionSource(source.id, editedName)
                         }
-                        if ((source.userAgent ?: "") != editedUa) {
+                        if (editedUa.trim() != savedUa) {
                             viewModel.setSubscriptionUserAgent(source.id, editedUa)
                         }
                         if ((source.hwid ?: "") != editedHwid) {
@@ -2452,10 +2466,11 @@ private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String =
     val parts = mutableListOf<String>()
     // Анонс не дублируем, если он совпадает с описанием подписки (description
     // выводится отдельным блоком ниже). Сам анонс показываем только когда описания нет
-    // или они различаются.
-    val description = sourceSource?.description?.takeIf { it.isNotBlank() }
-    val announce = sourceSource?.announce?.takeIf { it.isNotBlank() }
-    if (announce != null && announce != description) {
+    // или они различаются. Сравниваем без учёта регистра и крайних пробелов:
+    // панели часто присылают один и тот же текст в profile-description и announce.
+    val description = sourceSource?.description?.trim()?.takeIf { it.isNotEmpty() }
+    val announce = sourceSource?.announce?.trim()?.takeIf { it.isNotEmpty() }
+    if (announce != null && !announce.equals(description, ignoreCase = true)) {
         parts.add(announce)
     }
     sourceSource?.lastUpdatedAt?.let { timestamp ->
