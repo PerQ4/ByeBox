@@ -1111,10 +1111,13 @@ fun SourceGroupCard(
             }
             }
 
-            // Описание подписки (profile-description) — отдельным блоком, как раньше.
-            source?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+            // Информация подписки: если панель прислала и announce («информация»),
+            // и description, в нижнем блоке показываем announce, заменяя description.
+            val subscriptionInfo = source?.announce?.trim()?.takeIf { it.isNotBlank() }
+                ?: source?.description?.trim()?.takeIf { it.isNotBlank() }
+            subscriptionInfo?.let { info ->
                 MarkdownText(
-                    text = desc,
+                    text = info,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp),
@@ -2464,15 +2467,8 @@ fun SubscriptionSettingsSheet(
 
 private fun sourceSubtitle(sourceSource: SubscriptionSource?, language: String = "ru"): String {
     val parts = mutableListOf<String>()
-    // Анонс не дублируем, если он совпадает с описанием подписки (description
-    // выводится отдельным блоком ниже). Сам анонс показываем только когда описания нет
-    // или они различаются. Сравниваем без учёта регистра и крайних пробелов:
-    // панели часто присылают один и тот же текст в profile-description и announce.
-    val description = sourceSource?.description?.trim()?.takeIf { it.isNotEmpty() }
-    val announce = sourceSource?.announce?.trim()?.takeIf { it.isNotEmpty() }
-    if (announce != null && !announce.equals(description, ignoreCase = true)) {
-        parts.add(announce)
-    }
+    // announce («информация») больше не дублируем в подзаголовке: он выводится
+    // в нижнем блоке вместо description (см. блок описания подписки).
     sourceSource?.lastUpdatedAt?.let { timestamp ->
         val formatter = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
         parts.add(formatter.format(java.util.Date(timestamp)))

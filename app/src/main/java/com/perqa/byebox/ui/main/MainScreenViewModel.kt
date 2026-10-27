@@ -1801,7 +1801,23 @@ class MainScreenViewModel(
             )
         }
 
-        _activeConfigId.value = MmkvManager.getSelectServer()
+        // Не оставляем VPN без выбранного сервера: если сохранённый выбор пуст
+        // или указывает на удалённый узел (например, после дедупа/обновления
+        // подписки), выбираем первый валидный. Иначе «Подключить» стартует без
+        // конфига и туннель уходит в цикл перезапуска.
+        val storedSelection = MmkvManager.getSelectServer()
+        val validSelection = storedSelection?.takeIf { id -> proxyConfigs.any { it.id == id } }
+        if (validSelection != null) {
+            _activeConfigId.value = validSelection
+        } else {
+            val fallback = proxyConfigs.firstOrNull { it.address.isNotBlank() && it.port > 0 }
+            if (fallback != null) {
+                MmkvManager.setSelectServer(fallback.id)
+                _activeConfigId.value = fallback.id
+            } else {
+                _activeConfigId.value = null
+            }
+        }
 
         _vpnModeEnabled.value = MmkvManager.decodeSettingsString(AppConfig.PREF_MODE, "VPN") == "VPN"
         _socksPort.value = MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT, "10808") ?: "10808"

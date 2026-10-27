@@ -7,9 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -120,15 +118,6 @@ fun CockpitServerCard(
             .fillMaxWidth()
             .clip(cardShape)
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .border(
-                BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(
-                        alpha = if (expressive) 0.45f else 0f
-                    )
-                ),
-                cardShape
-            )
             .clickable(role = Role.Button, onClick = onNavigateToProxy)
             .padding(if (expressive) 16.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -283,12 +272,7 @@ fun StatusPillBar(
         shape = ByeBoxShapes.card(expressive),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        border = if (expressive) {
-            BorderStroke(1.dp, statusColor.copy(alpha = 0.16f))
-        } else {
-            null
-        }
+        )
     ) {
         Column(
             modifier = Modifier

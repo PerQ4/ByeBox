@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -155,14 +154,6 @@ fun TelegramProxyCard(
                 ) { onToggle() },
             shape = cardShape,
             color = MaterialTheme.colorScheme.surfaceContainer,
-            border = if (expressive) {
-                BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                )
-            } else {
-                null
-            },
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {

@@ -1,7 +1,6 @@
 package com.perqa.byebox.ui.main.dashboard
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -177,14 +176,6 @@ fun TgwsFullPage(
             modifier = Modifier.fillMaxWidth(),
             shape = ByeBoxShapes.card(cornerRoundness == "expressive"),
             color = MaterialTheme.colorScheme.surfaceContainer,
-            border = if (cornerRoundness == "expressive") {
-                BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                )
-            } else {
-                null
-            },
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -285,12 +276,7 @@ private fun TgwsStatusPillBar(
         shape = RoundedCornerShape(if (expressive) 32.dp else 20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        border = if (expressive) {
-            BorderStroke(1.dp, statusColor.copy(alpha = 0.16f))
-        } else {
-            null
-        }
+        )
     ) {
         Row(
             modifier = Modifier

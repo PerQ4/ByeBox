@@ -20,8 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -235,6 +237,17 @@ fun ProfilePresetsCard(
     }
     val profiles = state.profiles
 
+    // Если строку удалили свайпом, её id мог остаться в swipingId: тогда
+    // последующие свайпы больше не обновляют состояние. Сбрасываем, как только
+    // удалённого элемента больше нет в списке.
+    LaunchedEffect(displayConfigs) {
+        val id = swipingId
+        if (id != null && displayConfigs.none { it.id == id }) {
+            swipingId = null
+            swipingDragPx = 0f
+        }
+    }
+
     // При singleRowPreview (например, когда открыт блок Telegram) свёрнутый блок
     // показывает только первую строку — «один элемент», без скролла и пустой зоны.
     val visibleConfigs = if (collapsed && singleRowPreview) displayConfigs.take(1) else displayConfigs
@@ -358,6 +371,10 @@ fun ProfilePresetsCard(
                         } else 0f
 
                         val profile = profiles.find { it.id == config.id }
+                        // Ключ по id: при удалении через свайп Compose не должен
+                        // переиспользовать состояние (offset) соседней строки —
+                        // иначе последующие свайпы «ломаются».
+                        key(config.id) {
                         ServerItemCard(
                             config = config,
                             isActive = isActive,
@@ -393,6 +410,7 @@ fun ProfilePresetsCard(
                                 }
                             }
                         )
+                        }
                     }
                 }
                 // Нижний запас под скролл добавляем только когда список реально
