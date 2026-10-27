@@ -3,7 +3,6 @@ package com.v2ray.ang.util
 import android.os.Build
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
-import com.perqa.byebox.BuildConfig
 import com.v2ray.ang.dto.UrlContentRequest
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
@@ -158,7 +157,7 @@ object HttpUtil {
             if (currentUrl == null) continue
             val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = false)
             val finalUserAgent = if (request.userAgent.isNullOrBlank()) {
-                "v2rayNG/${BuildConfig.VERSION_NAME}"
+                AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT
             } else {
                 request.userAgent
             }

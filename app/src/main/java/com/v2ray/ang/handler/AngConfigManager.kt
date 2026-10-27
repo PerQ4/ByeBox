@@ -3,7 +3,6 @@ package com.v2ray.ang.handler
 import android.content.Context
 import android.graphics.Bitmap
 import android.text.TextUtils
-import com.perqa.byebox.BuildConfig
 import com.v2ray.ang.AppConfig
 import com.perqa.byebox.R
 import com.v2ray.ang.core.CoreConfigManager
@@ -935,6 +934,23 @@ object AngConfigManager {
                     null
                 }
             }
+            // Панели часто фильтруют клиентов по UA и принимают только
+            // определённые версии. Если свой UA не задан и каноничный не подошёл —
+            // пробуем запасной, иначе подписка молча «перестаёт парситься».
+            if ((responsePair == null || responsePair.first.isEmpty()) && userAgent.isNullOrBlank()) {
+                responsePair = try {
+                    HttpUtil.getUrlContentAndHeaders(
+                        UrlContentRequest(
+                            url = url,
+                            userAgent = AppConfig.FALLBACK_SUBSCRIPTION_USER_AGENT,
+                            hwid = hwid
+                        )
+                    )
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "Update subscription: fallback user agent failed", e)
+                    null
+                }
+            }
             if (responsePair == null || responsePair.first.isEmpty()) {
                 return SubscriptionUpdateResult(failureCount = 1)
             }
@@ -949,7 +965,7 @@ object AngConfigManager {
                 ?.trim()
             if (!expandNow.isNullOrEmpty() && expandNow == "1") {
                 val finalUserAgent = if (userAgent.isNullOrBlank()) {
-                    "v2rayNG/${BuildConfig.VERSION_NAME}"
+                    AppConfig.DEFAULT_SUBSCRIPTION_USER_AGENT
                 } else {
                     userAgent
                 }

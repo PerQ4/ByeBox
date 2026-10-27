@@ -9,6 +9,20 @@ object AppConfig {
     const val ANG_PACKAGE = BuildConfig.APPLICATION_ID
     const val TAG = BuildConfig.APPLICATION_ID
 
+    /**
+     * User-Agent по умолчанию для запросов подписок.
+     *
+     * ВАЖНО: это должна быть РЕАЛЬНАЯ версия клиента v2rayNG, а не версия ByeBox
+     * (`BuildConfig.VERSION_NAME`). Панели подписок фильтруют клиентов по UA:
+     * например, `v2rayNG/1.5.5-beta.2` (версия ByeBox) они отклоняют с 503,
+     * а `v2rayNG/2.3.6` — отдают конфиги. Раньше сюда подставлялась версия
+     * приложения, из-за чего подписки переставали парситься.
+     */
+    const val DEFAULT_SUBSCRIPTION_USER_AGENT = "v2rayNG/2.3.6"
+
+    /** Запасной UA для панелей, которые не принимают основной. */
+    const val FALLBACK_SUBSCRIPTION_USER_AGENT = "v2rayNG/1.8.5"
+
     /** Directory names used in the app's file system. */
     const val DIR_ASSETS = "assets"
 
