@@ -127,7 +127,13 @@ fun TelegramProxyCard(
     val isActiveVisual = isRunning || isStarting
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // Подсветка нажатия должна покрывать ВСЮ карточку, а не только
+            // строку шапки. Ripple рисуется на уровне Surface (с учётом
+            // скруглений), а вложенные интерактивные элементы (пилюля,
+            // шеврон, кнопки контента) перехватывают свои нажатия сами.
+            .clickable { onToggle() },
         shape = RoundedCornerShape(if (cornerRoundness == "expressive") 28.dp else 16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 0.dp,
@@ -196,7 +202,6 @@ internal fun TelegramHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
