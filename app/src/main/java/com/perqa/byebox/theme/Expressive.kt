@@ -13,11 +13,11 @@ import androidx.compose.ui.unit.dp
 /**
  * Единые спеки движения для блоков главной и TGWS.
  *
- * Проверка Compose BOM 2026.03.01 (Material3 1.4.0): expressive-API в артефакте
- * есть, но `MaterialExpressiveTheme`, `MotionScheme` и
- * `ExperimentalMaterial3ExpressiveApi` помечены `internal` в Kotlin-метаданных
- * и недоступны коду приложения. Поэтому здесь локальный эквивалент на spring:
- * формы — в [ByeBoxShapes], движение — ниже, без новых зависимостей.
+ * BOM 2026.03.01 пиннит Material3 1.4.0, где `MaterialExpressiveTheme`,
+ * `MotionScheme` и `ExperimentalMaterial3ExpressiveApi` помечены `internal`
+ * в Kotlin-метаданных и недоступны коду приложения. Material3 1.5.x их
+ * открывает, но требует AGP 9.1 и compileSdk 37 — это отдельный апгрейд
+ * инфраструктуры. Пока используем локальный эквивалент на spring.
  */
 @Immutable
 class ByeBoxMotion internal constructor(private val expressive: Boolean) {
@@ -44,9 +44,9 @@ class ByeBoxMotion internal constructor(private val expressive: Boolean) {
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
 
     /**
-     * Раскрытие/сворачивание по высоте. Намеренно critically damped: любая
-     * пересборка с отскоком даёт высоту больше контента, из-за чего появляется
-     * пустая полоса, а замеры высот (панель пресетов) начинают «плавать».
+     * Раскрытие/сворачивание по высоте. Намеренно critically damped: любой
+     * отскок даёт высоту больше контента, из-за чего появляется пустая полоса,
+     * а замеры высот (панель пресетов) начинают «плавать».
      */
     fun <T> expand(): FiniteAnimationSpec<T> =
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
