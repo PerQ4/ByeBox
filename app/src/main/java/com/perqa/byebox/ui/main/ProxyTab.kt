@@ -3054,14 +3054,22 @@ private fun PingingPingPill(ping: Int?) {
                 .drawWithContent {
                     drawContent()
                     val sweep = scanningFraction * 360f
+                    // Дуга должна быть круглой: раньше она вписывалась в
+                    // прямоугольник пилюли и растягивалась в овал. Берём меньшую
+                    // сторону и центрируем.
+                    val inset = 1.5.dp.toPx()
+                    val diameter = minOf(size.width, size.height) - inset * 2f
                     drawArc(
                         color = accentColor,
                         startAngle = sweep - 90f,
                         sweepAngle = 80f,
                         useCenter = false,
                         style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                        topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()),
-                        size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx())
+                        topLeft = Offset(
+                            (size.width - diameter) / 2f,
+                            (size.height - diameter) / 2f
+                        ),
+                        size = Size(diameter, diameter)
                     )
                 }
         )
