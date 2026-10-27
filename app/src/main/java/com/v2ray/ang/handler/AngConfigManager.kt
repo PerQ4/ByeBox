@@ -865,6 +865,71 @@ object AngConfigManager {
      * @param it The subscription item.
      * @return Subscription update result.
      */
+    /**
+     * Загружает подписку с ретраями.
+     *
+     * Шлюзы панелей нестабильны: один и тот же запрос может вернуть 200, 503
+     * или 504 (чередуется). Ретраим только транзиентные ошибки (5xx/429/сеть)
+     * с экспоненциальной паузой. Вызывается на IO-потоке, поэтому используем
+     * Thread.sleep, а не delay (функция не suspend).
+     */
+    private fun fetchSubscriptionWithRetries(
+        url: String,
+        userAgent: String?,
+        hwid: String?,
+        viaProxy: Boolean,
+        attempts: Int,
+        proxyUsername: String?,
+        proxyPassword: String?
+    ): Pair<String, Map<String, String>>? {
+        var backoffMs = 600L
+        repeat(attempts) { attempt ->
+            try {
+                val httpPort = if (viaProxy) SettingsManager.getHttpPort() else 0
+                val pair = HttpUtil.getUrlContentAndHeaders(
+                    UrlContentRequest(
+                        url = url,
+                        userAgent = userAgent,
+                        hwid = hwid,
+                        timeout = 15000,
+                        httpPort = httpPort,
+                        proxyUsername = proxyUsername,
+                        proxyPassword = proxyPassword
+                    )
+                )
+                if (pair.first.isNotEmpty()) {
+                    if (attempt > 0) {
+                        LogUtil.i(AppConfig.TAG, "Subscription fetched on attempt ${attempt + 1}")
+                    }
+                    return pair
+                }
+            } catch (e: Exception) {
+                val code = Regex("""status code (\d+)""")
+                    .find(e.message.orEmpty())
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.toIntOrNull()
+                val transient = code?.let { it >= 500 || it == 429 } ?: true
+                LogUtil.w(
+                    AppConfig.TAG,
+                    "Subscription fetch attempt ${attempt + 1}/$attempts failed" +
+                        (if (code != null) " (HTTP $code)" else "") + ": ${e.message}"
+                )
+                if (!transient) return null
+            }
+            if (attempt < attempts - 1) {
+                try {
+                    Thread.sleep(backoffMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return null
+                }
+                backoffMs *= 2
+            }
+        }
+        return null
+    }
+
     fun updateConfigViaSub(it: SubscriptionCache): SubscriptionUpdateResult {
         try {
             // Check if disabled
@@ -903,53 +968,42 @@ object AngConfigManager {
             val proxyUsername = SettingsManager.getSocksUsername()
             val proxyPassword = SettingsManager.getSocksPassword()
 
-            var responsePair = try {
-                val httpPort = SettingsManager.getHttpPort()
-                HttpUtil.getUrlContentAndHeaders(
-                    UrlContentRequest(
-                        url = url,
-                        userAgent = userAgent,
-                        hwid = hwid,
-                        timeout = 15000,
-                        httpPort = httpPort,
-                        proxyUsername = proxyUsername,
-                        proxyPassword = proxyPassword
-                    )
-                )
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription: proxy not ready or other error", e)
-                null
-            }
+            // Шлюзы панелей нестабильны: один и тот же запрос может вернуть
+            // 200, 503 или 504 (чередуется). Поэтому несколько попыток с
+            // экспоненциальной паузой, а не одна.
+            var responsePair = fetchSubscriptionWithRetries(
+                url = url,
+                userAgent = userAgent,
+                hwid = hwid,
+                viaProxy = true,
+                attempts = 1,
+                proxyUsername = proxyUsername,
+                proxyPassword = proxyPassword
+            )
             if (responsePair == null || responsePair.first.isEmpty()) {
-                responsePair = try {
-                    HttpUtil.getUrlContentAndHeaders(
-                        UrlContentRequest(
-                            url = url,
-                            userAgent = userAgent,
-                            hwid = hwid
-                        )
-                    )
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "Update subscription: Failed to get URL content with user agent", e)
-                    null
-                }
+                responsePair = fetchSubscriptionWithRetries(
+                    url = url,
+                    userAgent = userAgent,
+                    hwid = hwid,
+                    viaProxy = false,
+                    attempts = 4,
+                    proxyUsername = proxyUsername,
+                    proxyPassword = proxyPassword
+                )
             }
             // Панели часто фильтруют клиентов по UA и принимают только
             // определённые версии. Если свой UA не задан и каноничный не подошёл —
             // пробуем запасной, иначе подписка молча «перестаёт парситься».
             if ((responsePair == null || responsePair.first.isEmpty()) && userAgent.isNullOrBlank()) {
-                responsePair = try {
-                    HttpUtil.getUrlContentAndHeaders(
-                        UrlContentRequest(
-                            url = url,
-                            userAgent = AppConfig.FALLBACK_SUBSCRIPTION_USER_AGENT,
-                            hwid = hwid
-                        )
-                    )
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "Update subscription: fallback user agent failed", e)
-                    null
-                }
+                responsePair = fetchSubscriptionWithRetries(
+                    url = url,
+                    userAgent = AppConfig.FALLBACK_SUBSCRIPTION_USER_AGENT,
+                    hwid = hwid,
+                    viaProxy = false,
+                    attempts = 4,
+                    proxyUsername = proxyUsername,
+                    proxyPassword = proxyPassword
+                )
             }
             if (responsePair == null || responsePair.first.isEmpty()) {
                 return SubscriptionUpdateResult(failureCount = 1)
