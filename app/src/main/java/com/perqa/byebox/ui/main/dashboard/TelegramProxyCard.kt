@@ -126,15 +126,16 @@ fun TelegramProxyCard(
     }
     val isActiveVisual = isRunning || isStarting
 
+    val cardShape = RoundedCornerShape(if (cornerRoundness == "expressive") 28.dp else 16.dp)
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            // Подсветка нажатия должна покрывать ВСЮ карточку, а не только
-            // строку шапки. Ripple рисуется на уровне Surface (с учётом
-            // скруглений), а вложенные интерактивные элементы (пилюля,
-            // шеврон, кнопки контента) перехватывают свои нажатия сами.
+            // clip ДО clickable: иначе ripple рисуется прямоугольником и не
+            // учитывает скругление карточки. Вложенные интерактивные элементы
+            // (пилюля, шеврон, кнопки контента) перехватывают свои нажатия сами.
+            .clip(cardShape)
             .clickable { onToggle() },
-        shape = RoundedCornerShape(if (cornerRoundness == "expressive") 28.dp else 16.dp),
+        shape = cardShape,
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
