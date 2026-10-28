@@ -7,10 +7,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -32,12 +32,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -103,9 +105,10 @@ fun ConnectionButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier.size(210.dp)
     ) {
-        CookieAura(
+        ButtonRing(
             color = accent,
-            pulse = pulseEnabled && status != ConnectionStatus.DISCONNECTED
+            active = status != ConnectionStatus.DISCONNECTED,
+            pulse = pulseEnabled
         )
 
         Box(
@@ -177,64 +180,52 @@ fun ConnectionButton(
 }
 
 /**
- * Мягкое свечение: радиальный градиент, обрезанный по Cookie12Sided, с blur.
- * Пульсирует только в активных состояниях; в покое — статичное и тише.
+ * Кольцо вокруг кнопки: тонкий круг + вращающаяся дуга в активном состоянии.
+ * Никакого заливного glow.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CookieAura(color: Color, pulse: Boolean) {
-    if (pulse) {
-        val transition = rememberInfiniteTransition(label = "cookieAura")
-        val scale by transition.animateFloat(
-            initialValue = 0.96f,
-            targetValue = 1.06f,
+private fun ButtonRing(color: Color, active: Boolean, pulse: Boolean) {
+    if (active && pulse) {
+        val transition = rememberInfiniteTransition(label = "buttonRing")
+        val rotation by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(2600, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
+                animation = tween(3200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
             ),
-            label = "auraScale"
+            label = "ringRotation"
         )
-        val alpha by transition.animateFloat(
-            initialValue = 0.38f,
-            targetValue = 0.68f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2600, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "auraAlpha"
-        )
-        CookieGlow(color = color, scale = scale, alpha = alpha)
+        RingCanvas(color = color, rotation = rotation, active = true)
     } else {
-        CookieGlow(color = color, scale = 1f, alpha = 0.42f)
+        RingCanvas(color = color, rotation = 0f, active = active)
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CookieGlow(color: Color, scale: Float, alpha: Float) {
-    // Аура — идеальный круг: Cookie12Sided в квадратном боксе выглядел
-    // сплющенным овалом. Кнопка остаётся Cookie9Sided.
-    val shape: androidx.compose.ui.graphics.Shape = CircleShape
-    Box(
-        modifier = Modifier
-            .size(205.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-            }
-            // Сглаживает края формы, чтобы это читалось как свечение, а не
-            // как второй «блин» за кнопкой. На API < 31 blur игнорируется.
-            .blur(30.dp)
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        color.copy(alpha = 0.9f),
-                        color.copy(alpha = 0.35f),
-                        Color.Transparent
-                    )
+private fun RingCanvas(color: Color, rotation: Float, active: Boolean) {
+    Canvas(modifier = Modifier.size(196.dp)) {
+        val stroke = 1.6.dp.toPx()
+        val radius = (size.minDimension - stroke) / 2f
+        drawCircle(
+            color = color.copy(alpha = if (active) 0.28f else 0.16f),
+            radius = radius,
+            style = Stroke(width = stroke)
+        )
+        if (active) {
+            val diameter = radius * 2f
+            drawArc(
+                color = color.copy(alpha = 0.85f),
+                startAngle = rotation - 90f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(
+                    (size.width - diameter) / 2f,
+                    (size.height - diameter) / 2f
                 ),
-                shape = shape
+                size = Size(diameter, diameter),
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
-    )
+        }
+    }
 }
