@@ -106,6 +106,7 @@ fun TelemetrySpeedCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CockpitServerCard(
     activeConfig: ProxyConfig,
@@ -116,6 +117,8 @@ fun CockpitServerCard(
 ) {
     val expressive = cornerRoundness == "expressive"
     val cardShape = ByeBoxShapes.inner(expressive)
+    val flagShape = MaterialShapes.Cookie6Sided.toShape()
+    val pingShape = MaterialShapes.Pill.toShape()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -125,11 +128,19 @@ fun CockpitServerCard(
             .padding(if (expressive) 16.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = activeConfig.countryFlag,
-            fontSize = 32.sp,
-            modifier = Modifier.padding(end = 12.dp)
-        )
+        Box(
+            modifier = Modifier
+                .padding(end = 12.dp)
+                .size(48.dp)
+                .clip(flagShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = activeConfig.countryFlag,
+                fontSize = 26.sp
+            )
+        }
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -192,12 +203,20 @@ fun CockpitServerCard(
             ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
             else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
         }
-        Box(
+        Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
+                .clip(pingShape)
                 .background(pillBg)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(MaterialShapes.Cookie9Sided.toShape())
+                    .background(pillColor)
+            )
             Text(
                 text = if (ping != null) "${ping} ms" else "N/A",
                 style = MaterialTheme.typography.bodyMedium.copy(
