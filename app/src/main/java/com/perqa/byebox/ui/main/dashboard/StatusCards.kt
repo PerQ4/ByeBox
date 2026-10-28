@@ -143,17 +143,20 @@ fun CockpitServerCard(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = activeConfig.name,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = activeConfig.name,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -168,17 +171,18 @@ fun CockpitServerCard(
                         )
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "${com.v2ray.ang.util.Utils.maskServerAddress(activeConfig.address)}:${activeConfig.port}",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
+            Spacer(modifier = Modifier.height(2.dp))
+            // Адрес вынесен на отдельную строку — раньше его сжимала плашка протокола.
+            Text(
+                text = "${com.v2ray.ang.util.Utils.maskServerAddress(activeConfig.address)}:${activeConfig.port}",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
         IconButton(

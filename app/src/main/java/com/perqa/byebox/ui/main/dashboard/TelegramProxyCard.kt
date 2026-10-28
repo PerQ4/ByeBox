@@ -17,25 +17,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -205,6 +210,7 @@ fun TelegramProxyCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun TelegramHeader(
     title: String,
@@ -218,117 +224,142 @@ internal fun TelegramHeader(
     expressive: Boolean = true
 ) {
     val motion = LocalByeBoxMotion.current
-    val pillShape = RoundedCornerShape(20.dp)
-    val pillColor by animateColorAsState(
+    val accent by animateColorAsState(
         targetValue = when {
             isActive && isVerified -> MaterialTheme.colorScheme.primary
             isActive -> MaterialTheme.colorScheme.tertiary
             else -> MaterialTheme.colorScheme.surfaceVariant
         },
         animationSpec = motion.effectsDefault(),
-        label = "tgwsPillColor"
+        label = "tgwsAccent"
     )
-    val pillContentColor by animateColorAsState(
+    val accentContent by animateColorAsState(
         targetValue = when {
             isActive && isVerified -> MaterialTheme.colorScheme.onPrimary
             isActive -> MaterialTheme.colorScheme.onTertiary
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = motion.effectsDefault(),
-        label = "tgwsPillContent"
+        label = "tgwsAccentContent"
+    )
+    val logoShape = MaterialShapes.Cookie6Sided.toShape()
+    val leadingShape = RoundedCornerShape(
+        topStart = CornerSize(22.dp),
+        bottomStart = CornerSize(22.dp),
+        topEnd = CornerSize(8.dp),
+        bottomEnd = CornerSize(8.dp)
+    )
+    val trailingShape = RoundedCornerShape(
+        topStart = CornerSize(8.dp),
+        bottomStart = CornerSize(8.dp),
+        topEnd = CornerSize(22.dp),
+        bottomEnd = CornerSize(22.dp)
     )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                    colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-                    alpha = if (isActive) 1f else 0.6f
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = title,
-                    style = (if (expressive) {
-                        MaterialTheme.typography.titleLarge
-                    } else {
-                        MaterialTheme.typography.titleMedium
-                    }).copy(
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        // В выключенном состоянии accent — тёмный surfaceVariant, поэтому бейдж
+        // брал почти невидимый фон. Для логотипа используем отдельный акцент.
+        val logoAccent = if (isActive) {
+            accent
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
         }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(logoShape)
+                .background(logoAccent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
         ) {
-            // Пилюля остаётся визуально компактной, но зона нажатия — 48dp:
-            // иначе на неё трудно попасть и она не проходит по доступности.
-            Box(
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .clip(pillShape)
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = statusText
-                    ) { onToggleService() },
-                contentAlignment = Alignment.Center
+            Image(
+                painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
+                alpha = if (isActive) 1f else 0.85f
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = title,
+            style = (if (expressive) {
+                MaterialTheme.typography.titleLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            }).copy(
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        // Ручной split: SplitButtonLayout растягивает ведущую кнопку и съедает
+        // заголовок, поэтому собираем две connected-кнопки фиксированного размера.
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Surface(
+                onClick = onToggleService,
+                shape = leadingShape,
+                color = accent,
+                contentColor = accentContent,
+                modifier = Modifier.height(44.dp)
             ) {
-                Surface(
-                    shape = pillShape,
-                    color = pillColor
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(pillContentColor)
-                        )
-                        Text(
-                            text = statusText,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = pillContentColor
-                            ),
-                            maxLines = 1
-                        )
-                    }
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(MaterialShapes.Cookie9Sided.toShape())
+                            .background(accentContent)
+                    )
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        maxLines = 1
+                    )
                 }
             }
-
-            IconButton(
+            Surface(
                 onClick = onToggle,
-                modifier = Modifier.size(48.dp)
+                shape = trailingShape,
+                color = accent,
+                contentColor = accentContent,
+                modifier = Modifier.size(44.dp)
             ) {
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (isExpanded) Loc.get("collapse", language) else Loc.get("expand", language),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) {
+                            Icons.Default.KeyboardArrowUp
+                        } else {
+                            Icons.Default.KeyboardArrowDown
+                        },
+                        contentDescription = if (isExpanded) {
+                            Loc.get("collapse", language)
+                        } else {
+                            Loc.get("expand", language)
+                        },
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun TelegramExpandedContent(
     context: Context,
@@ -364,8 +395,9 @@ internal fun TelegramExpandedContent(
             enabled = isRunning,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp),
-            shape = RoundedCornerShape(if (cornerRoundness == "expressive") 24.dp else 14.dp),
+                .height(52.dp),
+            // Expressive-форма в стиле остальных акцентов приложения.
+            shape = MaterialShapes.Cookie9Sided.toShape(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -373,27 +405,40 @@ internal fun TelegramExpandedContent(
                 disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
             )
         ) {
+            Icon(
+                imageVector = Icons.Default.Send,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 Loc.get("tgws_apply_in_telegram", language),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Сегментированный переключатель в общей капсуле.
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            ModeChip(
-                label = Loc.get("tgws_packages", language),
-                selected = applyMode == "packages",
-                modifier = Modifier.weight(1f).height(48.dp)
-            ) { onApplyModeChange("packages") }
-            ModeChip(
-                label = Loc.get("tgws_link", language),
-                selected = applyMode == "link",
-                modifier = Modifier.weight(1f).height(48.dp)
-            ) { onApplyModeChange("link") }
+            Row(
+                modifier = Modifier.padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ModeChip(
+                    label = Loc.get("tgws_packages", language),
+                    selected = applyMode == "packages",
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { onApplyModeChange("packages") }
+                ModeChip(
+                    label = Loc.get("tgws_link", language),
+                    selected = applyMode == "link",
+                    modifier = Modifier.weight(1f).height(44.dp)
+                ) { onApplyModeChange("link") }
+            }
         }
 
         ProxyStatusPanel(
@@ -403,27 +448,46 @@ internal fun TelegramExpandedContent(
             language = language
         )
 
-        SettingsRowSurface(
-            cornerRoundness = cornerRoundness,
+        Surface(
             onClick = {
                 val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cb.setPrimaryClip(android.content.ClipData.newPlainText("Proxy", proxyUrl))
                 Toast.makeText(context, Loc.get("tgws_copied", language), Toast.LENGTH_SHORT).show()
-            }
+            },
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = proxyUrl,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                maxLines = 1,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                Icons.Default.ContentCopy,
-                contentDescription = Loc.get("tgws_copy", language),
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(MaterialShapes.Cookie9Sided.toShape())
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = Loc.get("tgws_copy", language),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+                Text(
+                    text = proxyUrl,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))

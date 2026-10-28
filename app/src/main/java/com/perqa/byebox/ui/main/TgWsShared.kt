@@ -6,8 +6,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,12 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.toShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.IntrinsicSize
 import com.amurcanov.tgwsproxy.R as TgwsR
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ProxyStatusPanel(
     cfEnabled: Boolean,
@@ -41,80 +47,71 @@ fun ProxyStatusPanel(
     version: String? = null,
     language: String = "ru"
 ) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth()
+    // Вместо таблицы с разделителями — ряд отдельных expressive-чипов.
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProxyStatusItem(
-                text = if (cfEnabled) "CF" else Loc.get("tgws_direct", language),
-                modifier = Modifier
-                    .weight(0.9f)
-                    .padding(horizontal = 6.dp, vertical = 8.dp)
+        ProxyStatusChip(
+            text = if (cfEnabled) "CF" else Loc.get("tgws_direct", language),
+            accent = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(0.9f)
+        )
+        ProxyStatusChip(
+            text = String.format(Loc.get("tgws_pool_short", language), poolSize),
+            accent = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1.05f)
+        )
+        ProxyStatusChip(
+            text = String.format(Loc.get("tgws_port_short", language), port),
+            accent = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.weight(1.2f)
+        )
+        if (version != null) {
+            ProxyStatusChip(
+                text = version,
+                accent = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1.1f)
             )
-            ProxyStatusDivider()
-            ProxyStatusItem(
-                text = String.format(Loc.get("tgws_pool_short", language), poolSize),
-                modifier = Modifier
-                    .weight(1.05f)
-                    .padding(horizontal = 6.dp, vertical = 8.dp)
-            )
-            ProxyStatusDivider()
-            ProxyStatusItem(
-                text = String.format(Loc.get("tgws_port_short", language), port),
-                modifier = Modifier
-                    .weight(1.35f)
-                    .padding(horizontal = 6.dp, vertical = 8.dp)
-            )
-            if (version != null) {
-                ProxyStatusDivider()
-                ProxyStatusItem(
-                    text = version,
-                    modifier = Modifier
-                        .weight(1.1f)
-                        .padding(horizontal = 6.dp, vertical = 8.dp)
-                )
-            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ProxyStatusItem(
+private fun ProxyStatusChip(
     text: String,
-    modifier: Modifier = Modifier,
+    accent: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        // Чип занимает всю ширину веса — контент должен стоять по центру,
+        // а не прижиматься к левому краю.
+        horizontalArrangement = Arrangement.Center
     ) {
+        // Cookie-точка вместо обычного круга — общий expressive-акцент.
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(MaterialShapes.Cookie9Sided.toShape())
+                .background(accent)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            textAlign = TextAlign.Center,
             maxLines = 1,
-            modifier = Modifier.fillMaxWidth()
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
-}
-
-@Composable
-private fun ProxyStatusDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(1.dp)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-    )
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

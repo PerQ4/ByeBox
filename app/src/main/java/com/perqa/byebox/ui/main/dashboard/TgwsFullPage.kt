@@ -17,9 +17,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +66,7 @@ import kotlinx.coroutines.withContext
  * VPN dashboard: a status pill bar, a big circular connect button, an
  * always-expanded "apply to Telegram" card, and the full TGWS settings inline.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TgwsFullPage(
     language: String = "ru",
@@ -188,17 +193,31 @@ fun TgwsFullPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-                        alpha = if (isActiveVisual) 1f else 0.6f
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    // Cookie-бейдж логотипа — как в шапке карточки на главной.
+                    val accent = when {
+                        isVerifiedRunning -> MaterialTheme.colorScheme.primary
+                        isActiveVisual -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(MaterialShapes.Cookie6Sided.toShape())
+                            .background(accent.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = TgwsR.drawable.ic_telegram_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
+                            alpha = if (isActiveVisual) 1f else 0.6f
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = Loc.get("title_telegram", language),
                         style = (if (cornerRoundness == "expressive") {
@@ -217,11 +236,8 @@ fun TgwsFullPage(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isVerifiedRunning) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.tertiary
-                                )
+                                .clip(MaterialShapes.Cookie9Sided.toShape())
+                                .background(accent)
                         )
                     }
                 }
@@ -253,6 +269,7 @@ fun TgwsFullPage(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TgwsStatusPillBar(
     statusText: String,
@@ -275,6 +292,7 @@ private fun TgwsStatusPillBar(
         animationSpec = motion.effectsDefault(),
         label = "tgwsStatusColor"
     )
+    val dotShape = MaterialShapes.Cookie9Sided.toShape()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -287,28 +305,35 @@ private fun TgwsStatusPillBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = 18.dp,
+                    horizontal = 16.dp,
                     vertical = if (expressive) 14.dp else 12.dp
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isBusy) {
-                // Пульс существует только пока идёт подключение.
-                PulsingStatusDot(color = statusColor)
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
+            // Крупная cookie-точка статуса — тот же акцент, что у кнопки и Cockpit.
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(dotShape)
+                    .background(statusColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isBusy) {
+                    // Пульс существует только пока идёт подключение.
+                    PulsingStatusDot(color = statusColor)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(dotShape)
+                            .background(statusColor)
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = statusText,
                 style = (if (expressive) {
-                    // Крупнее обычного, но с запасом под длинные строки статуса
-                    // и бейджи пула/порта справа.
                     MaterialTheme.typography.titleLarge.copy(
                         fontSize = 19.sp,
                         lineHeight = 26.sp
@@ -327,47 +352,47 @@ private fun TgwsStatusPillBar(
                     .weight(1f)
                     .semantics { liveRegion = LiveRegionMode.Polite }
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.secondary)
-                )
-                Text(
-                    text = String.format(Loc.get("tgws_pool_short", language), poolSize),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-                Text(
-                    text = String.format(Loc.get("tgws_port_short", language), port),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            TgwsStatusChip(
+                text = String.format(Loc.get("tgws_pool_short", language), poolSize),
+                accent = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            TgwsStatusChip(
+                text = String.format(Loc.get("tgws_port_short", language), port),
+                accent = MaterialTheme.colorScheme.primary
+            )
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun TgwsStatusChip(
+    text: String,
+    accent: Color
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(MaterialShapes.Cookie9Sided.toShape())
+                .background(accent)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
