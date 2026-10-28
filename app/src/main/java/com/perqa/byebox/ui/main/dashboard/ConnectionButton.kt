@@ -7,7 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,13 +33,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -180,52 +177,50 @@ fun ConnectionButton(
 }
 
 /**
- * Кольцо вокруг кнопки: тонкий круг + вращающаяся дуга в активном состоянии.
- * Никакого заливного glow.
+ * Кольцо expressive-формы: контур Cookie9Sided (как у кнопки), а не круг.
+ * В активном состоянии по контуру «бежит» градиентный акцент — кольцо
+ * медленно вращается, подчёркивая форму.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ButtonRing(color: Color, active: Boolean, pulse: Boolean) {
+    val ringShape = MaterialShapes.Cookie9Sided.toShape()
     if (active && pulse) {
         val transition = rememberInfiniteTransition(label = "buttonRing")
         val rotation by transition.animateFloat(
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(3200, easing = LinearEasing),
+                animation = tween(3600, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
             label = "ringRotation"
         )
-        RingCanvas(color = color, rotation = rotation, active = true)
-    } else {
-        RingCanvas(color = color, rotation = 0f, active = active)
-    }
-}
-
-@Composable
-private fun RingCanvas(color: Color, rotation: Float, active: Boolean) {
-    Canvas(modifier = Modifier.size(196.dp)) {
-        val stroke = 1.6.dp.toPx()
-        val radius = (size.minDimension - stroke) / 2f
-        drawCircle(
-            color = color.copy(alpha = if (active) 0.28f else 0.16f),
-            radius = radius,
-            style = Stroke(width = stroke)
+        Box(
+            modifier = Modifier
+                .size(196.dp)
+                .graphicsLayer { rotationZ = rotation }
+                .border(
+                    width = 1.8.dp,
+                    brush = Brush.sweepGradient(
+                        listOf(
+                            color.copy(alpha = 0.12f),
+                            color.copy(alpha = 0.90f),
+                            color.copy(alpha = 0.12f)
+                        )
+                    ),
+                    shape = ringShape
+                )
         )
-        if (active) {
-            val diameter = radius * 2f
-            drawArc(
-                color = color.copy(alpha = 0.85f),
-                startAngle = rotation - 90f,
-                sweepAngle = 90f,
-                useCenter = false,
-                topLeft = Offset(
-                    (size.width - diameter) / 2f,
-                    (size.height - diameter) / 2f
-                ),
-                size = Size(diameter, diameter),
-                style = Stroke(width = stroke, cap = StrokeCap.Round)
-            )
-        }
+    } else {
+        Box(
+            modifier = Modifier
+                .size(196.dp)
+                .border(
+                    width = 1.8.dp,
+                    color = color.copy(alpha = if (active) 0.38f else 0.20f),
+                    shape = ringShape
+                )
+        )
     }
 }
