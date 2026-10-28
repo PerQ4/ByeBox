@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package com.perqa.byebox.ui.main
 
 import android.content.Context
@@ -82,7 +84,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -360,9 +362,9 @@ fun ProxyTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (state.isPinging) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp).padding(4.dp),
-                        strokeWidth = 2.dp
+                    LoadingIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.primary
                     )
                 } else {
                     IconButton(
