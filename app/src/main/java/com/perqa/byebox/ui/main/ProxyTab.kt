@@ -88,6 +88,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenu as ExposedDropdownMenuV15
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -2326,7 +2327,7 @@ fun SubscriptionSettingsSheet(
                             label = { Text(Loc.get("sub_ua_presets_label", language), maxLines = 1) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetsExpanded) }
                         )
-                        ExposedDropdownMenu(
+                        ExposedDropdownMenuV15(
                             expanded = presetsExpanded,
                             onDismissRequest = { presetsExpanded = false },
                             modifier = Modifier.exposedDropdownSize()

@@ -54,7 +54,7 @@ val vBuildDate: String = run {
 
 android {
     namespace = "com.perqa.byebox"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.perqa.byebox"
         minSdk = 24

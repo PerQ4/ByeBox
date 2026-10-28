@@ -4,6 +4,9 @@ import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -11,60 +14,52 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.dp
 
 /**
- * Единые спеки движения для блоков главной и TGWS.
- *
- * BOM 2026.03.01 пиннит Material3 1.4.0, где `MaterialExpressiveTheme`,
- * `MotionScheme` и `ExperimentalMaterial3ExpressiveApi` помечены `internal`
- * в Kotlin-метаданных и недоступны коду приложения. Material3 1.5.x их
- * открывает, но требует AGP 9.1 и compileSdk 37 — это отдельный апгрейд
- * инфраструктуры. Пока используем локальный эквивалент на spring.
+ * Единые спеки движения для блоков главной и TGWS — нативные M3 Expressive
+ * ([MotionScheme]) из Material3 1.5.x.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Immutable
-class ByeBoxMotion internal constructor(private val expressive: Boolean) {
+class ByeBoxMotion internal constructor(private val scheme: MotionScheme) {
 
     /** Основное пространственное движение: смена формы/положения. */
-    fun <T> spatialDefault(): FiniteAnimationSpec<T> = if (expressive) {
-        spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
-    } else {
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-    }
+    fun <T> spatialDefault(): FiniteAnimationSpec<T> = scheme.defaultSpatialSpec()
 
     /** Быстрое пространственное движение: отклик на нажатие. */
-    fun <T> spatialFast(): FiniteAnimationSpec<T> = if (expressive) {
-        spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
-    } else {
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
-    }
+    fun <T> spatialFast(): FiniteAnimationSpec<T> = scheme.fastSpatialSpec()
 
     /** Цвет/прозрачность: без отскока. */
-    fun <T> effectsDefault(): FiniteAnimationSpec<T> =
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+    fun <T> effectsDefault(): FiniteAnimationSpec<T> = scheme.defaultEffectsSpec()
 
-    fun <T> effectsFast(): FiniteAnimationSpec<T> =
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+    fun <T> effectsFast(): FiniteAnimationSpec<T> = scheme.fastEffectsSpec()
 
     /**
-     * Раскрытие/сворачивание по высоте. Намеренно critically damped: любой
-     * отскок даёт высоту больше контента, из-за чего появляется пустая полоса,
-     * а замеры высот (панель пресетов) начинают «плавать».
+     * Раскрытие/сворачивание по высоте. Намеренно critically damped, а НЕ
+     * expressive-spring: любой отскок даёт высоту больше контента, из-за чего
+     * появляется пустая полоса, а замеры высот (панель пресетов) «плавают».
      */
     fun <T> expand(): FiniteAnimationSpec<T> =
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 }
 
-private val StandardMotion = ByeBoxMotion(expressive = false)
-private val ExpressiveMotion = ByeBoxMotion(expressive = true)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private val StandardMotion = ByeBoxMotion(MotionScheme.standard())
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private val ExpressiveMotion = ByeBoxMotion(MotionScheme.expressive())
 
 val LocalByeBoxMotion = staticCompositionLocalOf { StandardMotion }
 
 /**
- * Локальная expressive-обёртка. Глобальную [ByeBoxTheme] не трогаем: цвета,
- * shapes и типографика остаются текущими, для переданного участка включаются
- * только expressive-спеки движения.
+ * Локальная expressive-обёртка: реальный [MaterialExpressiveTheme] (наследует
+ * текущие цвета/формы/типографику) + CompositionLocal со спеками для мест, где
+ * нужен прямой доступ.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ByeBoxExpressiveTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalByeBoxMotion provides ExpressiveMotion, content = content)
+    MaterialExpressiveTheme(motionScheme = MotionScheme.expressive()) {
+        CompositionLocalProvider(LocalByeBoxMotion provides ExpressiveMotion, content = content)
+    }
 }
 
 /**
