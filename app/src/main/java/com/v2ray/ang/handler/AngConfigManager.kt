@@ -853,11 +853,14 @@ object AngConfigManager {
      *
      * @return Detailed result of the subscription update operation.
      */
-    fun updateConfigViaSubAll(): SubscriptionUpdateResult {
+    fun updateConfigViaSubAll(quick: Boolean = false): SubscriptionUpdateResult {
         return try {
             val subscriptions = MmkvManager.decodeSubscriptions()
             subscriptions.fold(SubscriptionUpdateResult()) { acc, subscription ->
-                acc + updateConfigViaSub(subscription)
+                acc + updateConfigViaSub(
+                    subscription,
+                    retries = if (quick) 1 else 4
+                )
             }
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to update config via all subscriptions", e)
@@ -1051,7 +1054,7 @@ object AngConfigManager {
         }
     }
 
-    fun updateConfigViaSub(it: SubscriptionCache): SubscriptionUpdateResult {
+    fun updateConfigViaSub(it: SubscriptionCache, retries: Int = 4): SubscriptionUpdateResult {
         try {
             // Check if disabled
             if (!it.subscription.enabled) {
@@ -1121,7 +1124,7 @@ object AngConfigManager {
                         userAgent = candidate,
                         hwid = hwid,
                         viaProxy = false,
-                        attempts = 4,
+                        attempts = retries,
                         proxyUsername = proxyUsername,
                         proxyPassword = proxyPassword
                     )

@@ -54,6 +54,8 @@ import com.perqa.byebox.ui.main.MainScreenViewModel
 import com.perqa.byebox.ui.main.TgWsProxySettingsContent
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Full TGWS page rendered when the app runs in "tgws-only" mode. Mirrors the
@@ -111,7 +113,10 @@ fun TgwsFullPage(
         if (!isRunning && !isStarting) {
             isStarting = true
             scope.launch {
-                if (!ProxyController.startFromSavedSettings(context, showInvalidPortToast = true)) isStarting = false
+                val started = withContext(Dispatchers.IO) {
+                    ProxyController.startFromSavedSettings(context, showInvalidPortToast = true)
+                }
+                if (!started) isStarting = false
             }
         }
     }

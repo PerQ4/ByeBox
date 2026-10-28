@@ -539,7 +539,7 @@ class MainScreenViewModel(
             }
         }
         viewModelScope.launch {
-            if (_autoRefreshSubsOnStartup.value) refreshSubscriptions()
+            if (_autoRefreshSubsOnStartup.value) refreshSubscriptions(quick = true)
             if (_autoPingOnStartup.value) testPings(silent = true)
         }
         startPeriodicPing()
@@ -886,12 +886,12 @@ class MainScreenViewModel(
         }
     }
 
-    fun refreshSubscriptions() {
+    fun refreshSubscriptions(quick: Boolean = false) {
         viewModelScope.launch {
             addLog("[SYSTEM] Обновление подписок...")
             showToast(Loc.get("toast_updating_subs", _language.value))
             val result = withContext(Dispatchers.IO) {
-                AngConfigManager.updateConfigViaSubAll()
+                AngConfigManager.updateConfigViaSubAll(quick = quick)
             }
             addLog("[SYSTEM] Обновлено конфигураций: ${result.configCount}, Успешно: ${result.successCount}, Ошибок: ${result.failureCount}")
             showToast(String.format(Loc.get("toast_updated_servers", _language.value), result.configCount))

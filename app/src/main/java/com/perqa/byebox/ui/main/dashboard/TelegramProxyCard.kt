@@ -70,6 +70,8 @@ import com.perqa.byebox.ui.main.SettingsRowSurface
 import com.perqa.byebox.ui.main.applyToTelegramPackages
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Telegram WS proxy card for the main dashboard.
@@ -123,7 +125,10 @@ fun TelegramProxyCard(
         if (!isRunning && !isStarting) {
             isStarting = true
             scope.launch {
-                if (!ProxyController.startFromSavedSettings(context, showInvalidPortToast = true)) isStarting = false
+                val started = withContext(Dispatchers.IO) {
+                    ProxyController.startFromSavedSettings(context, showInvalidPortToast = true)
+                }
+                if (!started) isStarting = false
             }
         }
     }
