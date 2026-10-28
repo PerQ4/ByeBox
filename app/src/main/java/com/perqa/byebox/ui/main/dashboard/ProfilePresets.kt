@@ -363,6 +363,11 @@ fun ProfilePresetsCard(
                     },
                     label = "presetsJellyDrag"
                 )
+                val swipingIndex = if (swipingId == null) {
+                    -1
+                } else {
+                    visibleConfigs.indexOfFirst { it.id == swipingId }
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -401,11 +406,28 @@ fun ProfilePresetsCard(
                         val neighborRoundnessProgress = stickySwipeFraction(jellyDragPx, presetThresholdPx)
                         val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, expressiveCorner, neighborRoundnessProgress) else baseTopCorner
                         val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress) else baseBottomCorner
-                        val isNeighbor = prevIsSwipingNeighbor || nextIsSwipingNeighbor
+                        // Цепочка: первый сосед идёт на полную, второй — на 45%,
+                        // чтобы хвост тянулся дальше за карточкой.
+                        val neighborLevel = if (swipingIndex >= 0) {
+                            kotlin.math.abs(index - swipingIndex)
+                        } else {
+                            Int.MAX_VALUE
+                        }
+                        val isNeighbor = neighborLevel in 1..2
+                        val levelFactor = when (neighborLevel) {
+                            1 -> 1f
+                            2 -> 0.45f
+                            else -> 0f
+                        }
                         val neighborOffsetDp = if (isNeighbor) {
-                            kotlin.math.sign(jellyDragPx) * 8.dp.value * neighborFollowProgress
+                            kotlin.math.sign(jellyDragPx) *
+                                8.dp.value *
+                                neighborFollowProgress *
+                                levelFactor
                         } else 0f
-                        val neighborJelly = if (isNeighbor) neighborFollowProgress else 0f
+                        val neighborJelly = if (isNeighbor) {
+                            neighborFollowProgress * levelFactor
+                        } else 0f
 
                         val profile = profiles.find { it.id == config.id }
                         // Ключ по id: при удалении через свайп Compose не должен
