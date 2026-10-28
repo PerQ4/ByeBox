@@ -1,9 +1,6 @@
 package com.perqa.byebox.theme
 
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -102,7 +99,6 @@ enum class DarkThemeStyle {
   PURE_BLACK
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ByeBoxTheme(
   appTheme: AppTheme = AppTheme.SYSTEM_DYNAMIC,
@@ -155,12 +151,7 @@ fun ByeBoxTheme(
     baseColorScheme
   }
 
-  MaterialExpressiveTheme(
-    colorScheme = colorScheme,
-    motionScheme = MotionScheme.expressive(),
-    typography = Typography,
-    content = content
-  )
+  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
 
 
