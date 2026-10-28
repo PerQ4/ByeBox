@@ -118,7 +118,7 @@ fun CockpitServerCard(
     val expressive = cornerRoundness == "expressive"
     val cardShape = ByeBoxShapes.inner(expressive)
     val flagShape = MaterialShapes.Cookie6Sided.toShape()
-    val pingShape = MaterialShapes.Pill.toShape()
+    val pingShape = MaterialShapes.Clover4Leaf.toShape()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -203,27 +203,22 @@ fun CockpitServerCard(
             ping < 120 -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
             else -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
         }
-        Row(
+        Box(
             modifier = Modifier
+                .size(58.dp)
                 .clip(pingShape)
-                .background(pillBg)
-                .padding(horizontal = 9.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .background(pillBg),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(MaterialShapes.Cookie9Sided.toShape())
-                    .background(pillColor)
-            )
             Text(
                 text = if (ping != null) "${ping} ms" else "N/A",
-                style = MaterialTheme.typography.bodyMedium.copy(
+                style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Black,
                     color = pillColor,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                )
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontSize = 11.sp
+                ),
+                maxLines = 1
             )
         }
     }
