@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -50,16 +49,14 @@ private val ExpressiveMotion = ByeBoxMotion(MotionScheme.expressive())
 val LocalByeBoxMotion = staticCompositionLocalOf { StandardMotion }
 
 /**
- * Локальная expressive-обёртка: реальный [MaterialExpressiveTheme] (наследует
- * текущие цвета/формы/типографику) + CompositionLocal со спеками для мест, где
- * нужен прямой доступ.
+ * Локальная expressive-обёртка: только спеки движения. Цветовую схему НЕ
+ * переопределяем — иначе MaterialExpressiveTheme без явного colorScheme
+ * подставляет expressiveLightColorScheme() и блоки становятся светлыми
+ * на тёмной теме.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ByeBoxExpressiveTheme(content: @Composable () -> Unit) {
-    MaterialExpressiveTheme(motionScheme = MotionScheme.expressive()) {
-        CompositionLocalProvider(LocalByeBoxMotion provides ExpressiveMotion, content = content)
-    }
+    CompositionLocalProvider(LocalByeBoxMotion provides ExpressiveMotion, content = content)
 }
 
 /**

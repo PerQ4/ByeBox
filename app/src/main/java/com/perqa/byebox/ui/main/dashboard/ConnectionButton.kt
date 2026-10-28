@@ -1,6 +1,5 @@
 package com.perqa.byebox.ui.main.dashboard
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -8,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,7 +36,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -48,142 +45,70 @@ import com.perqa.byebox.theme.LocalByeBoxMotion
 import com.perqa.byebox.ui.main.ConnectionStatus
 import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.rememberTactileFeedback
-import kotlin.math.PI
-import kotlin.math.sin
 
 /**
- * Аура вокруг кнопки в состоянии CONNECTED. Transition создаётся здесь и
- * существует только пока этот composable в композиции — вне CONNECTED его нет.
+ * Мягкая аура вокруг кнопки: два радиальных слоя без жёстких колец.
+ * Пульсация — только в активных состояниях; в DISCONNECTED статичная.
  */
 @Composable
-private fun ConnectedAura(buttonBgColor: Color) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val auraAlpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.12f,
-        targetValue = 0.38f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "auraAlpha1"
-    )
-    val auraScale1 by infiniteTransition.animateFloat(
-        initialValue = 0.90f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "auraScale1"
-    )
-    val auraAlpha2 by infiniteTransition.animateFloat(
-        initialValue = 0.04f,
-        targetValue = 0.22f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "auraAlpha2"
-    )
-    val auraScale2 by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.45f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "auraScale2"
-    )
-
-    Box(
-        modifier = Modifier
-            .size(150.dp)
-            .graphicsLayer {
-                scaleX = auraScale2
-                scaleY = auraScale2
-                alpha = auraAlpha2
-            }
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        buttonBgColor,
-                        buttonBgColor.copy(alpha = 0.4f),
-                        Color.Transparent
-                    )
-                ),
-                shape = CircleShape
-            )
-    )
-
-    Box(
-        modifier = Modifier
-            .size(150.dp)
-            .graphicsLayer {
-                scaleX = auraScale1
-                scaleY = auraScale1
-                alpha = auraAlpha1
-            }
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        buttonBgColor,
-                        buttonBgColor.copy(alpha = 0.6f),
-                        Color.Transparent
-                    )
-                ),
-                shape = CircleShape
-            )
-    )
+private fun ButtonAura(color: Color, pulse: Boolean) {
+    if (pulse) {
+        val transition = rememberInfiniteTransition(label = "buttonAura")
+        val scale by transition.animateFloat(
+            initialValue = 0.92f,
+            targetValue = 1.18f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2400, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "auraScale"
+        )
+        val alpha by transition.animateFloat(
+            initialValue = 0.16f,
+            targetValue = 0.34f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2400, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "auraAlpha"
+        )
+        AuraLayers(color = color, scale = scale, alpha = alpha)
+    } else {
+        AuraLayers(color = color, scale = 0.96f, alpha = 0.20f)
+    }
 }
 
-/**
- * Кольца кнопки в состоянии CONNECTED. Transition создаётся только здесь,
- * поэтому в остальных состояниях «вечных» анимаций нет.
- */
 @Composable
-private fun ConnectedRings(buttonBgColor: Color, pulseEnabled: Boolean) {
-    val infiniteTransition = rememberInfiniteTransition(label = "connectedRings")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wavePhase"
+private fun AuraLayers(color: Color, scale: Float, alpha: Float) {
+    Box(
+        modifier = Modifier
+            .size(190.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        color.copy(alpha = 0.55f),
+                        color.copy(alpha = 0.18f),
+                        Color.Transparent
+                    )
+                ),
+                shape = CircleShape
+            )
     )
-    Canvas(modifier = Modifier.size(188.dp)) {
-        val baseRadius = 80.dp.toPx()
-        val ringRadius = 88.dp.toPx()
-        val ringStroke = 3.dp.toPx()
-
-        if (pulseEnabled) {
-            val pulseScale = 1f + 0.04f * sin(wavePhase.toDouble()).toFloat()
-            drawCircle(
-                color = buttonBgColor.copy(alpha = 0.16f),
-                radius = baseRadius * pulseScale,
-                style = Stroke(width = 3.dp.toPx())
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(color.copy(alpha = 0.45f), Color.Transparent)
+                ),
+                shape = CircleShape
             )
-            drawCircle(
-                color = buttonBgColor.copy(alpha = 0.08f),
-                radius = baseRadius * (pulseScale + 0.06f),
-                style = Stroke(width = 1.5.dp.toPx())
-            )
-        } else {
-            drawCircle(
-                color = buttonBgColor.copy(alpha = 0.16f),
-                radius = baseRadius,
-                style = Stroke(width = 3.dp.toPx())
-            )
-        }
-        val breatheAlpha = 0.10f + 0.12f * ((sin(wavePhase.toDouble()).toFloat() + 1f) * 0.5f)
-        val breatheRadius = ringRadius + 1.5.dp.toPx() * sin(wavePhase.toDouble()).toFloat()
-        drawCircle(
-            color = buttonBgColor.copy(alpha = breatheAlpha),
-            radius = breatheRadius,
-            style = Stroke(width = ringStroke)
-        )
-    }
+    )
 }
 
 @Composable
@@ -207,16 +132,6 @@ fun ConnectionButton(
 
     val isBusy = status == ConnectionStatus.CONNECTING || status == ConnectionStatus.RECONNECTING
 
-    val buttonBgColor by animateColorAsState(
-        targetValue = when (status) {
-            ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
-            ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
-            ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
-            ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.surface
-        },
-        animationSpec = motion.effectsDefault(),
-        label = "buttonColor"
-    )
     val statusLabel = when (status) {
         ConnectionStatus.CONNECTED -> Loc.get("btn_connected", language)
         ConnectionStatus.CONNECTING -> Loc.get("btn_connecting", language)
@@ -234,48 +149,56 @@ fun ConnectionButton(
     } else {
         contentColor
     }
-    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val auraColor = when (status) {
+        ConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
+        ConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
+        ConnectionStatus.RECONNECTING -> MaterialTheme.colorScheme.error
+        ConnectionStatus.DISCONNECTED -> MaterialTheme.colorScheme.primary
+    }
+    val buttonBrush = when (status) {
+        ConnectionStatus.CONNECTED -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.primaryContainer
+            )
+        )
+        ConnectionStatus.CONNECTING -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.tertiary,
+                MaterialTheme.colorScheme.tertiaryContainer
+            )
+        )
+        ConnectionStatus.RECONNECTING -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.error,
+                MaterialTheme.colorScheme.errorContainer
+            )
+        )
+        ConnectionStatus.DISCONNECTED -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                MaterialTheme.colorScheme.surfaceContainer
+            )
+        )
+    }
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier.size(200.dp)
     ) {
+        ButtonAura(
+            color = auraColor,
+            pulse = pulseEnabled && status != ConnectionStatus.DISCONNECTED
+        )
+
         if (isBusy) {
             CircularProgressIndicator(
                 modifier = Modifier.size(188.dp),
-                color = buttonBgColor,
-                trackColor = buttonBgColor.copy(alpha = 0.12f),
+                color = auraColor,
+                trackColor = auraColor.copy(alpha = 0.12f),
                 strokeWidth = 3.dp,
                 strokeCap = StrokeCap.Round
             )
-        }
-
-        if (status == ConnectionStatus.CONNECTED) {
-            ConnectedAura(buttonBgColor = buttonBgColor)
-        }
-
-        // Кольца: для CONNECTED — анимированный слой (transition создаётся внутри),
-        // для DISCONNECTED — статичные. В busy-состояниях колец нет.
-        when (status) {
-            ConnectionStatus.CONNECTED -> ConnectedRings(
-                buttonBgColor = buttonBgColor,
-                pulseEnabled = pulseEnabled
-            )
-            ConnectionStatus.DISCONNECTED -> Canvas(modifier = Modifier.size(188.dp)) {
-                val baseRadius = 80.dp.toPx()
-                val ringRadius = 88.dp.toPx()
-                drawCircle(
-                    color = onSurfaceColor.copy(alpha = 0.08f),
-                    radius = baseRadius,
-                    style = Stroke(width = 2.dp.toPx())
-                )
-                drawCircle(
-                    color = onSurfaceColor.copy(alpha = 0.16f),
-                    radius = ringRadius,
-                    style = Stroke(width = 2.dp.toPx())
-                )
-            }
-            else -> Unit
         }
 
         Box(
@@ -287,11 +210,13 @@ fun ConnectionButton(
                     scaleY = pressScale
                 }
                 .shadow(
-                    elevation = if (status != ConnectionStatus.DISCONNECTED) 12.dp else 4.dp,
-                    shape = CircleShape
+                    elevation = if (status != ConnectionStatus.DISCONNECTED) 18.dp else 6.dp,
+                    shape = CircleShape,
+                    ambientColor = auraColor.copy(alpha = 0.45f),
+                    spotColor = auraColor.copy(alpha = 0.45f)
                 )
                 .clip(CircleShape)
-                .background(buttonBgColor)
+                .background(brush = buttonBrush)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = LocalIndication.current,
