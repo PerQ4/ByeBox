@@ -2625,8 +2625,8 @@ fun ServerItemCard(
     var showQrDialog by remember(config.id) { mutableStateOf(false) }
     val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
     // Точка срыва магнита и точка полного догона пальца.
-    val detachStartPx = remember(density) { with(density) { 40.dp.toPx() } }
-    val detachEndPx = remember(density) { with(density) { 66.dp.toPx() } }
+    val detachStartPx = remember(density) { with(density) { 64.dp.toPx() } }
+    val detachEndPx = remember(density) { with(density) { 96.dp.toPx() } }
     val displayOffsetX by remember {
         derivedStateOf {
             stickySwipeDisplay(

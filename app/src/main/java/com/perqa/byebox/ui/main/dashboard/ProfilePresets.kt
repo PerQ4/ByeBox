@@ -338,8 +338,8 @@ fun ProfilePresetsCard(
                 // и догоняют его пружиной — поэтому и скругление, и сдвиг
                 // соседей привязаны к липкости, а не к сырому пальцу.
                 val presetThresholdPx = with(density) { 140.dp.toPx() }
-                val presetDetachStartPx = with(density) { 40.dp.toPx() }
-                val presetDetachEndPx = with(density) { 66.dp.toPx() }
+                val presetDetachStartPx = with(density) { 64.dp.toPx() }
+                val presetDetachEndPx = with(density) { 96.dp.toPx() }
                 val stickyDragPx = stickySwipeDisplay(
                     raw = swipingDragPx,
                     detachStartPx = presetDetachStartPx,
