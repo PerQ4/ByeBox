@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -117,6 +117,7 @@ private fun ProxyStatusDivider() {
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ModeChip(
     label: String,
@@ -125,17 +126,12 @@ fun ModeChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
+    ToggleButton(
+        checked = selected,
+        onCheckedChange = { onClick() },
         enabled = enabled,
-        shape = RoundedCornerShape(24.dp),
-        // Минимальная зона нажатия 48dp даже если вызывающий код передал
-        // меньшую высоту — доступность важнее компактности.
-        modifier = modifier.defaultMinSize(minHeight = 48.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-        )
+        // Минимальная зона нажатия 48dp.
+        modifier = modifier.defaultMinSize(minHeight = 48.dp)
     ) {
         // Выбранное состояние не должно читаться только по цвету: добавляем галку.
         if (selected) {

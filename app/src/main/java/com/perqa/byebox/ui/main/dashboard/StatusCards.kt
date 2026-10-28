@@ -27,10 +27,13 @@ import androidx.compose.material.icons.filled.QueryBuilder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -232,6 +235,7 @@ internal fun PulsingStatusDot(color: Color, size: androidx.compose.ui.unit.Dp = 
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StatusPillBar(
     status: ConnectionStatus,
@@ -286,6 +290,7 @@ fun StatusPillBar(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val dotShape = MaterialShapes.Cookie9Sided.toShape()
                 if (isBusy) {
                     // Пульс точки существует только в CONNECTING/RECONNECTING.
                     PulsingStatusDot(color = statusColor)
@@ -293,7 +298,7 @@ fun StatusPillBar(
                     Box(
                         modifier = Modifier
                             .size(10.dp)
-                            .clip(CircleShape)
+                            .clip(dotShape)
                             .background(statusColor)
                     )
                 }
@@ -480,6 +485,7 @@ fun SpeedCard(
  * Prominent card showing the current VPN session duration (e.g. "00:14:32").
  * Shown on the dashboard while the VPN is connected.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SessionDurationCard(
     duration: String,
@@ -509,12 +515,20 @@ fun SessionDurationCard(
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.QueryBuilder,
-                contentDescription = null,
-                tint = contentColor.copy(alpha = 0.85f),
-                modifier = Modifier.size(20.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(MaterialShapes.Cookie6Sided.toShape())
+                    .background(contentColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QueryBuilder,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = Loc.get("session_label", language),
@@ -531,7 +545,7 @@ fun SessionDurationCard(
             Text(
                 text = duration,
                 style = (if (expressive) {
-                    MaterialTheme.typography.titleLarge
+                    MaterialTheme.typography.headlineSmall
                 } else {
                     MaterialTheme.typography.titleMedium
                 }).copy(
