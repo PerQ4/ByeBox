@@ -22,6 +22,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateValue
@@ -77,6 +79,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -372,7 +375,7 @@ fun ProxyTab(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = Icons.Default.Speed,
                             contentDescription = Loc.get("test_ping_all", state.language),
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -1055,25 +1058,28 @@ fun SourceGroupCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (showNodeCount) {
-                        Text(
-                            text = String.format(Loc.get("nodes_count_fmt", language), configs.size),
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Black
-                            )
+                        SourceMetaChip(
+                            text = String.format(
+                                Loc.get("nodes_count_fmt", language),
+                                configs.size
+                            ),
+                            accent = MaterialTheme.colorScheme.primary
                         )
                     }
                     if (showAvgPing) {
-                        Text(
+                        val pingAccent = when {
+                            averagePing == null -> MaterialTheme.colorScheme.error
+                            averagePing < 60 -> MaterialTheme.colorScheme.primary
+                            averagePing < 120 -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.error
+                        }
+                        SourceMetaChip(
                             text = averagePing?.let { "~$it ms" } ?: "N/A",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                fontWeight = FontWeight.Bold
-                            )
+                            accent = pingAccent
                         )
                     }
                 }
@@ -1140,7 +1146,7 @@ fun SourceGroupCard(
                 ) {
                     SourceActionButton(
                         label = Loc.get("ping", language),
-                        icon = Icons.Default.Search,
+                        icon = Icons.Default.Speed,
                         onClick = onPingSource,
                         modifier = Modifier.weight(1f)
                     )
@@ -1250,7 +1256,8 @@ fun SourceActionButton(
         },
         enabled = enabled,
         modifier = modifier.height(34.dp),
-        shape = RoundedCornerShape(14.dp),
+        // Стадион: радиус = половине высоты, торцы — полукруги.
+        shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
@@ -1282,7 +1289,7 @@ fun <T> SegmentedSelector(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(50))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1292,7 +1299,7 @@ fun <T> SegmentedSelector(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(50))
                         .background(
                             if (isSelected) MaterialTheme.colorScheme.primary
                             else Color.Transparent
@@ -2593,6 +2600,8 @@ fun ServerItemCard(
     topCorner: androidx.compose.ui.unit.Dp = 6.dp,
     bottomCorner: androidx.compose.ui.unit.Dp = 6.dp,
     neighborOffsetDp: androidx.compose.ui.unit.Dp = 0.dp,
+    /** 0..1 — насколько сосед «сжимается» вслед за свайпом. */
+    neighborJelly: Float = 0f,
     onSwipeOffsetChanged: (Float) -> Unit = {},
     onSwipingChanged: (Boolean) -> Unit = {},
     compactMode: Boolean = false,
@@ -2609,21 +2618,29 @@ fun ServerItemCard(
 
     var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
     var actionThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
+    var detachFeedbackSent by remember(config.id) { mutableStateOf(false) }
     var showShareDialog by remember(config.id) { mutableStateOf(false) }
     var showQrDialog by remember(config.id) { mutableStateOf(false) }
     val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
-    val detachStartPx = remember(density) { with(density) { 14.dp.toPx() } }
-    val detachEndPx = remember(density) { with(density) { 58.dp.toPx() } }
-    val detachProgress by remember {
-        derivedStateOf {
-            smoothStep(((kotlin.math.abs(swipeOffsetX) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
-        }
-    }
+    // Точка срыва магнита и точка полного догона пальца.
+    val detachStartPx = remember(density) { with(density) { 22.dp.toPx() } }
+    val detachEndPx = remember(density) { with(density) { 46.dp.toPx() } }
     val displayOffsetX by remember {
         derivedStateOf {
-            val resisted = swipeOffsetX * 0.48f
-            resisted + (swipeOffsetX - resisted) * detachProgress
+            stickySwipeDisplay(
+                raw = swipeOffsetX,
+                detachStartPx = detachStartPx,
+                detachEndPx = detachEndPx
+            )
         }
+    }
+    val jellyFraction = (kotlin.math.abs(displayOffsetX) / actionThresholdPx).coerceIn(0f, 1f)
+    val settleAnimation = remember {
+        spring<Float>(
+            // Ниже 1.0 — возврат с лёгким отскоком, как желе.
+            dampingRatio = 0.5f,
+            stiffness = Spring.StiffnessMediumLow
+        )
     }
     val swipeFraction by remember {
         derivedStateOf { (-displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
@@ -2631,11 +2648,8 @@ fun ServerItemCard(
     val settingsFraction by remember {
         derivedStateOf { (displayOffsetX / actionThresholdPx).coerceIn(0f, 1f) }
     }
-    val roundnessProgress by remember {
-        derivedStateOf {
-            smoothStep((kotlin.math.abs(displayOffsetX) / actionThresholdPx).coerceIn(0f, 1f))
-        }
-    }
+    // Скругление привязано к той же «липкой» доле, что и смещение.
+    val roundnessProgress = stickySwipeFraction(displayOffsetX, actionThresholdPx)
 
     val animTopCorner by animateDpAsState(
         targetValue = if (isActive) 40.dp else topCorner,
@@ -2709,13 +2723,27 @@ fun ServerItemCard(
                 .fillMaxWidth()
                 .graphicsLayer {
                     translationX = with(density) { neighborOffsetDp.toPx() }
+                    if (neighborJelly > 0f) {
+                        val squash = 1f - 0.025f * neighborJelly
+                        scaleX = squash
+                        scaleY = squash
+                    }
                 }
                 .offset { IntOffset(displayOffsetX.toInt(), 0) }
+                .graphicsLayer {
+                    if (jellyFraction > 0f) {
+                        // Squash/stretch вдоль свайпа + микроповорот.
+                        scaleX = 1f + 0.035f * jellyFraction
+                        scaleY = 1f - 0.022f * jellyFraction
+                        rotationZ = (displayOffsetX / size.width.coerceAtLeast(1f)) * 1.4f
+                    }
+                }
                 .clip(shape)
                 .pointerInput(config.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             actionThresholdFeedbackSent = false
+                            detachFeedbackSent = false
                             tactileFeedback()
                             onSwipingChanged(true)
                             onSwipeOffsetChanged(swipeOffsetX)
@@ -2741,7 +2769,7 @@ fun ServerItemCard(
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
                                         0f,
-                                        animationSpec = tween(220)
+                                        animationSpec = settleAnimation
                                     ) {
                                         swipeOffsetX = value
                                         onSwipeOffsetChanged(value)
@@ -2752,7 +2780,7 @@ fun ServerItemCard(
                                     val anim = Animatable(swipeOffsetX)
                                     anim.animateTo(
                                         0f,
-                                        animationSpec = tween(260)
+                                        animationSpec = settleAnimation
                                     ) {
                                         swipeOffsetX = value
                                         onSwipeOffsetChanged(value)
@@ -2764,7 +2792,7 @@ fun ServerItemCard(
                         onDragCancel = {
                             scope.launch {
                                 val anim = Animatable(swipeOffsetX)
-                                anim.animateTo(0f, animationSpec = tween(220)) {
+                                anim.animateTo(0f, animationSpec = settleAnimation) {
                                     swipeOffsetX = value
                                     onSwipeOffsetChanged(value)
                                 }
@@ -2779,6 +2807,11 @@ fun ServerItemCard(
                                 val progress = smoothStep(((kotlin.math.abs(newOffset) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
                                 val resisted = newOffset * 0.48f
                                 resisted + (newOffset - resisted) * progress
+                            }
+                            // Момент срыва магнита — отдельный тактильный отклик.
+                            if (!detachFeedbackSent && kotlin.math.abs(newOffset) >= detachStartPx) {
+                                detachFeedbackSent = true
+                                tactileFeedback()
                             }
                             if (kotlin.math.abs(displayNewOffset) >= actionThresholdPx && !actionThresholdFeedbackSent) {
                                 actionThresholdFeedbackSent = true
@@ -2929,6 +2962,37 @@ fun ServerItemCard(
     }
 }
 
+/** Компактный чип метаданных шапки подписки: точка-акцент + текст. */
+@Composable
+private fun SourceMetaChip(
+    text: String,
+    accent: Color
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(accent)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+            ),
+            maxLines = 1
+        )
+    }
+}
+
 @Composable
 fun ProtocolPill(protocol: String) {
     Box(
@@ -3007,7 +3071,7 @@ private fun StaticPingPill(ping: Int?) {
     val (badgeContainer, badgeContent) = pingBadgeColors(ping)
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(50))
             .background(badgeContainer)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
@@ -3054,7 +3118,7 @@ private fun PingingPingPill(ping: Int?) {
 
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(50))
             .background(accentColor.copy(alpha = if (ping == null) 0.4f else 0.3f))
             .graphicsLayer { alpha = 0.7f + pulseAlpha * 0.3f }
             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -3062,7 +3126,7 @@ private fun PingingPingPill(ping: Int?) {
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(50))
                 .drawWithContent {
                     drawContent()
                     val sweep = scanningFraction * 360f
@@ -3095,6 +3159,38 @@ private fun PingingPingPill(ping: Int?) {
 }
 
 /** Цвета бейджа пинга (фон/контент) в зависимости от задержки. */
+/**
+ * «Липкий» свайп: сначала карточка идёт тяжело (примерно 20% от пальца),
+ * затем в точке [detachStartPx] магнит срывается, и она догоняет палец,
+ * после чего движется с ним один к одному.
+ */
+internal fun stickySwipeDisplay(
+    raw: Float,
+    detachStartPx: Float,
+    detachEndPx: Float
+): Float {
+    if (raw == 0f) return 0f
+    val sign = if (raw < 0f) -1f else 1f
+    val distance = kotlin.math.abs(raw)
+    val heavyFactor = 0.2f
+    if (distance <= detachStartPx) {
+        return sign * distance * heavyFactor
+    }
+    val t = smoothStep(
+        ((distance - detachStartPx) / (detachEndPx - detachStartPx).coerceAtLeast(1f))
+            .coerceIn(0f, 1f)
+    )
+    // Сначала отставание максимальное, затем оно пружинно уходит в ноль.
+    val lag = detachStartPx * (1f - heavyFactor) * (1f - t)
+    return sign * (distance - lag)
+}
+
+/** Доля «прилипания» 0..1 — общая для скругления и реакции соседей. */
+internal fun stickySwipeFraction(displayOffsetPx: Float, thresholdPx: Float): Float =
+    smoothStep(
+        (kotlin.math.abs(displayOffsetPx) / thresholdPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    )
+
 @Composable
 private fun pingBadgeColors(ping: Int?): Pair<Color, Color> = when {
     ping == null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant

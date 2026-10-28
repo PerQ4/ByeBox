@@ -62,6 +62,8 @@ import com.perqa.byebox.ui.main.Loc
 import com.perqa.byebox.ui.main.MainUiState
 import com.perqa.byebox.ui.main.ServerItemCard
 import com.perqa.byebox.ui.main.smoothStep
+import com.perqa.byebox.ui.main.stickySwipeDisplay
+import com.perqa.byebox.ui.main.stickySwipeFraction
 
 /**
  * Profile preset block that reuses the subscription group look as-is: a distinct
@@ -332,6 +334,25 @@ fun ProfilePresetsCard(
                     .verticalScroll(scrollState)
                     .nestedScroll(parentScrollBlocker)
             ) {
+                // Соседи видят то же «липкое» смещение, что и сама карточка,
+                // и догоняют его пружиной — поэтому и скругление, и сдвиг
+                // соседей привязаны к липкости, а не к сырому пальцу.
+                val presetThresholdPx = with(density) { 140.dp.toPx() }
+                val presetDetachStartPx = with(density) { 22.dp.toPx() }
+                val presetDetachEndPx = with(density) { 46.dp.toPx() }
+                val stickyDragPx = stickySwipeDisplay(
+                    raw = swipingDragPx,
+                    detachStartPx = presetDetachStartPx,
+                    detachEndPx = presetDetachEndPx
+                )
+                val jellyDragPx by animateFloatAsState(
+                    targetValue = stickyDragPx,
+                    animationSpec = spring(
+                        dampingRatio = 0.45f,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "presetsJellyDrag"
+                )
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -366,13 +387,15 @@ fun ProfilePresetsCard(
 
                         val prevIsSwipingNeighbor = index > 0 && visibleConfigs[index - 1].id == swipingId
                         val nextIsSwipingNeighbor = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == swipingId
-                        val neighborFollowProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 96f).coerceIn(0f, 1f))
-                        val neighborRoundnessProgress = smoothStep((kotlin.math.abs(swipingDragPx) / 140f).coerceIn(0f, 1f))
+                        val neighborFollowProgress = smoothStep((kotlin.math.abs(jellyDragPx) / 96f).coerceIn(0f, 1f))
+                        val neighborRoundnessProgress = stickySwipeFraction(jellyDragPx, presetThresholdPx)
                         val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, expressiveCorner, neighborRoundnessProgress) else baseTopCorner
                         val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress) else baseBottomCorner
-                        val neighborOffsetDp = if (prevIsSwipingNeighbor || nextIsSwipingNeighbor) {
-                            kotlin.math.sign(swipingDragPx) * 3.dp.value * neighborFollowProgress
+                        val isNeighbor = prevIsSwipingNeighbor || nextIsSwipingNeighbor
+                        val neighborOffsetDp = if (isNeighbor) {
+                            kotlin.math.sign(jellyDragPx) * 7.dp.value * neighborFollowProgress
                         } else 0f
+                        val neighborJelly = if (isNeighbor) neighborFollowProgress else 0f
 
                         val profile = profiles.find { it.id == config.id }
                         // Ключ по id: при удалении через свайп Compose не должен
@@ -389,6 +412,7 @@ fun ProfilePresetsCard(
                             topCorner = effectiveTopCorner,
                             bottomCorner = effectiveBottomCorner,
                             neighborOffsetDp = neighborOffsetDp.dp,
+                            neighborJelly = neighborJelly,
                             language = state.language,
                             statusText = when (profile?.assignedConfigId) {
                                 "FASTEST" -> "\u26A1 ${Loc.get("fastest_server", state.language)}"
