@@ -347,10 +347,20 @@ fun ProfilePresetsCard(
                 )
                 val jellyDragPx by animateFloatAsState(
                     targetValue = stickyDragPx,
-                    animationSpec = spring(
-                        dampingRatio = 0.45f,
-                        stiffness = Spring.StiffnessLow
-                    ),
+                    // Во время жеста соседи должны повторять ту же кривую
+                    // (магнит → срыв → догон), поэтому пружина жёсткая.
+                    // Мягкая остаётся только на отпускании — для желе.
+                    animationSpec = if (swipingId != null) {
+                        spring(
+                            dampingRatio = 0.9f,
+                            stiffness = Spring.StiffnessHigh
+                        )
+                    } else {
+                        spring(
+                            dampingRatio = 0.45f,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    },
                     label = "presetsJellyDrag"
                 )
                 Column(
@@ -393,7 +403,7 @@ fun ProfilePresetsCard(
                         val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress) else baseBottomCorner
                         val isNeighbor = prevIsSwipingNeighbor || nextIsSwipingNeighbor
                         val neighborOffsetDp = if (isNeighbor) {
-                            kotlin.math.sign(jellyDragPx) * 7.dp.value * neighborFollowProgress
+                            kotlin.math.sign(jellyDragPx) * 8.dp.value * neighborFollowProgress
                         } else 0f
                         val neighborJelly = if (isNeighbor) neighborFollowProgress else 0f
 
