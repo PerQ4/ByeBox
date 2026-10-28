@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,10 +101,10 @@ fun ConnectionButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier.size(210.dp)
     ) {
-        ButtonRing(
+        DynamicBlob(
             color = accent,
-            active = status != ConnectionStatus.DISCONNECTED,
-            pulse = pulseEnabled
+            status = status,
+            animate = pulseEnabled
         )
 
         Box(
@@ -177,50 +176,134 @@ fun ConnectionButton(
 }
 
 /**
- * Кольцо expressive-формы: контур Cookie9Sided (как у кнопки), а не круг.
- * В активном состоянии по контуру «бежит» градиентный акцент — кольцо
- * медленно вращается, подчёркивая форму.
+ * «Жидкое» динамическое пятно за кнопкой: два перекрывающихся cookie-слоя,
+ * вращающихся в разные стороны, с breathing + squash/stretch. Поведение
+ * зависит от состояния; альфа достаточно высокая, чтобы пятно было видно.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ButtonRing(color: Color, active: Boolean, pulse: Boolean) {
-    val ringShape = MaterialShapes.Cookie9Sided.toShape()
-    if (active && pulse) {
-        val transition = rememberInfiniteTransition(label = "buttonRing")
-        val rotation by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(3600, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "ringRotation"
-        )
-        Box(
-            modifier = Modifier
-                .size(196.dp)
-                .graphicsLayer { rotationZ = rotation }
-                .border(
-                    width = 1.8.dp,
-                    brush = Brush.sweepGradient(
-                        listOf(
-                            color.copy(alpha = 0.12f),
-                            color.copy(alpha = 0.90f),
-                            color.copy(alpha = 0.12f)
-                        )
-                    ),
-                    shape = ringShape
-                )
-        )
-    } else {
-        Box(
-            modifier = Modifier
-                .size(196.dp)
-                .border(
-                    width = 1.8.dp,
-                    color = color.copy(alpha = if (active) 0.38f else 0.20f),
-                    shape = ringShape
-                )
-        )
+private fun DynamicBlob(color: Color, status: ConnectionStatus, animate: Boolean) {
+    val shapeA = when (status) {
+        ConnectionStatus.DISCONNECTED -> MaterialShapes.Cookie6Sided
+        ConnectionStatus.CONNECTED -> MaterialShapes.Cookie9Sided
+        ConnectionStatus.CONNECTING -> MaterialShapes.Cookie9Sided
+        ConnectionStatus.RECONNECTING -> MaterialShapes.Cookie12Sided
+    }.toShape()
+    val shapeB = when (status) {
+        ConnectionStatus.RECONNECTING -> MaterialShapes.Cookie9Sided
+        else -> MaterialShapes.Cookie6Sided
+    }.toShape()
+    val baseAlpha = when (status) {
+        ConnectionStatus.DISCONNECTED -> 0.34f
+        ConnectionStatus.CONNECTED -> 0.70f
+        ConnectionStatus.CONNECTING -> 0.80f
+        ConnectionStatus.RECONNECTING -> 0.85f
     }
+    val breatheMs = when (status) {
+        ConnectionStatus.CONNECTED -> 3200
+        ConnectionStatus.CONNECTING -> 1500
+        else -> 1100
+    }
+    val rotateMs = when (status) {
+        ConnectionStatus.CONNECTED -> 14000
+        ConnectionStatus.CONNECTING -> 3600
+        else -> 2600
+    }
+
+    if (!animate || status == ConnectionStatus.DISCONNECTED) {
+        BlobLayer(
+            shape = shapeA,
+            color = color,
+            rotation = 0f,
+            scale = 1f,
+            alpha = baseAlpha,
+            squash = 0f
+        )
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "blob")
+    val rotationA by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(rotateMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "blobRotationA"
+    )
+    val rotationB by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = -360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween((rotateMs * 1.6f).toInt(), easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "blobRotationB"
+    )
+    val breath by transition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(breatheMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blobBreath"
+    )
+    val squash by transition.animateFloat(
+        initialValue = -0.07f,
+        targetValue = 0.07f,
+        animationSpec = infiniteRepeatable(
+            animation = tween((breatheMs * 0.7f).toInt(), easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blobSquash"
+    )
+
+    BlobLayer(
+        shape = shapeA,
+        color = color,
+        rotation = rotationA,
+        scale = breath,
+        alpha = baseAlpha,
+        squash = squash
+    )
+    BlobLayer(
+        shape = shapeB,
+        color = color,
+        rotation = rotationB,
+        scale = breath * 0.92f,
+        alpha = baseAlpha * 0.7f,
+        squash = -squash
+    )
+}
+
+@Composable
+private fun BlobLayer(
+    shape: androidx.compose.ui.graphics.Shape,
+    color: Color,
+    rotation: Float,
+    scale: Float,
+    alpha: Float,
+    squash: Float
+) {
+    Box(
+        modifier = Modifier
+            .size(198.dp)
+            .graphicsLayer {
+                rotationZ = rotation
+                scaleX = scale * (1f + squash)
+                scaleY = scale * (1f - squash)
+            }
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        color.copy(alpha = alpha),
+                        color.copy(alpha = alpha * 0.55f),
+                        Color.Transparent
+                    )
+                ),
+                shape = shape
+            )
+    )
 }
