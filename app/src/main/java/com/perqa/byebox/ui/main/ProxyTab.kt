@@ -145,6 +145,7 @@ import com.perqa.byebox.data.ProxyConfig
 import com.perqa.byebox.data.SubscriptionSource
 import com.perqa.byebox.data.UaPresets
 import com.perqa.byebox.findActivity
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class NodeSortMode {
@@ -2619,12 +2620,13 @@ fun ServerItemCard(
     var swipeOffsetX by remember(config.id) { mutableFloatStateOf(0f) }
     var actionThresholdFeedbackSent by remember(config.id) { mutableStateOf(false) }
     var detachFeedbackSent by remember(config.id) { mutableStateOf(false) }
+    var settleJob by remember(config.id) { mutableStateOf<Job?>(null) }
     var showShareDialog by remember(config.id) { mutableStateOf(false) }
     var showQrDialog by remember(config.id) { mutableStateOf(false) }
     val actionThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
     // Точка срыва магнита и точка полного догона пальца.
-    val detachStartPx = remember(density) { with(density) { 22.dp.toPx() } }
-    val detachEndPx = remember(density) { with(density) { 46.dp.toPx() } }
+    val detachStartPx = remember(density) { with(density) { 40.dp.toPx() } }
+    val detachEndPx = remember(density) { with(density) { 66.dp.toPx() } }
     val displayOffsetX by remember {
         derivedStateOf {
             stickySwipeDisplay(
@@ -2742,6 +2744,10 @@ fun ServerItemCard(
                 .pointerInput(config.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
+                            // Незавершённый возврат не должен перезаписывать
+                            // смещение нового жеста — иначе второй свайп «залипает».
+                            settleJob?.cancel()
+                            settleJob = null
                             actionThresholdFeedbackSent = false
                             detachFeedbackSent = false
                             tactileFeedback()
@@ -2749,7 +2755,8 @@ fun ServerItemCard(
                             onSwipeOffsetChanged(swipeOffsetX)
                         },
                         onDragEnd = {
-                            scope.launch {
+                            settleJob?.cancel()
+                            settleJob = scope.launch {
                                 if (-displayOffsetX >= actionThresholdPx) {
                                     tactileFeedback()
                                     val anim = Animatable(swipeOffsetX)
@@ -2790,7 +2797,8 @@ fun ServerItemCard(
                             }
                         },
                         onDragCancel = {
-                            scope.launch {
+                            settleJob?.cancel()
+                            settleJob = scope.launch {
                                 val anim = Animatable(swipeOffsetX)
                                 anim.animateTo(0f, animationSpec = settleAnimation) {
                                     swipeOffsetX = value
@@ -2803,11 +2811,11 @@ fun ServerItemCard(
                             change.consume()
                             val newOffset = (swipeOffsetX + dragAmount)
                                 .coerceIn(-size.width.toFloat(), size.width.toFloat())
-                            val displayNewOffset = run {
-                                val progress = smoothStep(((kotlin.math.abs(newOffset) - detachStartPx) / (detachEndPx - detachStartPx)).coerceIn(0f, 1f))
-                                val resisted = newOffset * 0.48f
-                                resisted + (newOffset - resisted) * progress
-                            }
+                            val displayNewOffset = stickySwipeDisplay(
+                                raw = newOffset,
+                                detachStartPx = detachStartPx,
+                                detachEndPx = detachEndPx
+                            )
                             // Момент срыва магнита — отдельный тактильный отклик.
                             if (!detachFeedbackSent && kotlin.math.abs(newOffset) >= detachStartPx) {
                                 detachFeedbackSent = true
@@ -3160,9 +3168,11 @@ private fun PingingPingPill(ping: Int?) {
 
 /** Цвета бейджа пинга (фон/контент) в зависимости от задержки. */
 /**
- * «Липкий» свайп: сначала карточка идёт тяжело (примерно 20% от пальца),
- * затем в точке [detachStartPx] магнит срывается, и она догоняет палец,
- * после чего движется с ним один к одному.
+ * «Липкий» свайп с магнитом:
+ *  - до [detachStartPx] карточка идёт тяжело, причём в начале тяжелее всего
+ *    (10% от пальца), к точке срыва сопротивление постепенно слабеет (до 30%);
+ *  - в точке срыва магнит отпускает, и за [detachEndPx] карточка догоняет
+ *    палец, после чего идёт с ним один к одному.
  */
 internal fun stickySwipeDisplay(
     raw: Float,
@@ -3172,16 +3182,19 @@ internal fun stickySwipeDisplay(
     if (raw == 0f) return 0f
     val sign = if (raw < 0f) -1f else 1f
     val distance = kotlin.math.abs(raw)
-    val heavyFactor = 0.2f
+    val heavyStart = 0.10f
+    val heavyEnd = 0.30f
     if (distance <= detachStartPx) {
-        return sign * distance * heavyFactor
+        val t = (distance / detachStartPx).coerceIn(0f, 1f)
+        // Интеграл линейно растущего коэффициента сопротивления.
+        return sign * distance * (heavyStart + (heavyEnd - heavyStart) * t * 0.5f)
     }
+    val breakDisplay = detachStartPx * (heavyStart + (heavyEnd - heavyStart) * 0.5f)
     val t = smoothStep(
         ((distance - detachStartPx) / (detachEndPx - detachStartPx).coerceAtLeast(1f))
             .coerceIn(0f, 1f)
     )
-    // Сначала отставание максимальное, затем оно пружинно уходит в ноль.
-    val lag = detachStartPx * (1f - heavyFactor) * (1f - t)
+    val lag = (detachStartPx - breakDisplay) * (1f - t)
     return sign * (distance - lag)
 }
 
