@@ -191,6 +191,7 @@ object Loc {
 
         // Dashboard
         "profile_presets" to "Пресеты настроек",
+        "presets_active_fmt" to "Активен: %s",
         "btn_connected" to "ВКЛЮЧЕНО",
         "btn_connecting" to "ПОИСК...",
         "btn_reconnecting" to "ОТМЕНА",
@@ -867,6 +868,7 @@ object Loc {
 
         // Dashboard
         "profile_presets" to "Settings Presets",
+        "presets_active_fmt" to "Active: %s",
         "btn_connected" to "ON",
         "btn_connecting" to "SEARCHING...",
         "btn_reconnecting" to "CANCEL",
@@ -1542,6 +1544,7 @@ object Loc {
 
         // Dashboard
         "profile_presets" to "配置预设",
+        "presets_active_fmt" to "当前：%s",
         "btn_connected" to "已连接",
         "btn_connecting" to "连接中...",
         "btn_reconnecting" to "取消",
