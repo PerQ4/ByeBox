@@ -396,8 +396,8 @@ internal fun TelegramExpandedContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            // Expressive-форма в стиле остальных акцентов приложения.
-            shape = MaterialShapes.Cookie9Sided.toShape(),
+            // Обычная кнопка со скруглёнными углами.
+            shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
