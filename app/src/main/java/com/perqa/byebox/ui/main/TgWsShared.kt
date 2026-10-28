@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.material3.toShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
@@ -123,10 +124,17 @@ fun ModeChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    // Стадион с идеальными полукругами по бокам, как у остальных кнопок.
+    val stadium = RoundedCornerShape(50)
     ToggleButton(
         checked = selected,
         onCheckedChange = { onClick() },
         enabled = enabled,
+        shapes = ToggleButtonShapes(
+            shape = stadium,
+            pressedShape = stadium,
+            checkedShape = stadium
+        ),
         // Минимальная зона нажатия 48dp.
         modifier = modifier.defaultMinSize(minHeight = 48.dp)
     ) {

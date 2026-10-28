@@ -396,8 +396,9 @@ internal fun TelegramExpandedContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            // Обычная кнопка со скруглёнными углами.
-            shape = RoundedCornerShape(16.dp),
+            // Стадион: радиус = половине высоты, по бокам идеальные полукруги
+            // (не овал — percent считается от меньшей стороны).
+            shape = RoundedCornerShape(50),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,

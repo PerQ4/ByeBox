@@ -315,7 +315,7 @@ private fun TgwsStatusPillBar(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(dotShape)
-                    .background(statusColor.copy(alpha = 0.16f)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center
             ) {
                 if (isBusy) {
