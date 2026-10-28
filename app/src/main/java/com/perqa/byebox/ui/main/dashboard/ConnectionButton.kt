@@ -24,12 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -58,11 +55,8 @@ import kotlin.math.sin
  * Аура вокруг кнопки в состоянии CONNECTED. Transition создаётся здесь и
  * существует только пока этот composable в композиции — вне CONNECTED его нет.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ConnectedAura(buttonBgColor: Color) {
-    // Expressive-аура: не идеальный круг, а «cookie»-форма M3.
-    val auraShape = MaterialShapes.Cookie9Sided.toShape()
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val auraAlpha1 by infiniteTransition.animateFloat(
         initialValue = 0.12f,
@@ -117,7 +111,7 @@ private fun ConnectedAura(buttonBgColor: Color) {
                         Color.Transparent
                     )
                 ),
-                shape = auraShape
+                shape = CircleShape
             )
     )
 
@@ -137,7 +131,7 @@ private fun ConnectedAura(buttonBgColor: Color) {
                         Color.Transparent
                     )
                 ),
-                shape = auraShape
+                shape = CircleShape
             )
     )
 }

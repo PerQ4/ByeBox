@@ -27,13 +27,10 @@ import androidx.compose.material.icons.filled.QueryBuilder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -235,7 +232,6 @@ internal fun PulsingStatusDot(color: Color, size: androidx.compose.ui.unit.Dp = 
     )
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StatusPillBar(
     status: ConnectionStatus,
@@ -290,7 +286,6 @@ fun StatusPillBar(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val dotShape = if (expressive) MaterialShapes.Cookie9Sided.toShape() else CircleShape
                 if (isBusy) {
                     // Пульс точки существует только в CONNECTING/RECONNECTING.
                     PulsingStatusDot(color = statusColor)
@@ -298,7 +293,7 @@ fun StatusPillBar(
                     Box(
                         modifier = Modifier
                             .size(10.dp)
-                            .clip(dotShape)
+                            .clip(CircleShape)
                             .background(statusColor)
                     )
                 }
@@ -485,7 +480,6 @@ fun SpeedCard(
  * Prominent card showing the current VPN session duration (e.g. "00:14:32").
  * Shown on the dashboard while the VPN is connected.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SessionDurationCard(
     duration: String,
@@ -494,8 +488,6 @@ fun SessionDurationCard(
     modifier: Modifier = Modifier
 ) {
     val expressive = cornerRoundness == "expressive"
-    // Expressive-форма: «пилюля» (stadium) вместо обычного скругления.
-    val cardShape = if (expressive) MaterialShapes.Pill.toShape() else ByeBoxShapes.card(false)
     val container = if (expressive) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
@@ -508,7 +500,7 @@ fun SessionDurationCard(
     }
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = cardShape,
+        shape = ByeBoxShapes.card(expressive),
         colors = CardDefaults.cardColors(containerColor = container)
     ) {
         Row(
@@ -539,7 +531,7 @@ fun SessionDurationCard(
             Text(
                 text = duration,
                 style = (if (expressive) {
-                    MaterialTheme.typography.headlineSmall
+                    MaterialTheme.typography.titleLarge
                 } else {
                     MaterialTheme.typography.titleMedium
                 }).copy(
