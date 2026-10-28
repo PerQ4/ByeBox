@@ -207,13 +207,13 @@ fun CockpitServerCard(
             modifier = Modifier
                 .clip(pingShape)
                 .background(pillBg)
-                .padding(horizontal = 12.dp, vertical = 7.dp),
+                .padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(6.dp)
+                    .size(5.dp)
                     .clip(MaterialShapes.Cookie9Sided.toShape())
                     .background(pillColor)
             )
