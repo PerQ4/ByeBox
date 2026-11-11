@@ -151,6 +151,32 @@ fun MainScreen(
                 )
             }
 
+            // Выезжающая шторка обновления — в духе меню настроек конфига.
+            var updateSheetDismissed by rememberSaveable { mutableStateOf(false) }
+            val updateInfo = state.updateInfo
+            LaunchedEffect(updateInfo?.latestVersionCode) {
+                if (updateInfo != null) updateSheetDismissed = false
+            }
+            if (updateInfo != null && !updateSheetDismissed && !showModeDialog) {
+                UpdateAvailableSheet(
+                    info = updateInfo,
+                    downloadState = state.updateDownload,
+                    language = state.language,
+                    onInstall = { viewModel.downloadUpdate() },
+                    onCancelDownload = { viewModel.cancelUpdateDownload() },
+                    onSkip = {
+                        updateSheetDismissed = true
+                        viewModel.skipUpdateVersion()
+                    },
+                    onDontShowAgain = {
+                        updateSheetDismissed = true
+                        viewModel.setAutoCheckUpdates(false)
+                        viewModel.skipUpdateVersion()
+                    },
+                    onDismiss = { updateSheetDismissed = true }
+                )
+            }
+
             if (showModeDialog) {
                 OnboardingScreen(
                     language = state.language,
