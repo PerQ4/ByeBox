@@ -15,7 +15,8 @@
 
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
-| **1.5.4** | `34` | 2026-09-30 | [arm64-v8a APK](https://github.com/PerQ4/ByeBox/releases/latest/download/byebox-arm64-v8a-release.apk) |
+| **1.5.5** | `38` | 2026-11-11 | [APK](https://github.com/PerQ4/ByeBox/releases/download/v1.5.5/ByeBox-1.5.5.apk) |
+| 1.5.4 | `34` | 2026-09-30 | [arm64-v8a APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.4) |
 | 1.5.3 | `33` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3) |
 | 1.5.3-beta.1 | `32` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3-beta.1) |
 | 1.5.2 | `30` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.2) |
@@ -42,7 +43,8 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 ### ✨ Features
 
 **🎨 Interface**
-- Material You (Material 3): dynamic color, light/dark themes, several palettes
+- Material You (Material 3) with **Material 3 Expressive** accents: cookie-shaped badges, stadium buttons and jelly swipe animations
+- Dynamic color, light/dark themes, several palettes
 - Glassmorphic blurred navigation dock ([Haze](https://github.com/chrisbanes/haze))
 - Spring micro-animations and tactile/haptic feedback
 - Reorderable tabs and settings sections
@@ -67,7 +69,7 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 - System default, Cloudflare, Google, AdGuard, or a custom resolver
 
 **✈️ Telegram**
-- Built-in local **MTProto proxy** (TG WS Proxy)
+- Built-in local **MTProto proxy** (TG WS Proxy), pinned to the top of the home screen
 - Cloudflare WebSocket and direct-datacenter modes
 - Core synced with upstream: WebSocket message **fragmentation**, **Fake TLS / SNI fronting**, CF worker domains
 - Fine-tunable proxy core settings: buffer size, CF worker domains, fake TLS domain, plain port 80, test DCs, PROXY protocol v1
@@ -81,15 +83,19 @@ engine of [v2rayNG](https://github.com/2dust/v2rayNG) and
 - **Quick Settings tiles**: connection toggle and profile switcher
 - Settings export / import
 - **In-app updater** — finds every release (pre-releases included), verifies the APK's
-  **SHA-256**, shows download progress with cancel, and lets you **skip a version** or be
-  **reminded later**; auto-check can be turned off
+  **SHA-256**, and opens a slide-up sheet with **Install**, **Skip version** and
+  **Don't show again**; download progress with cancel, auto-check can be turned off
 
 ### 📥 Download
 
 Grab the latest APK from the [**Releases**](https://github.com/PerQ4/ByeBox/releases) page.
 
 > ℹ️ ByeBox follows the versioning scheme described in [**Versioning**](#-versioning).
-> Latest **stable** release is **`1.5.4`** (`versionCode 34`) — the **TUN stack** setting now actually reaches the Xray core config (`noKernelTun`); before this release it was written to an unrelated key and silently discarded. The APK targets `arm64-v8a` (single-ABI build).
+> Latest **stable** release is **`1.5.5`** (`versionCode 38`) — a design-focused release:
+> the Telegram proxy block moved to the top of the home screen, settings presets are now
+> static, buttons use proper stadium shapes, and the updater slides up from the bottom with
+> **Install**, **Skip version** and **Don't show again**. The APK targets `arm64-v8a`
+> (single-ABI build).
 
 No proxy servers or subscriptions are included — bring your own.
 
@@ -219,7 +225,8 @@ that apply to you. The software is provided "as is", without warranty of any kin
 ### ✨ Возможности
 
 **🎨 Интерфейс**
-- Material You (Material 3): динамические цвета, светлая/тёмная темы, несколько палитр
+- Material You (Material 3) с акцентами **Material 3 Expressive**: cookie-бейджи, кнопки-стадионы и желейные анимации свайпа
+- Динамические цвета, светлая/тёмная темы, несколько палитр
 - Стеклянная размытая навигационная панель ([Haze](https://github.com/chrisbanes/haze))
 - Пружинные микроанимации и тактильная отдача
 - Перетаскивание вкладок и разделов настроек
@@ -244,7 +251,7 @@ that apply to you. The software is provided "as is", without warranty of any kin
 - Системный, Cloudflare, Google, AdGuard или свой сервер
 
 **✈️ Telegram**
-- Встроенный локальный **MTProto-прокси** (TG WS Proxy)
+- Встроенный локальный **MTProto-прокси** (TG WS Proxy), блок закреплён вверху главного экрана
 - Режимы Cloudflare WebSocket и прямых датацентров
 - Ядро синхронизировано с апстримом: фрагментация WebSocket, **Fake TLS / SNI-фронтинг**, CF worker-домены
 - Гибкие настройки ядра: буфер, CF worker-домены, fake TLS-домен, порт 80 без TLS, тестовые DC, PROXY protocol v1
@@ -258,15 +265,20 @@ that apply to you. The software is provided "as is", without warranty of any kin
 - **Плитки быстрых настроек**: включение VPN и переключение профилей
 - Экспорт / импорт настроек
 - **Обновление из приложения** — находит все релизы (включая пре-релизы), проверяет
-  **SHA-256** APK, показывает прогресс загрузки с отменой и позволяет **пропустить версию**
-  или **напомнить позже**; автопроверку можно отключить
+  **SHA-256** APK и показывает выезжающую снизу шторку с действиями **Установить**,
+  **Пропустить версию** и **Больше не показывать**; прогресс загрузки с отменой,
+  автопроверку можно отключить
 
 ### 📥 Загрузка
 
 Актуальный APK — на странице [**Releases**](https://github.com/PerQ4/ByeBox/releases).
 
 > ℹ️ ByeBox следует схеме версионирования из раздела [**Версионирование**](#-версионирование).
-> Текущий стабильный релиз — **`1.5.4`** (`versionCode 34`) — настройка **стека TUN** теперь действительно доходит до конфига ядра Xray (`noKernelTun`); раньше она писалась в несвязанный ключ и молча терялась. APK рассчитан на `arm64-v8a` (сборка с одним ABI).
+> Текущий стабильный релиз — **`1.5.5`** (`versionCode 38`) — релиз про дизайн:
+> блок Telegram-прокси поднят вверх главного экрана, пресеты настроек стали статичными,
+> кнопки получили форму стадионов, а апдейтер выезжает снизу шторкой с действиями
+> **Установить**, **Пропустить версию** и **Больше не показывать**. APK рассчитан на
+> `arm64-v8a` (сборка с одним ABI).
 
 Серверы, узлы и подписки не входят в поставку — используйте свои.
 
