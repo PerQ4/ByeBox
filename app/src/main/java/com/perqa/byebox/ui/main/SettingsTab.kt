@@ -203,9 +203,9 @@ fun SettingsCategoryCard(
         ) {
             SettingsRowIcon(
                 icon = icon,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                containerAlpha = 1f,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = MaterialTheme.colorScheme.primary,
+                containerAlpha = 0.12f,
+                contentColor = MaterialTheme.colorScheme.primary,
                 cornerRoundness = cornerRoundness
             )
             
@@ -223,7 +223,7 @@ fun SettingsCategoryCard(
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
                     )
                 )
             }
@@ -233,7 +233,7 @@ fun SettingsCategoryCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -1512,7 +1512,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         viewModel.exportSettings()
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
+                                    shape = RoundedCornerShape(50)
                                 ) {
                                     Icon(Icons.Default.Upload, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
@@ -1524,7 +1524,7 @@ SettingsSubMenu.TGWS -> Loc.get("title_telegram", state.language)
                                         importLauncher.launch(arrayOf("application/zip"))
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(settingsControlRadius(state.cornerRoundness))
+                                    shape = RoundedCornerShape(50)
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
@@ -1615,7 +1615,7 @@ fun ThemeButton(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(56.dp)
-            .clip(RoundedCornerShape(settingsControlRadius(cornerRoundness)))
+            .clip(RoundedCornerShape(50))
             .background(buttonColor)
             .clickable {
                 if (!active) {

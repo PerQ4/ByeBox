@@ -75,140 +75,14 @@ import com.perqa.byebox.ui.main.stickySwipeFraction
 @Composable
 fun ProfilePresetsCard(
     state: MainUiState,
-    isExpanded: Boolean = false,
-    onToggleExpanded: () -> Unit = {},
-    singleRowPreview: Boolean = false,
     onSelectProfile: (String) -> Unit,
     onDeleteProfile: (String) -> Unit,
     onEditProfile: (SettingsProfileData) -> Unit,
-    onManageClick: () -> Unit,
-    viewportHeightPx: Float? = null,
-    reservedCollapsedAbovePx: Float? = null,
-    reservedCollapsedBelowPx: Float? = null,
-    reservedCollapsedBottomPx: Float? = null
+    onManageClick: () -> Unit
 ) {
-    val collapsed = !isExpanded
-    val singleRowMode = collapsed && singleRowPreview
     var swipingId by remember { mutableStateOf<String?>(null) }
     var swipingDragPx by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
-    val scrollState = rememberScrollState()
-    var contentHeightPx by remember { mutableFloatStateOf(0f) }
-    var headerHeightPx by remember { mutableFloatStateOf(0f) }
-    // Последняя полная высота списка, измеренная вне single-row режима, и флаг,
-    // что последнее измерение контента сделано в single-row (т.е. это одна
-    // строка). Когда блок выходит из single-row (закрыли TGWS), на первом кадре
-    // contentHeightPx всё ещё хранит высоту одной строки — по ней нельзя судить,
-    // обрезается ли список, — поэтому оценка canCrop опирается на последнюю
-    // полную высоту, пока измерение не догонит.
-    var lastFullContentHeightPx by remember { mutableFloatStateOf(0f) }
-    var lastMeasuredSingleRow by remember { mutableStateOf(false) }
-    val bottomPad = 64.dp
-    val bottomPadPx = with(density) { bottomPad.toPx() }
-    val staticPeekHeight = 168.dp
-    // Высота свёрнутого списка считается ОДИН раз — когда измерены все резервы страницы —
-    // и затем замораживается. Перекомпоновка нижележащих блоков (например, раскрытие TGWS)
-    // не должна менять высоту свёрнутого списка пресетов, иначе он «разворачивается» сам.
-    val allReservesMeasured = viewportHeightPx != null &&
-        (reservedCollapsedAbovePx ?: 0f) > 0f &&
-        (reservedCollapsedBelowPx ?: 0f) > 0f &&
-        (reservedCollapsedBottomPx ?: 0f) > 0f &&
-        headerHeightPx > 0f
-    val dynamicPeekHeight: Dp = remember(
-        allReservesMeasured,
-        reservedCollapsedAbovePx
-    ) {
-        if (allReservesMeasured) {
-            // Свободное место на экране: экран минус контент над пресетами, сам хедер,
-            // снизу TGWS, нижний запас страницы и небольшой зазор
-            // (14dp между блоками + 20dp запаса).
-            val interAndReservePx = with(density) { 34.dp.toPx() }
-            // Нижняя граница = примерно одна строка пресета. ВАЖНО: при
-            // подключённом VPN сверху появляется карточка сессии (+~58dp), и
-            // свободного места остаётся ~64dp. Если минимум выше этого, список
-            // не может сократиться на всю высоту карточки — остаток уходит вниз
-            // и панель TGWS съезжает. 56dp позволяет компенсации быть точной,
-            // а список всё равно остаётся прокручиваемым (видна строка).
-            val minPeekPx = with(density) { 56.dp.toPx() }
-            val maxPeekPx = with(density) { 360.dp.toPx() }
-            val availablePx = viewportHeightPx!! -
-                reservedCollapsedAbovePx!! -
-                headerHeightPx -
-                reservedCollapsedBelowPx!! -
-                reservedCollapsedBottomPx!! -
-                interAndReservePx
-            with(density) { availablePx.coerceIn(minPeekPx, maxPeekPx).toDp() }
-        } else {
-            staticPeekHeight
-        }
-    }
-    val peekHeight = dynamicPeekHeight
-    val peekHeightPx = with(density) { peekHeight.toPx() }
-    // Нельзя опираться на scrollState.maxValue: она зависит от высоты
-    // контейнера, а высота контейнера выводится из контента — получался
-    // самоусиливающийся цикл (нижний спейсер раздувает контейнер -> maxValue>0
-    // -> спейсер остаётся). Сравниваем измеренный контент с peek напрямую: это
-    // чистая функция от уже известных величин и не создаёт обратной связи.
-    val overflowsCollapsed = collapsed && contentHeightPx > peekHeightPx
-    // Сворачивание имеет смысл только когда в свёрнутом виде список реально
-    // обрезается (контент выше peek). Если весь список и так помещается
-    // (пресетов меньше, чем нужно для обрезания), переключатель не нужен:
-    // вместо шеврона в хедере показывается нейтральная полосочка.
-    // На кадре выхода из single-row измеренная высота ещё равна высоте одной
-    // строки (remeasure происходит в следующем layout) — для свёрнутого
-    // состояния берём последнюю полную высоту списка, иначе стрелка мигает,
-    // исчезая на пару миллисекунд при каждом закрытии Telegram.
-    val effectiveCropHeightPx = if (collapsed && lastMeasuredSingleRow) {
-        lastFullContentHeightPx
-    } else {
-        contentHeightPx
-    }
-    val canCrop = effectiveCropHeightPx > 0f && effectiveCropHeightPx > peekHeightPx
-    // Переключатель показываем, когда сворачивание/разворачивание имеет смысл:
-    //  - singleRowPreview (блок сжат до одной строки из-за открытого TGWS) — всегда,
-    //    иначе не вернуть блок обратно;
-    //  - блок раскрыт — всегда, свернуть можно всегда;
-    //  - блок свёрнут — только если контент реально обрезается (canCrop).
-    // Важно: для раскрытого состояния НЕ используем canCrop — на первом кадре
-    // раскрытия contentHeightPx ещё хранит высоту одной строки, и стрелка
-    // мигает, исчезая на пару миллисекунд. Для свёрнутого состояния canCrop
-    // тоже устойчив к этому лагу (см. lastFullContentHeightPx выше) — стрелка
-    // не пропадает и при закрытии Telegram через тап по нему.
-    val isExpandable = when {
-        !collapsed -> true
-        collapsed && singleRowPreview -> true
-        else -> canCrop
-    }
-
-    // Внутренний список должен прокручиваться сам, не увлекая за собой страницу:
-    // пока список свёрнут и имеет запас прокрутки, «съедаем» остаток жеста,
-    // чтобы внешняя вертикальная прокрутка страницы не срабатывала. НО когда
-    // внутренний список уже на краю (вверху при движении вниз / внизу при
-    // движении вверх), гасить жест нельзя — остаток нужно отдать родительской
-    // странице, иначе до карточки Telegram, лежащей под пресетами, не добраться.
-    val blockParentScroll = collapsed && scrollState.maxValue > 0f
-    val parentScrollBlocker = remember(blockParentScroll) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (!blockParentScroll || available.y == 0f) return Offset.Zero
-                // available.y > 0 — жест/контент движется вниз (к началу списка),
-                // available.y < 0 — вверх (к концу списка).
-                val atTopEdge = scrollState.value <= 0 && available.y > 0f
-                val atBottomEdge = scrollState.value >= scrollState.maxValue && available.y < 0f
-                // На краю внутреннему списку некуда скроллить — пропускаем остаток
-                // в родителя. Иначе гасим жест, пока список прокручивается сам.
-                return if (atTopEdge || atBottomEdge) {
-                    Offset.Zero
-                } else {
-                    Offset(0f, available.y)
-                }
-            }
-        }
-    }
 
     val displayConfigs = remember(state.profiles, state.configs, state.language) {
         state.profiles.map { profile ->
@@ -251,9 +125,7 @@ fun ProfilePresetsCard(
     }
     val profiles = state.profiles
 
-    // Если строку удалили свайпом, её id мог остаться в swipingId: тогда
-    // последующие свайпы больше не обновляют состояние. Сбрасываем, как только
-    // удалённого элемента больше нет в списке.
+    // Если строку удалили свайпом, её id мог остаться в swipingId.
     LaunchedEffect(displayConfigs) {
         val id = swipingId
         if (id != null && displayConfigs.none { it.id == id }) {
@@ -262,17 +134,17 @@ fun ProfilePresetsCard(
         }
     }
 
-    // При singleRowPreview (например, когда открыт блок Telegram) свёрнутый блок
-    // показывает только первую строку — «один элемент», без скролла и пустой зоны.
-    val visibleConfigs = if (collapsed && singleRowPreview) displayConfigs.take(1) else displayConfigs
-
     val activeProfileName = displayConfigs.firstOrNull { it.id == state.activeProfileId }?.name
     val firstConfigActive = displayConfigs.firstOrNull()?.let { it.id == state.activeProfileId } ?: false
     val firstConfigSwiping = displayConfigs.firstOrNull()?.id == swipingId
-    // Expressive-радиус берём из тех же настроек, что и остальные карточки,
-    // чтобы заголовок и строки списка жили в одной форме.
     val expressiveCorner = if (state.cornerRoundness == "expressive") 32.dp else 28.dp
-    val headerBottomCorner = if (collapsed || displayConfigs.isEmpty() || firstConfigActive || firstConfigSwiping) expressiveCorner else 6.dp
+    val headerBottomCorner = if (
+        displayConfigs.isEmpty() || firstConfigActive || firstConfigSwiping
+    ) {
+        expressiveCorner
+    } else {
+        6.dp
+    }
     val headerShape = RoundedCornerShape(
         topStart = expressiveCorner,
         topEnd = expressiveCorner,
@@ -280,244 +152,138 @@ fun ProfilePresetsCard(
         bottomEnd = headerBottomCorner
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { headerHeightPx = it.size.height.toFloat() }
-        ) {
-            PresetsHeader(
-                title = Loc.get("profile_presets", state.language),
-                subtitle = activeProfileName?.let {
-                    String.format(Loc.get("presets_active_fmt", state.language), it)
-                },
-                expanded = isExpanded,
-                expandable = isExpandable,
-                shape = headerShape,
-                onToggleExpanded = onToggleExpanded,
-                onManageClick = onManageClick,
-                language = state.language
-            )
-        }
-
-        // Высоту тела списка анимируем ТОЛЬКО на переходе развернуть/свернуть.
-        // Изменение peek (например, из-за появления/исчезновения карточки
-        // сессии) применяем мгновенно: если анимировать и его, список
-        // «доигрывает» прежнюю высоту 320 мс, и панель TGWS под ним плывёт.
-        val expandedBodyPx = if (contentHeightPx > 0f) contentHeightPx else peekHeightPx
-        val collapsedBodyPx = if (contentHeightPx > 0f) {
-            minOf(contentHeightPx, peekHeightPx)
+    // Соседи видят то же «липкое» смещение, что и сама карточка.
+    val presetThresholdPx = with(density) { 140.dp.toPx() }
+    val presetDetachStartPx = with(density) { 64.dp.toPx() }
+    val presetDetachEndPx = with(density) { 96.dp.toPx() }
+    val stickyDragPx = stickySwipeDisplay(
+        raw = swipingDragPx,
+        detachStartPx = presetDetachStartPx,
+        detachEndPx = presetDetachEndPx
+    )
+    val jellyDragPx by animateFloatAsState(
+        targetValue = stickyDragPx,
+        animationSpec = if (swipingId != null) {
+            spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessHigh)
         } else {
-            peekHeightPx
-        }
-        val collapseProgress by animateFloatAsState(
-            targetValue = if (collapsed) 1f else 0f,
-            // Пружина без отскока: высота тела не выходит за контент. Любой
-            // bounce здесь даёт overshoot и лишнюю пустую полосу под списком.
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            ),
-            label = "presetsCollapse"
-        )
-        val bodyHeightPx = expandedBodyPx + (collapsedBodyPx - expandedBodyPx) * collapseProgress
+            spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessLow)
+        },
+        label = "presetsJellyDrag"
+    )
+    val swipingIndex = if (swipingId == null) {
+        -1
+    } else {
+        displayConfigs.indexOfFirst { it.id == swipingId }
+    }
 
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(with(density) { bodyHeightPx.toDp() })
-                    // verticalScroll держим всегда: он измеряет контент без
-                    // ограничения по высоте, поэтому contentHeightPx всегда
-                    // равен настоящей высоте списка, а не высоте контейнера.
-                    // Когда список помещается целиком, прокрутки нет (maxValue 0).
-                    .verticalScroll(scrollState)
-                    .nestedScroll(parentScrollBlocker)
-            ) {
-                // Соседи видят то же «липкое» смещение, что и сама карточка,
-                // и догоняют его пружиной — поэтому и скругление, и сдвиг
-                // соседей привязаны к липкости, а не к сырому пальцу.
-                val presetThresholdPx = with(density) { 140.dp.toPx() }
-                val presetDetachStartPx = with(density) { 64.dp.toPx() }
-                val presetDetachEndPx = with(density) { 96.dp.toPx() }
-                val stickyDragPx = stickySwipeDisplay(
-                    raw = swipingDragPx,
-                    detachStartPx = presetDetachStartPx,
-                    detachEndPx = presetDetachEndPx
-                )
-                val jellyDragPx by animateFloatAsState(
-                    targetValue = stickyDragPx,
-                    // Во время жеста соседи должны повторять ту же кривую
-                    // (магнит → срыв → догон), поэтому пружина жёсткая.
-                    // Мягкая остаётся только на отпускании — для желе.
-                    animationSpec = if (swipingId != null) {
-                        spring(
-                            dampingRatio = 0.9f,
-                            stiffness = Spring.StiffnessHigh
-                        )
-                    } else {
-                        spring(
-                            dampingRatio = 0.45f,
-                            stiffness = Spring.StiffnessLow
-                        )
-                    },
-                    label = "presetsJellyDrag"
-                )
-                val swipingIndex = if (swipingId == null) {
-                    -1
-                } else {
-                    visibleConfigs.indexOfFirst { it.id == swipingId }
+    // Статичный блок: все пресеты всегда видны, без peek-высоты,
+    // внутреннего скролла и авто-сворачивания.
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        PresetsHeader(
+            title = Loc.get("profile_presets", state.language),
+            subtitle = activeProfileName?.let {
+                String.format(Loc.get("presets_active_fmt", state.language), it)
+            },
+            shape = headerShape,
+            onManageClick = onManageClick,
+            language = state.language
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            displayConfigs.forEachIndexed { index, config ->
+                val isActive = config.id == state.activeProfileId
+                val prevIsActive = index > 0 && displayConfigs[index - 1].id == state.activeProfileId
+                val nextIsActive = index < displayConfigs.lastIndex && displayConfigs[index + 1].id == state.activeProfileId
+                val isLast = index == displayConfigs.lastIndex
+
+                val baseTopCorner = when {
+                    isActive -> expressiveCorner
+                    prevIsActive -> expressiveCorner
+                    else -> 6.dp
                 }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned { coords ->
-                            contentHeightPx = coords.size.height.toFloat()
-                            if (!singleRowMode) {
-                                lastFullContentHeightPx = coords.size.height.toFloat()
-                                lastMeasuredSingleRow = false
-                            } else {
-                                lastMeasuredSingleRow = true
+                val baseBottomCorner = when {
+                    isActive -> expressiveCorner
+                    nextIsActive -> expressiveCorner
+                    isLast -> expressiveCorner
+                    else -> 6.dp
+                }
+
+                val prevIsSwipingNeighbor = index > 0 && displayConfigs[index - 1].id == swipingId
+                val nextIsSwipingNeighbor = index < displayConfigs.lastIndex && displayConfigs[index + 1].id == swipingId
+                val neighborFollowProgress = smoothStep((kotlin.math.abs(jellyDragPx) / 96f).coerceIn(0f, 1f))
+                val neighborRoundnessProgress = stickySwipeFraction(jellyDragPx, presetThresholdPx)
+                val effectiveTopCorner = if (prevIsSwipingNeighbor) {
+                    lerp(baseTopCorner, expressiveCorner, neighborRoundnessProgress)
+                } else {
+                    baseTopCorner
+                }
+                val effectiveBottomCorner = if (nextIsSwipingNeighbor) {
+                    lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress)
+                } else {
+                    baseBottomCorner
+                }
+                // Цепочка: первый сосед идёт на полную, второй — на 45%.
+                val neighborLevel = if (swipingIndex >= 0) {
+                    kotlin.math.abs(index - swipingIndex)
+                } else {
+                    Int.MAX_VALUE
+                }
+                val isNeighbor = neighborLevel in 1..2
+                val levelFactor = when (neighborLevel) {
+                    1 -> 1f
+                    2 -> 0.45f
+                    else -> 0f
+                }
+                val neighborOffsetDp = if (isNeighbor) {
+                    kotlin.math.sign(jellyDragPx) *
+                        8.dp.value *
+                        neighborFollowProgress *
+                        levelFactor
+                } else 0f
+                val neighborJelly = if (isNeighbor) {
+                    neighborFollowProgress * levelFactor
+                } else 0f
+
+                val profile = profiles.find { it.id == config.id }
+                key(config.id) {
+                    ServerItemCard(
+                        config = config,
+                        isActive = isActive,
+                        isPinging = false,
+                        onSelect = { onSelectProfile(config.id) },
+                        onDelete = { onDeleteProfile(config.id) },
+                        onOpenSettings = { profile?.let(onEditProfile) },
+                        topCorner = effectiveTopCorner,
+                        bottomCorner = effectiveBottomCorner,
+                        neighborOffsetDp = neighborOffsetDp.dp,
+                        neighborJelly = neighborJelly,
+                        language = state.language,
+                        statusText = when (profile?.assignedConfigId) {
+                            "FASTEST" -> "\u26A1 ${Loc.get("fastest_server", state.language)}"
+                            "LAST_ACTIVE" -> "\uD83D\uDD04 ${Loc.get("last_active_server", state.language)}"
+                            else -> null
+                        },
+                        onSwipeOffsetChanged = { offset ->
+                            if (swipingId == config.id) {
+                                val crossesDeleteThreshold = kotlin.math.abs(offset) >= 140f && kotlin.math.abs(swipingDragPx) < 140f
+                                val returnsHome = offset == 0f
+                                val movedEnough = kotlin.math.abs(offset - swipingDragPx) >= 14f
+                                if (returnsHome || crossesDeleteThreshold || movedEnough) {
+                                    swipingDragPx = offset
+                                }
                             }
                         },
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    visibleConfigs.forEachIndexed { index, config ->
-                        val isActive = config.id == state.activeProfileId
-                        val prevIsActive = index > 0 && visibleConfigs[index - 1].id == state.activeProfileId
-                        val nextIsActive = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == state.activeProfileId
-                        val isLast = index == visibleConfigs.lastIndex
-
-                        val baseTopCorner = when {
-                            isActive -> expressiveCorner
-                            prevIsActive -> expressiveCorner
-                            else -> 6.dp
-                        }
-                        val baseBottomCorner = when {
-                            isActive -> expressiveCorner
-                            nextIsActive -> expressiveCorner
-                            isLast -> expressiveCorner
-                            else -> 6.dp
-                        }
-
-                        val prevIsSwipingNeighbor = index > 0 && visibleConfigs[index - 1].id == swipingId
-                        val nextIsSwipingNeighbor = index < visibleConfigs.lastIndex && visibleConfigs[index + 1].id == swipingId
-                        val neighborFollowProgress = smoothStep((kotlin.math.abs(jellyDragPx) / 96f).coerceIn(0f, 1f))
-                        val neighborRoundnessProgress = stickySwipeFraction(jellyDragPx, presetThresholdPx)
-                        val effectiveTopCorner = if (prevIsSwipingNeighbor) lerp(baseTopCorner, expressiveCorner, neighborRoundnessProgress) else baseTopCorner
-                        val effectiveBottomCorner = if (nextIsSwipingNeighbor) lerp(baseBottomCorner, expressiveCorner, neighborRoundnessProgress) else baseBottomCorner
-                        // Цепочка: первый сосед идёт на полную, второй — на 45%,
-                        // чтобы хвост тянулся дальше за карточкой.
-                        val neighborLevel = if (swipingIndex >= 0) {
-                            kotlin.math.abs(index - swipingIndex)
-                        } else {
-                            Int.MAX_VALUE
-                        }
-                        val isNeighbor = neighborLevel in 1..2
-                        val levelFactor = when (neighborLevel) {
-                            1 -> 1f
-                            2 -> 0.45f
-                            else -> 0f
-                        }
-                        val neighborOffsetDp = if (isNeighbor) {
-                            kotlin.math.sign(jellyDragPx) *
-                                8.dp.value *
-                                neighborFollowProgress *
-                                levelFactor
-                        } else 0f
-                        val neighborJelly = if (isNeighbor) {
-                            neighborFollowProgress * levelFactor
-                        } else 0f
-
-                        val profile = profiles.find { it.id == config.id }
-                        // Ключ по id: при удалении через свайп Compose не должен
-                        // переиспользовать состояние (offset) соседней строки —
-                        // иначе последующие свайпы «ломаются».
-                        key(config.id) {
-                        ServerItemCard(
-                            config = config,
-                            isActive = isActive,
-                            isPinging = false,
-                            onSelect = { onSelectProfile(config.id) },
-                            onDelete = { onDeleteProfile(config.id) },
-                            onOpenSettings = { profile?.let(onEditProfile) },
-                            topCorner = effectiveTopCorner,
-                            bottomCorner = effectiveBottomCorner,
-                            neighborOffsetDp = neighborOffsetDp.dp,
-                            neighborJelly = neighborJelly,
-                            language = state.language,
-                            statusText = when (profile?.assignedConfigId) {
-                                "FASTEST" -> "\u26A1 ${Loc.get("fastest_server", state.language)}"
-                                "LAST_ACTIVE" -> "\uD83D\uDD04 ${Loc.get("last_active_server", state.language)}"
-                                else -> null
-                            },
-                            onSwipeOffsetChanged = { offset ->
-                                if (swipingId == config.id) {
-                                    val crossesDeleteThreshold = kotlin.math.abs(offset) >= 140f && kotlin.math.abs(swipingDragPx) < 140f
-                                    val returnsHome = offset == 0f
-                                    val movedEnough = kotlin.math.abs(offset - swipingDragPx) >= 14f
-                                    if (returnsHome || crossesDeleteThreshold || movedEnough) {
-                                        swipingDragPx = offset
-                                    }
-                                }
-                            },
-                            onSwipingChanged = { isSwiping ->
-                                if (isSwiping) {
-                                    swipingId = config.id
-                                } else if (swipingId == config.id) {
-                                    swipingId = null
-                                    swipingDragPx = 0f
-                                }
+                        onSwipingChanged = { isSwiping ->
+                            if (isSwiping) {
+                                swipingId = config.id
+                            } else if (swipingId == config.id) {
+                                swipingId = null
+                                swipingDragPx = 0f
                             }
-                        )
                         }
-                    }
-                }
-                // Нижний запас под скролл добавляем только когда список реально
-                // переполняет свёрнутый контейнер (иначе при 1-2 пресетах остаётся
-                // большая пустая зона, и блок выглядит разложенным).
-                if (collapsed && overflowsCollapsed) {
-                    Spacer(modifier = Modifier.height(bottomPad))
-                }
-            }
-
-            if (overflowsCollapsed) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                1f to MaterialTheme.colorScheme.background
-                            )
-                        )
-                )
-
-                val contentH = (contentHeightPx + bottomPadPx).coerceAtLeast(1f)
-                val progress by remember {
-                    derivedStateOf {
-                        if (scrollState.maxValue > 0) {
-                            scrollState.value.toFloat() / scrollState.maxValue.toFloat()
-                        } else 0f
-                    }
-                }
-                val thumbH = (peekHeightPx * peekHeightPx / contentH).coerceAtLeast(with(density) { 16.dp.toPx() })
-                val thumbY = (peekHeightPx - thumbH) * progress.coerceIn(0f, 1f)
-                val thumbColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                Canvas(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .height(peekHeight)
-                        .padding(end = 6.dp)
-                        .width(3.dp)
-                ) {
-                    drawRoundRect(
-                        color = thumbColor,
-                        topLeft = Offset(0f, thumbY),
-                        size = Size(size.width, thumbH),
-                        cornerRadius = CornerRadius(1.5.dp.toPx())
                     )
                 }
             }
@@ -533,18 +299,14 @@ fun ProfilePresetsCard(
 private fun PresetsHeader(
     title: String,
     subtitle: String?,
-    expanded: Boolean,
-    expandable: Boolean,
     shape: androidx.compose.ui.graphics.Shape,
-    onToggleExpanded: () -> Unit,
     onManageClick: () -> Unit,
     language: String
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .clickable(enabled = expandable) { onToggleExpanded() },
+            .clip(shape),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 0.dp,
@@ -601,22 +363,6 @@ private fun PresetsHeader(
                     contentDescription = Loc.get("manage_cd", language),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
-                )
-            }
-            if (expandable) {
-                Icon(
-                    imageVector = if (expanded) {
-                        Icons.Default.KeyboardArrowUp
-                    } else {
-                        Icons.Default.KeyboardArrowDown
-                    },
-                    contentDescription = if (expanded) {
-                        Loc.get("collapse_cd", language)
-                    } else {
-                        Loc.get("expand_cd", language)
-                    },
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
                 )
             }
         }

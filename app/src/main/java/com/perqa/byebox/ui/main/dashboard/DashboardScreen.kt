@@ -49,109 +49,15 @@ fun DashboardScreen(
     val showVpn = appMode != "tgws"
     val showTelegram = appMode != "vpn"
     val fullTgws = appMode == "tgws"
-
-    var viewportHeightPx by remember { mutableFloatStateOf(0f) }
-    var tgwsCollapsedHeightPx by remember { mutableFloatStateOf(0f) }
-    var aboveContentHeightPx by remember { mutableFloatStateOf(0f) }
-    var bottomReserveHeightPx by remember { mutableFloatStateOf(0f) }
-    // Пресеты и TGWS-карточка не должны быть развёрнуты одновременно: оба блока
-    // занимают много места, поэтому разворот одного сворачивает другой.
-    var presetsExpanded by remember { mutableStateOf(false) }
     var tgwsExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // onGloballyPositioned обязан стоять ДО verticalScroll. Если поставить
-            // его после, он измеряет высоту прокручиваемого КОНТЕНТА, а не
-            // вьюпорта: viewportHeightPx начинает «дышать» вместе с содержимым
-            // (в логах 2879 -> 2779 без изменения экрана), и высота списка
-            // пресетов уезжает — панель TGWS плавает.
-            .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
             .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (showVpn) {
-            ByeBoxExpressiveTheme {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned { aboveContentHeightPx = it.size.height.toFloat() }
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Трафик читается в изолированном composable, поэтому тик раз
-                        // в секунду перекомпоновывает только индикатор и карточку
-                        // сессии, а не весь экран.
-                        LiveTrafficStatus(
-                            state = state,
-                            viewModel = viewModel
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        ConnectionButton(
-                            status = state.connectionStatus,
-                            pulseEnabled = state.pulseEnabled,
-                            language = state.language,
-                            onClick = {
-                                if (activity != null) {
-                                    val shouldConnect = state.connectionStatus == ConnectionStatus.DISCONNECTED
-                                    if (shouldConnect) {
-                                        val transitioned = viewModel.setConnectingState()
-                                        if (!transitioned) {
-                                            viewModel.showToast(Loc.get("no_active_config", state.language))
-                                            return@ConnectionButton
-                                        }
-                                    }
-                                    activity.handleVpnToggle(shouldConnect)
-                                }
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        if (activeConfig != null) {
-                            CockpitServerCard(
-                                activeConfig = activeConfig,
-                                onPingRefresh = { viewModel.testActiveConfigPing() },
-                                onNavigateToProxy = onNavigateToProxy,
-                                language = state.language,
-                                cornerRoundness = state.cornerRoundness
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                }
-            }
-
-            ByeBoxExpressiveTheme {
-                ProfilePresetsCard(
-                    state = state,
-                    isExpanded = presetsExpanded,
-                    onToggleExpanded = {
-                        presetsExpanded = !presetsExpanded
-                        if (presetsExpanded) tgwsExpanded = false
-                    },
-                    singleRowPreview = tgwsExpanded,
-                    onSelectProfile = { viewModel.changeActiveProfileId(it) },
-                    onDeleteProfile = onDeleteProfile,
-                    onEditProfile = onEditProfile,
-                    onManageClick = onNavigateToManager,
-                    viewportHeightPx = viewportHeightPx,
-                    reservedCollapsedAbovePx = if (aboveContentHeightPx > 0f) aboveContentHeightPx else null,
-                    reservedCollapsedBelowPx = if (showTelegram) tgwsCollapsedHeightPx else null,
-                    reservedCollapsedBottomPx = if (bottomReserveHeightPx > 0f) bottomReserveHeightPx else null
-                )
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
+        // Блок TGWS — в самом верху экрана.
         if (showTelegram) {
             if (fullTgws) {
                 ByeBoxExpressiveTheme {
@@ -162,45 +68,94 @@ fun DashboardScreen(
                     )
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned {
-                            // Резерв должен отражать высоту именно СВЁРНУТОЙ
-                            // карточки. Раньше min() навсегда фиксировал первое
-                            // (свёрнутое) значение, и если свёрнутая высота
-                            // менялась (язык, длина статуса), резерв оставался
-                            // устаревшим. В развёрнутом виде не измеряем, иначе
-                            // в резерв уйдёт раздутая высота.
-                            if (!tgwsExpanded) {
-                                tgwsCollapsedHeightPx = it.size.height.toFloat()
-                            }
-                        }
-                ) {
-                    TelegramProxyCard(
-                        language = state.language,
-                        cornerRoundness = state.cornerRoundness,
-                        isExpanded = tgwsExpanded,
-                        onToggle = {
-                            tgwsExpanded = !tgwsExpanded
-                            if (tgwsExpanded) presetsExpanded = false
-                        }
-                    )
+                ByeBoxExpressiveTheme {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TelegramProxyCard(
+                            language = state.language,
+                            cornerRoundness = state.cornerRoundness,
+                            isExpanded = tgwsExpanded,
+                            onToggle = { tgwsExpanded = !tgwsExpanded }
+                        )
+                    }
                 }
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { bottomReserveHeightPx = it.size.height.toFloat() }
-        ) {
-            Spacer(
-                modifier = Modifier
-                    .height(130.dp)
-                    .navigationBarsPadding()
-            )
+        if (showVpn) {
+            ByeBoxExpressiveTheme {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(
+                        modifier = Modifier.height(
+                            if (showTelegram && !fullTgws) 14.dp else 12.dp
+                        )
+                    )
+
+                    // Трафик читается в изолированном composable, поэтому тик раз
+                    // в секунду перекомпоновывает только индикатор и карточку
+                    // сессии, а не весь экран.
+                    LiveTrafficStatus(
+                        state = state,
+                        viewModel = viewModel
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    ConnectionButton(
+                        status = state.connectionStatus,
+                        pulseEnabled = state.pulseEnabled,
+                        language = state.language,
+                        onClick = {
+                            if (activity != null) {
+                                val shouldConnect = state.connectionStatus == ConnectionStatus.DISCONNECTED
+                                if (shouldConnect) {
+                                    val transitioned = viewModel.setConnectingState()
+                                    if (!transitioned) {
+                                        viewModel.showToast(Loc.get("no_active_config", state.language))
+                                        return@ConnectionButton
+                                    }
+                                }
+                                activity.handleVpnToggle(shouldConnect)
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    if (activeConfig != null) {
+                        CockpitServerCard(
+                            activeConfig = activeConfig,
+                            onPingRefresh = { viewModel.testActiveConfigPing() },
+                            onNavigateToProxy = onNavigateToProxy,
+                            language = state.language,
+                            cornerRoundness = state.cornerRoundness
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            ByeBoxExpressiveTheme {
+                ProfilePresetsCard(
+                    state = state,
+                    onSelectProfile = { viewModel.changeActiveProfileId(it) },
+                    onDeleteProfile = onDeleteProfile,
+                    onEditProfile = onEditProfile,
+                    onManageClick = onNavigateToManager
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
         }
+
+        Spacer(
+            modifier = Modifier
+                .height(130.dp)
+                .navigationBarsPadding()
+        )
     }
 }
 

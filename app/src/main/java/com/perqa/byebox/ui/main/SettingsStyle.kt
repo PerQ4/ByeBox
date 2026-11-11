@@ -27,10 +27,10 @@ private fun radiusValue(roundness: String, expressive: Dp, standard: Dp): Dp =
     if (roundness == "expressive") expressive else standard
 
 /** Радиус карточек, больших блоков и крайних строк группы. */
-fun settingsCardRadius(roundness: String): Dp = radiusValue(roundness, 28.dp, 14.dp)
+fun settingsCardRadius(roundness: String): Dp = radiusValue(roundness, 32.dp, 20.dp)
 
 /** Радиус внутренних (не крайних) строк группы. */
-fun settingsInnerRadius(roundness: String): Dp = radiusValue(roundness, 10.dp, 4.dp)
+fun settingsInnerRadius(roundness: String): Dp = radiusValue(roundness, 12.dp, 6.dp)
 
 /** Радиус контролов: чипы иконок, кнопки, текстовые поля, плитки. */
 fun settingsControlRadius(roundness: String): Dp = radiusValue(roundness, 16.dp, 8.dp)
