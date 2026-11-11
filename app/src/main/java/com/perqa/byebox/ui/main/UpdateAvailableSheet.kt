@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.perqa.byebox.BuildConfig
 import com.perqa.byebox.core.UpdateDownloadState
@@ -117,21 +116,16 @@ fun UpdateAvailableSheet(
             }
 
             if (info.releaseNotes.isNotBlank()) {
-                Text(
-                    text = Loc.get("update_whats_new", language),
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
+                // Заметки релиза приходят в Markdown — рендерим заголовки,
+                // списки, ссылки и код, а не показываем сырые «##».
+                MarkdownText(
                     text = info.releaseNotes,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 168.dp)
+                        .heightIn(max = 220.dp)
                         .verticalScroll(rememberScrollState())
                 )
             }

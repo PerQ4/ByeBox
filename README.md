@@ -16,6 +16,7 @@
 | **Version** | **Build** | **Released** | **Download** |
 |:---:|:---:|:---:|:---:|
 | **1.5.5** | `38` | 2026-11-11 | [APK](https://github.com/PerQ4/ByeBox/releases/download/v1.5.5/ByeBox-1.5.5.apk) |
+| 1.5.6-beta.1 | `39` | 2026-11-11 | [beta APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.6-beta.1) |
 | 1.5.4 | `34` | 2026-09-30 | [arm64-v8a APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.4) |
 | 1.5.3 | `33` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3) |
 | 1.5.3-beta.1 | `32` | 2026-09-29 | [universal APK](https://github.com/PerQ4/ByeBox/releases/tag/v1.5.3-beta.1) |
